@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { theme } from "../src/theme.js";
+import { theme } from "../src/theme.ts";
 
 test("theme has expected size and palette structure", () => {
   assert.equal(typeof theme.width, "number");

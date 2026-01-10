@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cards } from "../src/data/cards.js";
+import { cards } from "../src/data/cards.ts";
 
 test("cards have unique ids and names", () => {
   const ids = new Set();

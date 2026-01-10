@@ -9,7 +9,7 @@
     "clean": "node src/clean.js",
     "serve": "tsx src/server.ts",
     "serve:watch": "tsx watch src/server.ts",
-    "test": "node --test test"
+    "test": "node --test --import tsx test"
   },
   "devDependencies": {
     "tsx": "^4.15.0",
