@@ -24,6 +24,15 @@ const readJson = <T>(filePath: string, fallback: T): T => {
   return JSON.parse(data) as T;
 };
 
+const escapeHtml = (text: string): string => {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
 const gamePath = (gameId: string) => path.join(gamesDir, gameId, "game.json");
 const templatePath = (gameId: string) => path.join(gamesDir, gameId, "template.json");
 const cardsDir = (gameId: string) => path.join(gamesDir, gameId, "cards");
@@ -156,8 +165,8 @@ const indexHtml = `<!doctype html>
       ${games.length === 0 ? '<p class="empty">No games found. Add games to the repository to see them here.</p>' : `
       <div class="games-grid">
         ${games.map(game => `
-        <a href="${game.id}/index.html" class="game-card">
-          <h2>${game.name}</h2>
+        <a href="${escapeHtml(game.id)}/index.html" class="game-card">
+          <h2>${escapeHtml(game.name)}</h2>
           <p>View cards →</p>
         </a>
         `).join('')}
@@ -201,7 +210,7 @@ for (const game of games) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${game.name} - Boardgame Assets</title>
+    <title>${escapeHtml(game.name)} - Boardgame Assets</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -308,7 +317,7 @@ for (const game of games) {
       <div class="nav">
         <a href="../index.html">← Back to games</a>
       </div>
-      <h1>${game.name}</h1>
+      <h1>${escapeHtml(game.name)}</h1>
       <p>${cards.length} card${cards.length !== 1 ? 's' : ''}</p>
     </header>
     <main>
@@ -316,8 +325,8 @@ for (const game of games) {
       <div class="cards-grid">
         ${cards.map(card => `
         <div class="card">
-          <h3>${card.name}</h3>
-          <img src="${card.id}.svg" alt="${card.name}" />
+          <h3>${escapeHtml(card.name)}</h3>
+          <img src="${escapeHtml(card.id)}.svg" alt="${escapeHtml(card.name)}" />
         </div>
         `).join('')}
       </div>
@@ -337,7 +346,7 @@ for (const game of games) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Print Sheet - ${game.name}</title>
+    <title>Print Sheet - ${escapeHtml(game.name)}</title>
     <style>
       @page { margin: 10mm; }
       body {
@@ -375,12 +384,12 @@ for (const game of games) {
   </head>
   <body>
     <header>
-      <h1>Print Sheet — ${game.name}</h1>
+      <h1>Print Sheet — ${escapeHtml(game.name)}</h1>
       <p>Use your browser print dialog.</p>
     </header>
     <section class="sheet">
       ${cards.map(card => `
-      <div class="sheet-card"><img src="${card.id}.svg" alt="${card.name}" /></div>
+      <div class="sheet-card"><img src="${escapeHtml(card.id)}.svg" alt="${escapeHtml(card.name)}" /></div>
       `).join('')}
     </section>
   </body>
