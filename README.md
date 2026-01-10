@@ -52,3 +52,10 @@ npm run build:pages
 ```
 
 This generates a static gallery site in `docs/` with all games and cards. The GitHub Actions workflow automatically builds and deploys this on every push to the `main` branch.
+
+### Enabling GitHub Pages
+
+To enable GitHub Pages for this repository:
+1. Go to repository Settings → Pages
+2. Under "Build and deployment", set Source to "GitHub Actions"
+3. The workflow will automatically deploy on the next push to `main`
