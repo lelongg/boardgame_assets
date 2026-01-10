@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="topbar">
@@ -15,7 +15,13 @@
         <p class="topbar__kicker">Boardgame Studio</p>
         <h1 id="game-title">Game Editor</h1>
       </div>
-      <div class="topbar__status" id="status">Ready.</div>
+      <div class="topbar__right">
+        <div class="topbar__status" id="status">Ready.</div>
+        <div class="topbar__actions">
+          <button id="connect-drive" class="button button--ghost">Connect Drive</button>
+          <button id="disconnect-drive" class="button button--ghost" hidden>Disconnect</button>
+        </div>
+      </div>
     </header>
 
     <main class="shell shell--wide">
@@ -28,7 +34,7 @@
           <div class="meta" id="game-meta"></div>
         </div>
         <div class="toolbar">
-          <a class="button button--ghost" href="/">Back to Games</a>
+          <a class="button button--ghost" href="index.html">Back to Games</a>
           <button id="rename-game" class="button button--ghost">Rename Game</button>
           <button id="delete-game" class="button button--danger">Delete Game</button>
           <a id="print-link" class="button button--ghost" href="#" target="_blank" rel="noopener">Print Sheets</a>
@@ -139,6 +145,6 @@
       </section>
     </main>
 
-    <script type="module" src="/editor.js?v=10"></script>
+    <script type="module" src="editor.js?v=11"></script>
   </body>
 </html>

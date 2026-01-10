@@ -1,3 +1,6 @@
+import { createStorage } from "./storage.js";
+import { injectDebugLabel, renderCardSvg, renderTemplateSvg } from "./render.js";
+
 const statusEl = document.getElementById("status");
 const currentGameEl = document.getElementById("current-game");
 const gameMetaEl = document.getElementById("game-meta");
@@ -20,6 +23,8 @@ const nodeList = document.getElementById("node-list");
 const templatePreview = document.getElementById("template-preview");
 const dynamicFields = document.getElementById("dynamic-fields");
 const fieldBadges = document.getElementById("field-badges");
+const connectButton = document.getElementById("connect-drive");
+const disconnectButton = document.getElementById("disconnect-drive");
 
 const controlLabel = document.getElementById("control-label");
 const controlBody = document.getElementById("control-body");
@@ -79,14 +84,13 @@ const setStatus = (message) => {
   statusEl.textContent = message;
 };
 
-const fetchJson = async (url, options) => {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || "Request failed");
-  }
-  if (response.status === 204) return null;
-  return response.json();
+let storage = null;
+
+const syncAuthUi = () => {
+  if (!storage) return;
+  const signedIn = storage.isAuthorized();
+  connectButton.hidden = signedIn;
+  disconnectButton.hidden = !signedIn;
 };
 
 const gameId = new URLSearchParams(window.location.search).get("game");
@@ -118,7 +122,7 @@ const updateHeader = () => {
   gameTitleEl.textContent = `${state.currentGame.name} Editor`;
   const updated = new Date(state.currentGame.updatedAt).toLocaleString();
   gameMetaEl.textContent = `Last updated ${updated}`;
-  printLink.href = `/print/${state.currentGame.id}`;
+  printLink.href = "#";
 };
 
 const resetForm = () => {
@@ -150,8 +154,16 @@ const formToCard = () => {
   };
 };
 
+const setPreviewImage = (svg, target, key) => {
+  if (state[key]) URL.revokeObjectURL(state[key]);
+  state[key] = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  target.src = state[key];
+};
+
 const refreshPreviewFromCard = (card) => {
-  cardPreview.src = `/api/games/${state.currentGame.id}/cards/${card.id}.svg?ts=${Date.now()}`;
+  if (!state.template) return;
+  const svg = renderCardSvg(card, state.template);
+  setPreviewImage(svg, cardPreview, "previewUrl");
 };
 
 const previewDraft = async () => {
@@ -159,17 +171,9 @@ const previewDraft = async () => {
     const card = formToCard();
     sanitizeTemplate(state.template);
     const debugAttach = getDebugAttachInfo() ?? { note: "no-item-selected" };
-    const response = await fetch(`/api/games/${state.currentGame.id}/render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ card, template: state.template, debug: true, debugAttach })
-    });
-    if (!response.ok) throw new Error("Preview failed");
-    const svg = await response.text();
-
-    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
-    state.previewUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-    cardPreview.src = state.previewUrl;
+    const baseSvg = renderCardSvg(card, state.template, { debug: true });
+    const svg = injectDebugLabel(baseSvg, debugAttach);
+    setPreviewImage(svg, cardPreview, "previewUrl");
     setStatus("Preview updated.");
   } catch (err) {
     setStatus(`Preview failed: ${err.message}`);
@@ -178,9 +182,17 @@ const previewDraft = async () => {
 
 const loadGame = async () => {
   try {
-    state.currentGame = await fetchJson(`/api/games/${gameId}`);
-    state.cards = await fetchJson(`/api/games/${gameId}/cards`);
-    state.template = await fetchJson(`/api/games/${gameId}/template`);
+    if (!storage) {
+      setStatus("Storage not ready.");
+      return;
+    }
+    if (!storage.isAuthorized()) {
+      setStatus("Connect to Google Drive to load this game.");
+      return;
+    }
+    state.currentGame = await storage.getGame(gameId);
+    state.cards = await storage.listCards(gameId);
+    state.template = await storage.loadTemplate(gameId);
     state.activeNode = { type: "section", id: state.template.root.id };
     updateHeader();
     renderCards();
@@ -205,11 +217,8 @@ const renameGame = async () => {
   const name = prompt("New game name", state.currentGame.name);
   if (!name) return;
   try {
-    const game = await fetchJson(`/api/games/${state.currentGame.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name })
-    });
+    if (!storage) throw new Error("Storage not ready.");
+    const game = await storage.updateGame(state.currentGame.id, { name });
     state.currentGame = game;
     updateHeader();
     setStatus("Game renamed.");
@@ -222,8 +231,9 @@ const deleteGame = async () => {
   if (!state.currentGame) return;
   if (!confirm(`Delete ${state.currentGame.name}? This removes all cards.`)) return;
   try {
-    await fetchJson(`/api/games/${state.currentGame.id}`, { method: "DELETE" });
-    window.location.href = "/";
+    if (!storage) throw new Error("Storage not ready.");
+    await storage.deleteGame(state.currentGame.id);
+    window.location.href = "index.html";
   } catch (err) {
     setStatus(`Delete failed: ${err.message}`);
   }
@@ -235,6 +245,11 @@ const createCard = () => {
 };
 
 const saveCard = async () => {
+  if (!storage) {
+    setStatus("Storage not ready.");
+    return;
+  }
+  const activeStorage = storage;
   const payload = formToCard();
   if (!payload.name) {
     setStatus("Name is required.");
@@ -243,19 +258,11 @@ const saveCard = async () => {
   try {
     let saved;
     if (state.currentCard) {
-      saved = await fetchJson(`/api/games/${state.currentGame.id}/cards/${state.currentCard.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      saved = await activeStorage.saveCard(state.currentGame.id, state.currentCard.id, payload);
     } else {
-      saved = await fetchJson(`/api/games/${state.currentGame.id}/cards`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      saved = await activeStorage.saveCard(state.currentGame.id, null, payload);
     }
-    state.cards = await fetchJson(`/api/games/${state.currentGame.id}/cards`);
+    state.cards = await activeStorage.listCards(state.currentGame.id);
     state.currentCard = saved;
     renderCards();
     populateForm(saved);
@@ -270,10 +277,10 @@ const deleteCard = async () => {
   if (!state.currentGame || !state.currentCard) return;
   if (!confirm(`Delete ${state.currentCard.name}?`)) return;
   try {
-    await fetchJson(`/api/games/${state.currentGame.id}/cards/${state.currentCard.id}`, {
-      method: "DELETE"
-    });
-    state.cards = await fetchJson(`/api/games/${state.currentGame.id}/cards`);
+    if (!storage) throw new Error("Storage not ready.");
+    const activeStorage = storage;
+    await activeStorage.deleteCard(state.currentGame.id, state.currentCard.id);
+    state.cards = await activeStorage.listCards(state.currentGame.id);
     state.currentCard = null;
     renderCards();
     resetForm();
@@ -324,16 +331,8 @@ const createItem = () => {
 const updateTemplatePreview = async () => {
   try {
     sanitizeTemplate(state.template);
-    const response = await fetch(`/api/games/${gameId}/template/preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.template)
-    });
-    if (!response.ok) throw new Error("Preview failed");
-    const svg = await response.text();
-    if (state.templatePreviewUrl) URL.revokeObjectURL(state.templatePreviewUrl);
-    state.templatePreviewUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-    templatePreview.src = state.templatePreviewUrl;
+    const svg = renderTemplateSvg(state.template);
+    setPreviewImage(svg, templatePreview, "templatePreviewUrl");
   } catch (err) {
     setStatus(`Template preview failed: ${err.message}`);
   }
@@ -342,17 +341,92 @@ const updateTemplatePreview = async () => {
 const saveTemplate = async () => {
   try {
     sanitizeTemplate(state.template);
-    const saved = await fetchJson(`/api/games/${gameId}/template`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.template)
-    });
+    if (!storage) throw new Error("Storage not ready.");
+    const saved = await storage.saveTemplate(gameId, state.template);
     state.template = saved;
     renderTemplate();
     setStatus("Template saved.");
   } catch (err) {
     setStatus(`Template save failed: ${err.message}`);
   }
+};
+
+const svgToDataUrl = (svg) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+
+const buildPrintHtml = (gameId, cards, template) => {
+  const items = cards
+    .map((card) => {
+      const svg = renderCardSvg(card, template);
+      return `<div class="sheet-card"><img src="${svgToDataUrl(svg)}" alt="${card.name}" /></div>`;
+    })
+    .join("\n");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Print Sheet - ${gameId}</title>
+    <style>
+      @page { margin: 10mm; }
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        background: #f4efe6;
+        color: #1b1a17;
+      }
+      header {
+        padding: 16px 18px 6px;
+      }
+      h1 { margin: 0; font-size: 20px; }
+      .sheet {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        padding: 12px;
+      }
+      .sheet-card {
+        background: #fffaf2;
+        border: 1px solid #d7cdbd;
+        border-radius: 12px;
+        padding: 6px;
+        break-inside: avoid;
+      }
+      .sheet-card img {
+        width: 100%;
+        display: block;
+      }
+      @media print {
+        header { display: none; }
+        body { background: white; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Print Sheet — ${gameId}</h1>
+      <p>Use your browser print dialog.</p>
+    </header>
+    <section class="sheet">${items}</section>
+  </body>
+</html>`;
+};
+
+const openPrintView = () => {
+  if (!state.currentGame || !state.template) return;
+  if (!state.cards.length) {
+    setStatus("No cards to print.");
+    return;
+  }
+  const html = buildPrintHtml(state.currentGame.id, state.cards, state.template);
+  const printWindow = window.open("", "_blank", "noopener");
+  if (!printWindow) {
+    setStatus("Popup blocked. Allow popups to open the print view.");
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
 };
 
 const renderTemplate = () => {
@@ -780,6 +854,35 @@ const hideControl = (el) => {
   el.style.display = "none";
 };
 
+const connectDrive = async () => {
+  try {
+    if (!storage) throw new Error("Storage not ready.");
+    await storage.signIn();
+    syncAuthUi();
+    await loadGame();
+    setStatus("Connected to Google Drive.");
+  } catch (err) {
+    setStatus(`Sign-in failed: ${err.message}`);
+  }
+};
+
+const disconnectDrive = async () => {
+  if (!storage) return;
+  await storage.signOut();
+  syncAuthUi();
+  state.currentGame = null;
+  state.cards = [];
+  state.currentCard = null;
+  state.template = null;
+  currentGameEl.textContent = "Disconnected";
+  gameTitleEl.textContent = "Game Editor";
+  gameMetaEl.textContent = "";
+  cardsList.innerHTML = "<p class=\"empty\">Sign in to load cards.</p>";
+  cardPreview.src = "";
+  templatePreview.src = "";
+  setStatus("Disconnected.");
+};
+
 renameGameButton.addEventListener("click", renameGame);
 deleteGameButton.addEventListener("click", deleteGame);
 newCardButton.addEventListener("click", createCard);
@@ -789,10 +892,31 @@ deleteCardButton.addEventListener("click", deleteCard);
 addSectionButton.addEventListener("click", createSection);
 addItemButton.addEventListener("click", createItem);
 saveTemplateButton.addEventListener("click", saveTemplate);
+connectButton.addEventListener("click", connectDrive);
+disconnectButton.addEventListener("click", disconnectDrive);
+printLink.addEventListener("click", (event) => {
+  event.preventDefault();
+  openPrintView();
+});
 cardForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveCard();
 });
 
 bindControlEvents();
-loadGame();
+const boot = async () => {
+  try {
+    storage = createStorage();
+    await storage.init();
+    syncAuthUi();
+    if (storage.isAuthorized()) {
+      await loadGame();
+    } else {
+      setStatus("Connect to Google Drive to load this game.");
+    }
+  } catch (err) {
+    setStatus(`Storage init failed: ${err.message}`);
+  }
+};
+
+boot();

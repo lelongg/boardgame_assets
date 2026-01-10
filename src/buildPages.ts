@@ -7,9 +7,26 @@ import type { CardData, CardTemplate } from "./types.js";
 
 const docsDir = path.resolve("docs");
 const gamesDir = path.resolve("games");
+const editorSrc = path.resolve("src/web");
+const editorDir = path.join(docsDir, "editor");
 
 // Create docs directory
 fs.mkdirSync(docsDir, { recursive: true });
+
+const copyDir = (source: string, target: string) => {
+  fs.mkdirSync(target, { recursive: true });
+  fs.readdirSync(source, { withFileTypes: true }).forEach((entry) => {
+    const sourcePath = path.join(source, entry.name);
+    const targetPath = path.join(target, entry.name);
+    if (entry.isDirectory()) {
+      copyDir(sourcePath, targetPath);
+      return;
+    }
+    fs.copyFileSync(sourcePath, targetPath);
+  });
+};
+
+copyDir(editorSrc, editorDir);
 
 type GameMeta = {
   id: string;

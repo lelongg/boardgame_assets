@@ -36,6 +36,14 @@ body {
   background: #fff8ef;
 }
 
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .topbar h1 {
   margin: 6px 0 0;
   font-family: "Fraunces", serif;
@@ -53,6 +61,12 @@ body {
 .topbar__status {
   font-size: 13px;
   color: var(--muted);
+}
+
+.topbar__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .shell {

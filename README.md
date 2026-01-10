@@ -1,6 +1,6 @@
 # Boardgame Asset Editor
 
-File-backed web editor to create multiple games and card assets, with SVG previews and print sheets.
+Web editor to create multiple games and card assets, with SVG previews and print sheets.
 
 ## Live Gallery
 
@@ -20,18 +20,27 @@ npm run serve
 
 Open `http://127.0.0.1:5173/`.
 
-## Data layout
+## Google Drive storage (hosted editor)
+
+The editor can run as a static site and save data directly to Google Drive (no backend).
+
+1. Create a Google OAuth client ID (see instructions in the repo docs/chat).
+2. Update `src/web/config.js`:
+   - Set `storage.googleDrive.clientId`
+   - Optional: set `storage.googleDrive.folderId` to save into a specific Drive folder
+3. Deploy to GitHub Pages (the editor is copied to `docs/editor/`).
+4. Open the editor at `https://<user>.github.io/<repo>/editor/`.
+
+To swap storage providers later, replace `src/web/storage/googleDrive.js` and update `src/web/storage.js` to point at the new provider.
+
+## Data layout (local server)
 
 - Games live in `games/<game-id>/game.json`
 - Cards live in `games/<game-id>/cards/<card-id>.json`
 
 ## Print sheets
 
-Use the “Open Print Sheets” button in the UI or open:
-
-```
-http://127.0.0.1:5173/print/<game-id>
-```
+Use the “Print Sheets” button in the UI to open a printable grid.
 
 ## Legacy build (optional)
 
@@ -51,7 +60,7 @@ To build the static site for GitHub Pages:
 npm run build:pages
 ```
 
-This generates a static gallery site in `docs/` with all games and cards. The GitHub Actions workflow automatically builds and deploys this on every push to the `main` branch.
+This generates a static gallery site in `docs/` with all games and cards, plus a copy of the editor in `docs/editor/`. The GitHub Actions workflow automatically builds and deploys this on every push to the `main` branch.
 
 ### Enabling GitHub Pages
 
