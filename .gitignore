@@ -1,5 +1,6 @@
 node_modules/
 output/
+docs/
 server.log
 watch.log
 tmp-*.svg

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsx src/build.ts",
+    "build:pages": "tsx src/buildPages.ts",
     "watch": "tsx watch src/build.ts",
     "clean": "node src/clean.js",
     "serve": "tsx src/server.ts",
