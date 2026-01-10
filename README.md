@@ -2,6 +2,10 @@
 
 File-backed web editor to create multiple games and card assets, with SVG previews and print sheets.
 
+## Live Gallery
+
+View the static gallery of all games and cards on [GitHub Pages](https://lelongg.github.io/boardgame_assets/).
+
 ## Setup
 
 ```bash
@@ -38,3 +42,20 @@ npm run build
 ```
 
 Outputs to `output/` using `src/data/cards.ts`.
+
+## GitHub Pages Build
+
+To build the static site for GitHub Pages:
+
+```bash
+npm run build:pages
+```
+
+This generates a static gallery site in `docs/` with all games and cards. The GitHub Actions workflow automatically builds and deploys this on every push to the `main` branch.
+
+### Enabling GitHub Pages
+
+To enable GitHub Pages for this repository:
+1. Go to repository Settings → Pages
+2. Under "Build and deployment", set Source to "GitHub Actions"
+3. The workflow will automatically deploy on the next push to `main`

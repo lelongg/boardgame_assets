@@ -1,0 +1,8 @@
+{
+  "id": "sample-card",
+  "name": "Sample Card",
+  "fields": {
+    "title": "Sample Card",
+    "description": "This is a sample card for testing"
+  }
+}
