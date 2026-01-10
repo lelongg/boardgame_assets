@@ -1,0 +1,17 @@
+{
+  "name": "boardgame-assets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsx src/build.ts",
+    "watch": "tsx watch src/build.ts",
+    "clean": "node src/clean.js",
+    "serve": "tsx src/server.ts",
+    "serve:watch": "tsx watch src/server.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.15.0",
+    "typescript": "^5.6.2"
+  }
+}

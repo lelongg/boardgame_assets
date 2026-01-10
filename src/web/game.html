@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Game Editor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="topbar__kicker">Boardgame Studio</p>
+        <h1 id="game-title">Game Editor</h1>
+      </div>
+      <div class="topbar__status" id="status">Ready.</div>
+    </header>
+
+    <main class="shell shell--wide">
+      <section class="panel panel--stack">
+        <div class="panel-title">
+          <div>
+            <p class="kicker">Current Game</p>
+            <h2 id="current-game">Loading...</h2>
+          </div>
+          <div class="meta" id="game-meta"></div>
+        </div>
+        <div class="toolbar">
+          <a class="button button--ghost" href="/">Back to Games</a>
+          <button id="rename-game" class="button button--ghost">Rename Game</button>
+          <button id="delete-game" class="button button--danger">Delete Game</button>
+          <a id="print-link" class="button button--ghost" href="#" target="_blank" rel="noopener">Print Sheets</a>
+        </div>
+      </section>
+
+      <section class="panel panel--stack">
+        <div class="panel-title">
+          <div>
+            <p class="kicker">Template</p>
+            <h2>Card Layout</h2>
+          </div>
+          <div class="toolbar">
+            <button id="add-section" class="button button--ghost">Add Section</button>
+            <button id="add-item" class="button button--ghost">Add Item</button>
+            <button id="save-template" class="button button--primary">Save Template</button>
+          </div>
+        </div>
+        <div class="template">
+          <div class="template__list" id="node-list"></div>
+          <div class="template__editor">
+            <div class="field-panel">
+              <p class="kicker">Fields</p>
+              <div class="field-badges" id="field-badges"></div>
+            </div>
+          <div class="control-panel" id="control-panel">
+            <div class="control-panel__label" id="control-label">Select a field to edit.</div>
+            <div class="control-panel__body" id="control-body" hidden>
+              <div class="control-panel__actions">
+                <button class="button button--ghost" id="move-up">Move Up</button>
+                <button class="button button--ghost" id="move-down">Move Down</button>
+                <button class="button button--danger" id="delete-node">Delete</button>
+              </div>
+              <div class="control-number" id="control-number" hidden>
+                <input id="control-range" type="range" />
+                <div class="control-number__row">
+                  <button class="button button--ghost" id="control-dec">-</button>
+                  <input id="control-input" type="number" />
+                    <button class="button button--ghost" id="control-inc">+</button>
+                  </div>
+                </div>
+                <div class="control-select" id="control-select" hidden>
+                  <select id="control-select-input"></select>
+                </div>
+                <div class="control-text" id="control-text" hidden>
+                  <input id="control-text-input" type="text" />
+                </div>
+                <div class="control-anchor" id="control-anchor" hidden>
+                  <div class="anchor-grid" id="control-anchor-grid">
+                    <button data-ax="0" data-ay="0"></button>
+                    <button data-ax="0.5" data-ay="0"></button>
+                    <button data-ax="1" data-ay="0"></button>
+                    <button data-ax="0" data-ay="0.5"></button>
+                    <button data-ax="0.5" data-ay="0.5"></button>
+                    <button data-ax="1" data-ay="0.5"></button>
+                    <button data-ax="0" data-ay="1"></button>
+                    <button data-ax="0.5" data-ay="1"></button>
+                    <button data-ax="1" data-ay="1"></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="template__preview">
+            <div class="preview__frame preview__frame--template">
+              <img id="template-preview" src="" alt="Template preview" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="content">
+        <div class="cards-panel">
+          <div class="panel-title">
+            <h3>Cards</h3>
+            <button id="new-card" class="button button--primary">New Card</button>
+          </div>
+          <div id="cards-list" class="stack"></div>
+        </div>
+
+        <div class="editor-panel">
+          <div class="panel-title">
+            <h3>Card Editor</h3>
+            <div class="panel-actions">
+              <button id="preview-card" class="button button--ghost">Preview</button>
+              <button id="save-card" class="button button--primary">Save</button>
+              <button id="delete-card" class="button button--danger">Delete</button>
+            </div>
+          </div>
+
+          <div class="editor">
+            <form id="card-form" class="form">
+              <label>
+                <span>Name</span>
+                <input type="text" name="name" required />
+              </label>
+              <div id="dynamic-fields" class="form__dynamic"></div>
+              <div class="meta" id="card-meta">Card ID: —</div>
+            </form>
+
+            <div class="preview">
+              <div class="preview__frame">
+                <img id="card-preview" src="" alt="Card preview" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/editor.js?v=10"></script>
+  </body>
+</html>
