@@ -22,6 +22,7 @@ export const defaultTemplate = () => ({
         children: [],
         items: [
           {
+            type: "text",
             id: "title",
             name: "Title",
             fieldId: "name",
@@ -46,7 +47,56 @@ export const defaultTemplate = () => ({
         sizePct: 80,
         gap: 0,
         children: [],
-        items: []
+        items: [
+          {
+            type: "frame",
+            id: "border",
+            name: "Border",
+            anchor: { x: 0.5, y: 0.5 },
+            attach: {
+              targetType: "section",
+              targetId: "body",
+              anchor: { x: 0.5, y: 0.5 }
+            },
+            widthPct: 90,
+            heightPct: 90,
+            strokeWidth: 3,
+            cornerRadius: 12
+          },
+          {
+            type: "image",
+            id: "artwork",
+            name: "Artwork",
+            fieldId: "image",
+            anchor: { x: 0.5, y: 0 },
+            attach: {
+              targetType: "section",
+              targetId: "body",
+              anchor: { x: 0.5, y: 0.1 }
+            },
+            widthPct: 70,
+            heightPct: 50,
+            fit: "cover",
+            cornerRadius: 8
+          },
+          {
+            type: "text",
+            id: "description",
+            name: "Description",
+            fieldId: "description",
+            anchor: { x: 0.5, y: 0 },
+            attach: {
+              targetType: "item",
+              targetId: "artwork",
+              anchor: { x: 0.5, y: 1 }
+            },
+            widthPct: 80,
+            heightPct: 30,
+            fontSize: 18,
+            align: "center",
+            font: "body"
+          }
+        ]
       }
     ],
     items: []
