@@ -210,15 +210,19 @@ export const renderCardSvg = (card, template, options = {}) => {
         const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
         if (!value) return "";
         const cornerRadius = item.cornerRadius ?? 0;
+        const fit = item.fit ?? "cover";
         
         // Create a clip path for the image - sanitize ID to only contain safe characters
         const clipId = `clip-${String(item.id).replace(/[^a-zA-Z0-9-_]/g, '')}`;
-        const clipPath = `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" /></clipPath>`;
+        const clipPath = cornerRadius > 0 
+          ? `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" /></clipPath>`
+          : "";
         
-        // For now, show a placeholder with the image URL text
-        // In a full implementation, this would use <image> element with proper preserveAspectRatio
-        const anchor = anchorPosition(rect, { x: 0.5, y: 0.5 });
-        return `${clipPath}<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${palette.muted}" /><text x="${anchor.x}" y="${anchor.y}" text-anchor="middle" dominant-baseline="middle" font-family="${typography.body}" font-size="12" fill="${palette.ink}">[${escape(value)}]</text>`;
+        // Map fit values to preserveAspectRatio
+        const preserveAspectRatio = fit === "contain" ? "xMidYMid meet" : fit === "fill" ? "none" : "xMidYMid slice";
+        const clipAttr = cornerRadius > 0 ? ` clip-path="url(#${clipId})"` : "";
+        
+        return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${preserveAspectRatio}"${clipAttr} />`;
       }
       
       // Render text item (default)
