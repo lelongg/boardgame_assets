@@ -199,8 +199,8 @@ export const renderCardSvg = (card, template, options = {}) => {
       if (itemType === "frame") {
         // Render frame item
         const strokeWidth = item.strokeWidth ?? 2;
-        const strokeColor = item.strokeColor ?? palette.ink;
-        const fillColor = item.fillColor ?? "none";
+        const strokeColor = escape(item.strokeColor ?? palette.ink);
+        const fillColor = escape(item.fillColor ?? "none");
         const cornerRadius = item.cornerRadius ?? 0;
         return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
       }
@@ -210,10 +210,9 @@ export const renderCardSvg = (card, template, options = {}) => {
         const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
         if (!value) return "";
         const cornerRadius = item.cornerRadius ?? 0;
-        const fit = item.fit ?? "cover";
         
-        // Create a clip path for the image
-        const clipId = `clip-${item.id}`;
+        // Create a clip path for the image - sanitize ID to only contain safe characters
+        const clipId = `clip-${String(item.id).replace(/[^a-zA-Z0-9-_]/g, '')}`;
         const clipPath = `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" /></clipPath>`;
         
         // For now, show a placeholder with the image URL text
