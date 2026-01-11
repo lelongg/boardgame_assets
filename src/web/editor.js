@@ -189,6 +189,7 @@ const populateForm = (card) => {
   });
   cardMeta.textContent = `Card ID: ${card.id}`;
 };
+};
 
 const formToCard = () => {
   const fieldsMap = {};
@@ -741,7 +742,7 @@ const renderDynamicFields = () => {
           reader.onload = (event) => {
             const dataUrl = event.target.result;
             textarea.value = dataUrl;
-            urlInput.value = `[File: ${file.name}]`;
+            urlInput.value = '[Uploaded Image]';
             preview.src = dataUrl;
             preview.style.display = "block";
           };
