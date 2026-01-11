@@ -56,51 +56,55 @@
         <div class="template">
           <div class="template__list" id="node-list"></div>
           <div class="template__editor">
-            <div class="field-panel">
-              <p class="kicker">Fields</p>
-              <div class="field-badges" id="field-badges"></div>
-            </div>
-          <div class="control-panel" id="control-panel">
-            <div class="control-panel__label" id="control-label">Select a field to edit.</div>
-            <div class="control-panel__body" id="control-body" hidden>
-              <div class="control-panel__actions">
-                <button class="button button--ghost" id="move-up">Move Up</button>
-                <button class="button button--ghost" id="move-down">Move Down</button>
-                <button class="button button--danger" id="delete-node">Delete</button>
-              </div>
-              <div class="control-number" id="control-number" hidden>
-                <input id="control-range" type="range" />
-                <div class="control-number__row">
-                  <button class="button button--ghost" id="control-dec">-</button>
-                  <input id="control-input" type="number" />
-                    <button class="button button--ghost" id="control-inc">+</button>
+            <div class="template__editor-row">
+              <div>
+                <div class="field-panel">
+                  <p class="kicker">Fields</p>
+                  <div class="field-badges" id="field-badges"></div>
+                </div>
+                <div class="control-panel" id="control-panel">
+                  <div class="control-panel__label" id="control-label">Select a field to edit.</div>
+                  <div class="control-panel__body" id="control-body" hidden>
+                    <div class="control-panel__actions">
+                      <button class="button button--ghost" id="move-up">Move Up</button>
+                      <button class="button button--ghost" id="move-down">Move Down</button>
+                      <button class="button button--danger" id="delete-node">Delete</button>
+                    </div>
+                    <div class="control-number" id="control-number" hidden>
+                      <input id="control-range" type="range" />
+                      <div class="control-number__row">
+                        <button class="button button--ghost" id="control-dec">-</button>
+                        <input id="control-input" type="number" />
+                        <button class="button button--ghost" id="control-inc">+</button>
+                      </div>
+                    </div>
+                    <div class="control-select" id="control-select" hidden>
+                      <select id="control-select-input"></select>
+                    </div>
+                    <div class="control-text" id="control-text" hidden>
+                      <input id="control-text-input" type="text" />
+                    </div>
+                    <div class="control-anchor" id="control-anchor" hidden>
+                      <div class="anchor-grid" id="control-anchor-grid">
+                        <button data-ax="0" data-ay="0"></button>
+                        <button data-ax="0.5" data-ay="0"></button>
+                        <button data-ax="1" data-ay="0"></button>
+                        <button data-ax="0" data-ay="0.5"></button>
+                        <button data-ax="0.5" data-ay="0.5"></button>
+                        <button data-ax="1" data-ay="0.5"></button>
+                        <button data-ax="0" data-ay="1"></button>
+                        <button data-ax="0.5" data-ay="1"></button>
+                        <button data-ax="1" data-ay="1"></button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div class="control-select" id="control-select" hidden>
-                  <select id="control-select-input"></select>
-                </div>
-                <div class="control-text" id="control-text" hidden>
-                  <input id="control-text-input" type="text" />
-                </div>
-                <div class="control-anchor" id="control-anchor" hidden>
-                  <div class="anchor-grid" id="control-anchor-grid">
-                    <button data-ax="0" data-ay="0"></button>
-                    <button data-ax="0.5" data-ay="0"></button>
-                    <button data-ax="1" data-ay="0"></button>
-                    <button data-ax="0" data-ay="0.5"></button>
-                    <button data-ax="0.5" data-ay="0.5"></button>
-                    <button data-ax="1" data-ay="0.5"></button>
-                    <button data-ax="0" data-ay="1"></button>
-                    <button data-ax="0.5" data-ay="1"></button>
-                    <button data-ax="1" data-ay="1"></button>
-                  </div>
+              </div>
+              <div class="template__preview">
+                <div class="preview__frame preview__frame--template">
+                  <img id="template-preview" src="" alt="Template preview" />
                 </div>
               </div>
-            </div>
-          </div>
-          <div class="template__preview">
-            <div class="preview__frame preview__frame--template">
-              <img id="template-preview" src="" alt="Template preview" />
             </div>
           </div>
         </div>
