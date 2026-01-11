@@ -69,17 +69,23 @@ const fieldConfigs = {
   ],
   item: [
     { key: "name", label: "Name", type: "text" },
+    { key: "type", label: "Item Type", type: "select", options: ["text", "frame", "image"] },
     { key: "parentSection", label: "Parent Section", type: "select" },
-    { key: "fieldId", label: "Field ID", type: "text" },
+    { key: "fieldId", label: "Field ID", type: "text", itemTypes: ["text", "image"] },
     { key: "attachTarget", label: "Attach Target", type: "select" },
     { key: "attachAnchor", label: "Attach Anchor", type: "anchor" },
     { key: "anchor", label: "Item Anchor", type: "anchor" },
     { key: "widthPct", label: "Width %", type: "number", min: 5, max: 100, step: 1 },
     { key: "heightPct", label: "Height %", type: "number", min: 5, max: 100, step: 1 },
-    { key: "fontSize", label: "Font Size", type: "number", min: 8, max: 120, step: 1 },
-    { key: "align", label: "Align", type: "select", options: ["left", "center", "right"] },
-    { key: "font", label: "Font", type: "select", options: ["title", "body"] },
-    { key: "color", label: "Color", type: "text" }
+    { key: "fontSize", label: "Font Size", type: "number", min: 8, max: 120, step: 1, itemTypes: ["text"] },
+    { key: "align", label: "Align", type: "select", options: ["left", "center", "right"], itemTypes: ["text"] },
+    { key: "font", label: "Font", type: "select", options: ["title", "body"], itemTypes: ["text"] },
+    { key: "color", label: "Color", type: "text", itemTypes: ["text"] },
+    { key: "strokeWidth", label: "Stroke Width", type: "number", min: 0, max: 20, step: 0.5, itemTypes: ["frame"] },
+    { key: "strokeColor", label: "Stroke Color", type: "text", itemTypes: ["frame"] },
+    { key: "fillColor", label: "Fill Color", type: "text", itemTypes: ["frame"] },
+    { key: "cornerRadius", label: "Corner Radius", type: "number", min: 0, max: 50, step: 1, itemTypes: ["frame", "image"] },
+    { key: "fit", label: "Image Fit", type: "select", options: ["cover", "contain", "fill"], itemTypes: ["image"] }
   ]
 };
 
@@ -309,6 +315,13 @@ const createSection = () => {
 };
 
 const createItem = () => {
+  // Prompt user for item type
+  const itemType = prompt("Select item type:\n1. Text (default)\n2. Frame\n3. Image\n\nEnter number (1-3):", "1");
+  
+  let type = "text";
+  if (itemType === "2") type = "frame";
+  else if (itemType === "3") type = "image";
+  
   // If an item is selected, add the new item as a sibling
   if (state.activeNode?.type === "item") {
     const location = findNodeLocation(state.template.root, state.activeNode);
@@ -317,22 +330,7 @@ const createItem = () => {
       const parentSection = findSectionByItemsList(state.template.root, location.list);
       if (parentSection) {
         const id = `item-${Date.now()}`;
-        const newItem = {
-          id,
-          name: "New Item",
-          fieldId: `field-${parentSection.items.length + 1}`,
-          anchor: { x: 0, y: 0 },
-          attach: {
-            targetType: "section",
-            targetId: parentSection.id,
-            anchor: { x: 0, y: 0 }
-          },
-          widthPct: 40,
-          heightPct: 20,
-          fontSize: 20,
-          align: "left",
-          font: "body"
-        };
+        const newItem = createItemByType(type, id, parentSection);
         // Insert after the selected item
         location.list.splice(location.index + 1, 0, newItem);
         renderTemplate();
@@ -345,24 +343,64 @@ const createItem = () => {
   // Default behavior: add to the selected section or root
   const parent = findSectionById(state.template.root, state.activeNode?.id) || state.template.root;
   const id = `item-${Date.now()}`;
-  parent.items.push({
+  parent.items.push(createItemByType(type, id, parent));
+  renderTemplate();
+  setStatus("Item added. Save template to apply.");
+};
+
+const createItemByType = (type, id, parentSection) => {
+  const baseItem = {
     id,
     name: "New Item",
-    fieldId: `field-${parent.items.length + 1}`,
     anchor: { x: 0, y: 0 },
     attach: {
       targetType: "section",
-      targetId: parent.id,
+      targetId: parentSection.id,
       anchor: { x: 0, y: 0 }
     },
     widthPct: 40,
-    heightPct: 20,
+    heightPct: 20
+  };
+  
+  if (type === "text") {
+    return {
+      ...baseItem,
+      type: "text",
+      fieldId: `field-${parentSection.items.length + 1}`,
+      fontSize: 20,
+      align: "left",
+      font: "body"
+    };
+  }
+  
+  if (type === "frame") {
+    return {
+      ...baseItem,
+      type: "frame",
+      strokeWidth: 2,
+      cornerRadius: 8
+    };
+  }
+  
+  if (type === "image") {
+    return {
+      ...baseItem,
+      type: "image",
+      fieldId: `image-${parentSection.items.length + 1}`,
+      fit: "cover",
+      cornerRadius: 0
+    };
+  }
+  
+  // Default to text
+  return {
+    ...baseItem,
+    type: "text",
+    fieldId: `field-${parentSection.items.length + 1}`,
     fontSize: 20,
     align: "left",
     font: "body"
-  });
-  renderTemplate();
-  setStatus("Item added. Save template to apply.");
+  };
 };
 
 const updateTemplatePreview = async () => {
@@ -531,7 +569,14 @@ const renderNodeList = () => {
     const active = state.activeNode?.id === node.id && state.activeNode?.type === node.type;
     button.className = `list-item ${active ? "is-active" : ""}`;
     button.style.marginLeft = `${node.depth * 14}px`;
-    button.textContent = `${node.type === "section" ? "Section" : "Item"}: ${node.name}`;
+    
+    // Show item type in the label for items
+    let label = `${node.type === "section" ? "Section" : "Item"}: ${node.name}`;
+    if (node.type === "item" && node.obj?.type) {
+      label = `${node.obj.type.charAt(0).toUpperCase() + node.obj.type.slice(1)} Item: ${node.name}`;
+    }
+    
+    button.textContent = label;
     button.onclick = () => {
       state.activeNode = { type: node.type, id: node.id };
       state.activeField = null;
@@ -550,9 +595,21 @@ const renderFieldBadges = () => {
   const configList = fieldConfigs[state.activeNode.type];
   const isRoot = state.activeNode.id === state.template.root.id;
   
+  // Get the current node to check its item type
+  const node = state.activeNode.type === "section" 
+    ? findSectionById(state.template.root, state.activeNode.id)
+    : findItemById(state.template.root, state.activeNode.id);
+  
+  const itemType = node?.type ?? "text"; // Default to text for legacy items
+  
   configList.forEach((field) => {
     // Skip parent section field for root node
     if (field.key === "parentSection" && isRoot) return;
+    
+    // Skip fields that are not applicable to the current item type
+    if (state.activeNode.type === "item" && field.itemTypes && !field.itemTypes.includes(itemType)) {
+      return;
+    }
     
     const badge = document.createElement("button");
     badge.className = `badge ${state.activeField?.key === field.key ? "is-active" : ""}`;
@@ -707,6 +764,45 @@ const setFieldValue = (node, key, value) => {
     }
     return;
   }
+  if (isItemNode(node) && key === "type") {
+    // When changing item type, preserve common fields and add/remove type-specific fields
+    const oldType = node.type ?? "text";
+    const newType = value;
+    
+    if (oldType !== newType) {
+      node.type = newType;
+      
+      // Add default values for type-specific fields
+      if (newType === "text") {
+        if (!node.fieldId) node.fieldId = "field-1";
+        if (!node.fontSize) node.fontSize = 20;
+        if (!node.align) node.align = "left";
+        if (!node.font) node.font = "body";
+      } else if (newType === "frame") {
+        if (!node.strokeWidth) node.strokeWidth = 2;
+        if (!node.cornerRadius) node.cornerRadius = 8;
+        // Remove text-specific fields
+        delete node.fontSize;
+        delete node.align;
+        delete node.font;
+        delete node.color;
+      } else if (newType === "image") {
+        if (!node.fieldId) node.fieldId = "image-1";
+        if (!node.fit) node.fit = "cover";
+        if (!node.cornerRadius) node.cornerRadius = 0;
+        // Remove text-specific fields
+        delete node.fontSize;
+        delete node.align;
+        delete node.font;
+        delete node.color;
+      }
+      
+      // Re-render to update available fields
+      renderFieldBadges();
+      setStatus("Item type changed. Update fields as needed.");
+    }
+    return;
+  }
   if (isItemNode(node) && key === "attachTarget") {
     if (!node.attach) {
       node.attach = {
@@ -832,9 +928,9 @@ const deleteNode = () => {
 };
 
 const flattenNodes = (section, depth = 0) => {
-  const nodes = [{ type: "section", id: section.id, name: section.name, depth }];
+  const nodes = [{ type: "section", id: section.id, name: section.name, depth, obj: section }];
   section.items.forEach((item) => {
-    nodes.push({ type: "item", id: item.id, name: item.name, depth: depth + 1 });
+    nodes.push({ type: "item", id: item.id, name: item.name, depth: depth + 1, obj: item });
   });
   section.children.forEach((child) => {
     nodes.push(...flattenNodes(child, depth + 1));
@@ -843,7 +939,12 @@ const flattenNodes = (section, depth = 0) => {
 };
 
 const collectItemFields = (section, fieldsSet) => {
-  section.items.forEach((item) => fieldsSet.add(item.fieldId));
+  section.items.forEach((item) => {
+    // Only text and image items have fieldId
+    if (item.fieldId && (!item.type || item.type === "text" || item.type === "image")) {
+      fieldsSet.add(item.fieldId);
+    }
+  });
   section.children.forEach((child) => collectItemFields(child, fieldsSet));
 };
 

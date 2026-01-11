@@ -9,10 +9,10 @@ export type AnchorPoint = {
   y: 0 | 0.5 | 1;
 };
 
-export type CardTemplateItem = {
+// Base properties shared by all item types
+type CardTemplateItemBase = {
   id: string;
   name: string;
-  fieldId: string;
   anchor: AnchorPoint;
   attach: {
     targetType: "section" | "item";
@@ -21,11 +21,40 @@ export type CardTemplateItem = {
   };
   widthPct: number;
   heightPct: number;
+};
+
+// Text item - displays text from a field
+export type CardTemplateTextItem = CardTemplateItemBase & {
+  type?: "text";  // Optional to support legacy items
+  fieldId: string;
   fontSize: number;
   align: "left" | "center" | "right";
   font?: "title" | "body";
   color?: string;
 };
+
+// Frame item - displays a decorative frame/border
+export type CardTemplateFrameItem = CardTemplateItemBase & {
+  type: "frame";
+  strokeWidth?: number;
+  strokeColor?: string;
+  fillColor?: string;
+  cornerRadius?: number;
+};
+
+// Image item - displays an image from a URL field
+export type CardTemplateImageItem = CardTemplateItemBase & {
+  type: "image";
+  fieldId: string;
+  fit?: "cover" | "contain" | "fill";
+  cornerRadius?: number;
+};
+
+// Union type for all item types
+export type CardTemplateItem = 
+  | CardTemplateTextItem 
+  | CardTemplateFrameItem 
+  | CardTemplateImageItem;
 
 export type CardTemplateSection = {
   id: string;

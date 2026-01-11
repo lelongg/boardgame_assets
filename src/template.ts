@@ -24,6 +24,7 @@ export const defaultTemplate = (): CardTemplate => ({
         children: [],
         items: [
           {
+            type: "text",
             id: "title",
             name: "Title",
             fieldId: "name",

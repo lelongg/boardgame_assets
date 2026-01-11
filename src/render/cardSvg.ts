@@ -31,7 +31,7 @@ const anchorPoints: AnchorPoint[] = [
   { x: 1, y: 1 }
 ];
 
-const textAnchorFor = (align: CardTemplateItem["align"]) => {
+const textAnchorFor = (align: "left" | "center" | "right") => {
   if (align === "center") return "middle";
   if (align === "right") return "end";
   return "start";
@@ -199,15 +199,66 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
   const items: CardTemplateItem[] = [];
   collectItems(template.root, items);
 
+  const renderItem = (item: CardTemplateItem, rect: Rect | undefined): string => {
+    if (!rect) return "";
+    
+    // Handle different item types (default to text for backward compatibility)
+    const itemType = item.type ?? "text";
+    
+    if (itemType === "text") {
+      const textItem = item as CardTemplateTextItem;
+      const value = textItem.fieldId === "name" ? card.name : card.fields[textItem.fieldId] ?? "";
+      if (!value) return "";
+      const anchor = anchorPosition(rect, textItem.anchor);
+      const fontFamily = textItem.font === "title" ? typography.title : typography.body;
+      return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="${textAnchorFor(textItem.align)}" dominant-baseline="${baselineFor(textItem.anchor)}" font-family="${fontFamily}" font-size="${textItem.fontSize}" fill="${textItem.color ?? palette.ink}">${escape(value)}</text>`;
+    }
+    
+    if (itemType === "frame") {
+      const frameItem = item as CardTemplateFrameItem;
+      const strokeWidth = frameItem.strokeWidth ?? 2;
+      const strokeColor = frameItem.strokeColor ?? palette.ink;
+      const fillColor = frameItem.fillColor ?? "none";
+      const cornerRadius = frameItem.cornerRadius ?? 8;
+      return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
+    }
+    
+    if (itemType === "image") {
+      const imageItem = item as CardTemplateImageItem;
+      const imageUrl = card.fields[imageItem.fieldId] ?? "";
+      if (!imageUrl) return "";
+      const cornerRadius = imageItem.cornerRadius ?? 0;
+      const clipId = `clip-${imageItem.id}`;
+      const fit = imageItem.fit ?? "cover";
+      
+      // Calculate image dimensions based on fit mode
+      let imageProps = "";
+      if (fit === "cover" || fit === "contain") {
+        imageProps = `x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" preserveAspectRatio="${fit === "cover" ? "xMidYMid slice" : "xMidYMid meet"}"`;
+      } else {
+        imageProps = `x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" preserveAspectRatio="none"`;
+      }
+      
+      if (cornerRadius > 0) {
+        return `
+  <defs>
+    <clipPath id="${clipId}">
+      <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" />
+    </clipPath>
+  </defs>
+  <image ${imageProps} href="${escape(imageUrl)}" clip-path="url(#${clipId})" />`;
+      }
+      
+      return `<image ${imageProps} href="${escape(imageUrl)}" />`;
+    }
+    
+    return "";
+  };
+
   const itemTexts = items
     .map((item) => {
       const rect = layout.items.get(item.id);
-      if (!rect) return "";
-      const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
-      if (!value) return "";
-      const anchor = anchorPosition(rect, item.anchor);
-      const fontFamily = item.font === "title" ? typography.title : typography.body;
-      return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="${textAnchorFor(item.align)}" dominant-baseline="${baselineFor(item.anchor)}" font-family="${fontFamily}" font-size="${item.fontSize}" fill="${item.color ?? palette.ink}">${escape(value)}</text>`;
+      return renderItem(item, rect);
     })
     .join("");
 
