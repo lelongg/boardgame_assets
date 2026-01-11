@@ -307,6 +307,40 @@ const createSection = () => {
 };
 
 const createItem = () => {
+  // If an item is selected, add the new item as a sibling
+  if (state.activeNode?.type === "item") {
+    const location = findNodeLocation(state.template.root, state.activeNode);
+    if (location) {
+      // Find the parent section that contains this items list
+      const parentSection = findSectionByItemsList(state.template.root, location.list);
+      if (parentSection) {
+        const id = `item-${Date.now()}`;
+        const newItem = {
+          id,
+          name: "New Item",
+          fieldId: `field-${parentSection.items.length + 1}`,
+          anchor: { x: 0, y: 0 },
+          attach: {
+            targetType: "section",
+            targetId: parentSection.id,
+            anchor: { x: 0, y: 0 }
+          },
+          widthPct: 40,
+          heightPct: 20,
+          fontSize: 20,
+          align: "left",
+          font: "body"
+        };
+        // Insert after the selected item
+        location.list.splice(location.index + 1, 0, newItem);
+        renderTemplate();
+        setStatus("Item added. Save template to apply.");
+        return;
+      }
+    }
+  }
+
+  // Default behavior: add to the selected section or root
   const parent = findSectionById(state.template.root, state.activeNode?.id) || state.template.root;
   const id = `item-${Date.now()}`;
   parent.items.push({
@@ -809,6 +843,15 @@ const findItemById = (section, id) => {
   if (item) return item;
   for (const child of section.children) {
     const found = findItemById(child, id);
+    if (found) return found;
+  }
+  return null;
+};
+
+const findSectionByItemsList = (section, targetList) => {
+  if (section.items === targetList) return section;
+  for (const child of section.children) {
+    const found = findSectionByItemsList(child, targetList);
     if (found) return found;
   }
   return null;
