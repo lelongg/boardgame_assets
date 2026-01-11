@@ -18,7 +18,7 @@ const cardPreview = document.getElementById("card-preview");
 const cardMeta = document.getElementById("card-meta");
 const addSectionButton = document.getElementById("add-section");
 const addItemButton = document.getElementById("add-item");
-const saveTemplateButton = document.getElementById("save-template");
+const saveButton = document.getElementById("save-template");
 const nodeList = document.getElementById("node-list");
 const templatePreview = document.getElementById("template-preview");
 const dynamicFields = document.getElementById("dynamic-fields");
@@ -327,7 +327,7 @@ const createSection = () => {
     items: []
   });
   renderTemplate();
-  setStatus("Section added. Save template to apply.");
+  setStatus("Section added. Save to apply.");
 };
 
 const createItem = () => {
@@ -350,7 +350,7 @@ const createItem = () => {
         // Insert after the selected item
         location.list.splice(location.index + 1, 0, newItem);
         renderTemplate();
-        setStatus("Item added. Save template to apply.");
+        setStatus("Item added. Save to apply.");
         return;
       }
     }
@@ -361,7 +361,7 @@ const createItem = () => {
   const id = `item-${Date.now()}`;
   parent.items.push(createItemByType(type, id, parent));
   renderTemplate();
-  setStatus("Item added. Save template to apply.");
+  setStatus("Item added. Save to apply.");
 };
 
 const createItemByType = (type, id, parentSection) => {
@@ -429,11 +429,11 @@ const updateTemplatePreview = async () => {
   }
 };
 
-const saveTemplate = async () => {
+const save = async () => {
   try {
     sanitizeTemplate(state.template);
     if (!storage) throw new Error("Storage not ready.");
-    const saved = await storage.saveTemplate(gameId, state.template);
+    const saved = await storage.save(gameId, state.template);
     state.template = saved;
     renderTemplate();
     setStatus("Template saved.");
@@ -817,7 +817,7 @@ const setFieldValue = (node, key, value) => {
     const success = reparentNode(node.id, isItemNode(node) ? "item" : "section", value);
     if (success) {
       renderNodeList();
-      setStatus("Node reparented. Save template to apply.");
+      setStatus("Node reparented. Save to apply.");
     } else {
       setStatus("Cannot reparent to that section.");
     }
@@ -971,7 +971,7 @@ const moveNode = (direction) => {
   const [item] = list.splice(index, 1);
   list.splice(target, 0, item);
   renderTemplate();
-  setStatus("Order updated. Save template to apply.");
+  setStatus("Order updated. Save to apply.");
 };
 
 const deleteNode = () => {
@@ -983,7 +983,7 @@ const deleteNode = () => {
   state.activeNode = { type: "section", id: state.template.root.id };
   state.activeField = null;
   renderTemplate();
-  setStatus("Node deleted. Save template to apply.");
+  setStatus("Node deleted. Save to apply.");
 };
 
 const flattenNodes = (section, depth = 0) => {
@@ -1240,7 +1240,7 @@ saveCardButton.addEventListener("click", saveCard);
 deleteCardButton.addEventListener("click", deleteCard);
 addSectionButton.addEventListener("click", createSection);
 addItemButton.addEventListener("click", createItem);
-saveTemplateButton.addEventListener("click", saveTemplate);
+saveButton.addEventListener("click", save);
 connectButton.addEventListener("click", connectDrive);
 disconnectButton.addEventListener("click", disconnectDrive);
 printLink.addEventListener("click", (event) => {

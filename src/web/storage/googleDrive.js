@@ -452,7 +452,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     return getFileContent(fileId);
   };
 
-  const saveTemplate = async (gameId, template) => {
+  const save = async (gameId, template) => {
     const fileId = await resolveFileId("template", gameId);
     if (fileId) {
       await updateFileContent(fileId, template);
@@ -492,7 +492,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     saveCard,
     deleteCard,
     loadTemplate,
-    saveTemplate,
+    save,
     getGame
   };
 };

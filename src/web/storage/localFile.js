@@ -73,7 +73,7 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       return await response.json();
     },
 
-    async saveTemplate(gameId, template) {
+    async save(gameId, template) {
       const response = await fetch(`${apiBase}/games/${gameId}/template`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
