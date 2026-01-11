@@ -95,6 +95,7 @@ const boot = async () => {
     syncAuthUi();
     if (restored) {
       await loadGames();
+      setStatus("Connected to Google Drive.");
     } else {
       gamesList.innerHTML = "<p class=\"empty\">Connect to Google Drive to load games.</p>";
       setStatus("Connect to Google Drive to start.");

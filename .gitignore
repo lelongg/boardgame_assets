@@ -5,3 +5,4 @@ server.log
 watch.log
 tmp-*.svg
 tmp-*.json
+tmp/

@@ -912,7 +912,9 @@ const boot = async () => {
     syncAuthUi();
     if (restored) {
       await loadGame();
+      setStatus("Connected to Google Drive.");
     } else {
+      currentGameEl.textContent = "Not connected";
       setStatus("Connect to Google Drive to load this game.");
     }
   } catch (err) {
