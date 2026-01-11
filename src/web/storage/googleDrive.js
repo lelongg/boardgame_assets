@@ -93,6 +93,17 @@ export const createGoogleDriveStorage = (options = {}) => {
     await requestToken("consent");
   };
 
+  const tryRestoreSession = async () => {
+    await init();
+    if (isAuthorized()) return true;
+    try {
+      await requestToken("none");
+      return true;
+    } catch (err) {
+      return false;
+    }
+  };
+
   const signOut = async () => {
     if (!accessToken) return;
     window.google.accounts.oauth2.revoke(accessToken, () => {});
@@ -287,7 +298,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     await writeGame(meta);
     const templateFileId = await resolveFileId("template", id);
     if (!templateFileId) {
-      await createFile({
+      const createdId = await createFile({
         name: `template-${id}.json`,
         content: defaultTemplate(),
         appProperties: {
@@ -296,6 +307,7 @@ export const createGoogleDriveStorage = (options = {}) => {
           gameId: id
         }
       });
+      cacheFile("template", id, "", createdId);
     }
     return meta;
   };
@@ -421,6 +433,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     init,
     signIn,
     signOut,
+    tryRestoreSession,
     isAuthorized,
     listGames,
     createGame,
