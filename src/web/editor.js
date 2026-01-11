@@ -28,6 +28,7 @@ const disconnectButton = document.getElementById("disconnect-drive");
 
 const controlLabel = document.getElementById("control-label");
 const controlBody = document.getElementById("control-body");
+const controlActions = document.querySelector(".control-panel__actions");
 const controlNumber = document.getElementById("control-number");
 const controlRange = document.getElementById("control-range");
 const controlInput = document.getElementById("control-input");
@@ -433,6 +434,7 @@ const renderTemplate = () => {
   renderNodeList();
   renderFieldBadges();
   renderDynamicFields();
+  updateControlPanel();
   updateTemplatePreview();
 };
 
@@ -506,7 +508,7 @@ const renderNodeList = () => {
 const renderFieldBadges = () => {
   fieldBadges.innerHTML = "";
   controlLabel.textContent = state.activeNode ? "Select a field to edit." : "Select a section or item.";
-  controlBody.hidden = true;
+  controlBody.hidden = !state.activeNode;
 
   if (!state.activeNode) return;
   const configList = fieldConfigs[state.activeNode.type];
@@ -548,15 +550,39 @@ const updateControlPanel = () => {
   hideControl(controlText);
   hideControl(controlAnchor);
 
-  if (!state.activeNode || !state.activeField) {
+  if (!state.activeNode) {
     controlBody.hidden = true;
     return;
   }
 
-  const field = state.activeField;
   const node = findNode(state.template.root, state.activeNode);
   if (!node) return;
 
+  // If no field is selected, show Move Up/Move Down/Delete buttons for the node
+  if (!state.activeField) {
+    controlBody.hidden = false;
+    showControl(controlActions);
+    
+    // Check if the node is movable (not the root)
+    const isRoot = state.activeNode.id === state.template.root.id;
+    const location = findNodeLocation(state.template.root, state.activeNode);
+    const canMove = !isRoot && location !== null;
+    
+    // Show/hide Move Up and Move Down based on whether node is movable
+    moveUpButton.hidden = !canMove;
+    moveDownButton.hidden = !canMove;
+    
+    // Delete button is always shown for selected nodes
+    deleteNodeButton.hidden = false;
+    
+    return;
+  }
+
+  // If a field is selected, hide the action buttons and show field controls
+  hideControl(controlActions);
+  
+  const field = state.activeField;
+  
   if (field.type === "anchor") {
     const anchor = getFieldValue(node, field.key);
     controlLabel.textContent = anchor
