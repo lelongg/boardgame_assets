@@ -97,7 +97,7 @@ body {
 
 .template {
   display: grid;
-  grid-template-columns: 220px minmax(220px, 1fr) 360px;
+  grid-template-columns: 180px 1fr 320px;
   gap: 16px;
   min-width: 0;
 }
