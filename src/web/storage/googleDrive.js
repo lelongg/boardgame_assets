@@ -80,8 +80,10 @@ export const createGoogleDriveStorage = (options = {}) => {
     try {
       const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
       if (stored) {
-        const { accessToken: token, tokenExpiry: expiry } = JSON.parse(stored);
-        if (token && expiry && Date.now() < expiry) {
+        const parsed = JSON.parse(stored);
+        const token = parsed?.accessToken;
+        const expiry = parsed?.tokenExpiry;
+        if (typeof token === "string" && typeof expiry === "number" && Date.now() < expiry) {
           accessToken = token;
           tokenExpiry = expiry;
           return true;
