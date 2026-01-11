@@ -332,7 +332,7 @@ const createItem = () => {
 const updateTemplatePreview = async () => {
   try {
     sanitizeTemplate(state.template);
-    const svg = renderTemplateSvg(state.template);
+    const svg = renderTemplateSvg(state.template, state.activeNode);
     setPreviewImage(svg, templatePreview, "templatePreviewUrl");
   } catch (err) {
     setStatus(`Template preview failed: ${err.message}`);

@@ -251,7 +251,7 @@ export const renderCardSvg = (card, template, options = {}) => {
 </svg>`;
 };
 
-export const renderTemplateSvg = (template) => {
+export const renderTemplateSvg = (template, selectedNode = null) => {
   const { palette } = theme;
   const { width, height, radius } = template;
   const layout = computeLayout(template);
@@ -260,6 +260,10 @@ export const renderTemplateSvg = (template) => {
     .map(([id, rect]) => {
       const section = findSection(template.root, id);
       const label = section ? section.name || section.id : id;
+      const isSelected = selectedNode && selectedNode.type === "section" && selectedNode.id === id;
+      const strokeColor = isSelected ? "#c65a32" : palette.muted;
+      const strokeWidth = isSelected ? "2.5" : "1";
+      const fillColor = isSelected ? "rgba(198, 90, 50, 0.08)" : "none";
       const anchors = anchorPoints
         .map((anchor) => {
           const point = anchorPosition(rect, anchor);
@@ -268,7 +272,7 @@ export const renderTemplateSvg = (template) => {
         .join("");
 
       return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="none" stroke="${palette.muted}" stroke-width="1" stroke-dasharray="6 6" />
+  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="6 6" />
   <text x="${rect.x + 8}" y="${rect.y + 18}" font-size="12" fill="${palette.muted}" font-family="${theme.typography.body}">${escape(label)}</text>
   ${anchors}`;
     })
@@ -277,6 +281,10 @@ export const renderTemplateSvg = (template) => {
   const itemRects = Array.from(layout.items.entries())
     .map(([id, rect]) => {
       const item = findItem(template.root, id);
+      const isSelected = selectedNode && selectedNode.type === "item" && selectedNode.id === id;
+      const strokeColor = isSelected ? "#c65a32" : palette.ink;
+      const strokeWidth = isSelected ? "2.5" : "1";
+      const fillColor = isSelected ? "rgba(198, 90, 50, 0.15)" : "none";
       const anchors = anchorPoints
         .map((anchor) => {
           const point = anchorPosition(rect, anchor);
@@ -285,7 +293,7 @@ export const renderTemplateSvg = (template) => {
         .join("");
 
       return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="none" stroke="${palette.ink}" stroke-width="1" />
+  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
   ${item ? `<text x="${rect.x + 6}" y="${rect.y + 16}" font-size="11" fill="${palette.ink}" font-family="${theme.typography.body}">${escape(item.name || item.id)}</text>` : ""}
   ${anchors}`;
     })
