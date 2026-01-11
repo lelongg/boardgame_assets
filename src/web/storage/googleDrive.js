@@ -287,7 +287,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     await writeGame(meta);
     const templateFileId = await resolveFileId("template", id);
     if (!templateFileId) {
-      await createFile({
+      const createdId = await createFile({
         name: `template-${id}.json`,
         content: defaultTemplate(),
         appProperties: {
@@ -296,6 +296,7 @@ export const createGoogleDriveStorage = (options = {}) => {
           gameId: id
         }
       });
+      cacheFile("template", id, "", createdId);
     }
     return meta;
   };
