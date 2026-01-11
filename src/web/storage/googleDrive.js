@@ -127,12 +127,19 @@ export const createGoogleDriveStorage = (options = {}) => {
     });
 
   const signIn = async () => {
-    await init();
+    // Ensure init has been called before signIn is used
+    if (!initialized) {
+      throw new Error("Google Drive storage not initialized. Call init() during application startup.");
+    }
+    // Call requestToken immediately to maintain user gesture context for popup
     await requestToken("consent");
   };
 
   const tryRestoreSession = async () => {
-    await init();
+    // Init is required for session restore
+    if (!initialized) {
+      await init();
+    }
     if (isAuthorized()) return true;
     try {
       await requestToken("none");
@@ -153,7 +160,11 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const getAccessToken = async () => {
-    await init();
+    // Fallback to init() for background token refresh (doesn't require user gesture)
+    // Unlike signIn(), this uses silent "none" prompt which doesn't open a popup
+    if (!initialized) {
+      await init();
+    }
     if (isAuthorized()) return accessToken;
     try {
       await requestToken("none");
