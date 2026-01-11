@@ -9,6 +9,7 @@ const docsDir = path.resolve("docs");
 const gamesDir = path.resolve("games");
 const editorSrc = path.resolve("src/web");
 const editorDir = path.join(docsDir, "editor");
+const driveClientId = process.env.GOOGLE_CLIENT_ID ?? "";
 
 // Create docs directory
 fs.mkdirSync(docsDir, { recursive: true });
@@ -27,6 +28,22 @@ const copyDir = (source: string, target: string) => {
 };
 
 copyDir(editorSrc, editorDir);
+
+if (driveClientId) {
+  const configPath = path.join(editorDir, "config.js");
+  const configContent = `export const config = {
+  storage: {
+    provider: "googleDrive",
+    googleDrive: {
+      clientId: "${driveClientId}",
+      appTag: "boardgame-assets",
+      folderId: ""
+    }
+  }
+};
+`;
+  fs.writeFileSync(configPath, configContent, "utf8");
+}
 
 type GameMeta = {
   id: string;

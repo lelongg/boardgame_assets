@@ -32,6 +32,8 @@ jobs:
       
       - name: Build site
         run: npm run build:pages
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

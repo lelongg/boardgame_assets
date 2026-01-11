@@ -25,11 +25,10 @@ Open `http://127.0.0.1:5173/`.
 The editor can run as a static site and save data directly to Google Drive (no backend).
 
 1. Create a Google OAuth client ID (see instructions in the repo docs/chat).
-2. Update `src/web/config.js`:
-   - Set `storage.googleDrive.clientId`
-   - Optional: set `storage.googleDrive.folderId` to save into a specific Drive folder
-3. Deploy to GitHub Pages (the editor is copied to `docs/editor/`).
-4. Open the editor at `https://<user>.github.io/<repo>/editor/`.
+2. Set the GitHub Actions secret `GOOGLE_CLIENT_ID` (used during `build:pages` to inject the OAuth client ID).
+3. Optional: update `src/web/config.js` to set a Drive `folderId`.
+4. Deploy to GitHub Pages (the editor is copied to `docs/editor/`).
+5. Open the editor at `https://<user>.github.io/<repo>/editor/`.
 
 To swap storage providers later, replace `src/web/storage/googleDrive.js` and update `src/web/storage.js` to point at the new provider.
 
