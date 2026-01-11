@@ -44,6 +44,11 @@ const moveUpButton = document.getElementById("move-up");
 const moveDownButton = document.getElementById("move-down");
 const deleteNodeButton = document.getElementById("delete-node");
 
+const itemTypeModal = document.getElementById("item-type-modal");
+const itemTypeSelect = document.getElementById("item-type-select");
+const itemTypeConfirm = document.getElementById("item-type-confirm");
+const itemTypeCancel = document.getElementById("item-type-cancel");
+
 const fields = {
   name: cardForm.querySelector("[name='name']")
 };
@@ -354,12 +359,24 @@ const createSection = () => {
 };
 
 const createItem = () => {
-  // Prompt user for item type
-  const itemType = prompt("Select item type:\n1. Text (default)\n2. Frame\n3. Image\n\nEnter number (1-3):", "1");
-  
-  let type = "text";
-  if (itemType === "2") type = "frame";
-  else if (itemType === "3") type = "image";
+  // Show modal to select item type
+  showItemTypeModal();
+};
+
+const showItemTypeModal = () => {
+  // Reset select to default
+  itemTypeSelect.value = "text";
+  // Show modal
+  itemTypeModal.hidden = false;
+};
+
+const hideItemTypeModal = () => {
+  itemTypeModal.hidden = true;
+};
+
+const confirmItemCreation = () => {
+  const type = itemTypeSelect.value;
+  hideItemTypeModal();
   
   // If an item is selected, add the new item as a sibling
   if (state.activeNode?.type === "item") {
@@ -1375,6 +1392,14 @@ deleteCardButton.addEventListener("click", deleteCard);
 addSectionButton.addEventListener("click", createSection);
 addItemButton.addEventListener("click", createItem);
 saveTemplateButton.addEventListener("click", saveTemplate);
+itemTypeConfirm.addEventListener("click", confirmItemCreation);
+itemTypeCancel.addEventListener("click", hideItemTypeModal);
+// Close modal when clicking overlay
+itemTypeModal.addEventListener("click", (event) => {
+  if (event.target === itemTypeModal) {
+    hideItemTypeModal();
+  }
+});
 connectButton.addEventListener("click", connectDrive);
 disconnectButton.addEventListener("click", disconnectDrive);
 printLink.addEventListener("click", (event) => {
