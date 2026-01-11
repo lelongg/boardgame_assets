@@ -672,13 +672,15 @@ const renderDynamicFields = () => {
   });
 };
 
-let autoPreviewTimeout = null;
-const debouncedAutoPreview = () => {
-  if (autoPreviewTimeout) clearTimeout(autoPreviewTimeout);
-  autoPreviewTimeout = setTimeout(() => {
-    previewDraft();
-  }, AUTO_PREVIEW_DEBOUNCE_MS);
-};
+const debouncedAutoPreview = (() => {
+  let autoPreviewTimeout = null;
+  return () => {
+    if (autoPreviewTimeout) clearTimeout(autoPreviewTimeout);
+    autoPreviewTimeout = setTimeout(() => {
+      previewDraft();
+    }, AUTO_PREVIEW_DEBOUNCE_MS);
+  };
+})();
 
 const updateControlPanel = () => {
   hideControl(controlNumber);
