@@ -62,12 +62,14 @@ const state = {
 const fieldConfigs = {
   section: [
     { key: "name", label: "Name", type: "text" },
+    { key: "parentSection", label: "Parent Section", type: "select" },
     { key: "layout", label: "Layout", type: "select", options: ["row", "column", "stack"] },
     { key: "sizePct", label: "Size %", type: "number", min: 10, max: 100, step: 1 },
     { key: "gap", label: "Gap", type: "number", min: 0, max: 80, step: 1 }
   ],
   item: [
     { key: "name", label: "Name", type: "text" },
+    { key: "parentSection", label: "Parent Section", type: "select" },
     { key: "fieldId", label: "Field ID", type: "text" },
     { key: "attachTarget", label: "Attach Target", type: "select" },
     { key: "attachAnchor", label: "Attach Anchor", type: "anchor" },
@@ -512,7 +514,12 @@ const renderFieldBadges = () => {
 
   if (!state.activeNode) return;
   const configList = fieldConfigs[state.activeNode.type];
+  const isRoot = state.activeNode.id === state.template.root.id;
+  
   configList.forEach((field) => {
+    // Skip parent section field for root node
+    if (field.key === "parentSection" && isRoot) return;
+    
     const badge = document.createElement("button");
     badge.className = `badge ${state.activeField?.key === field.key ? "is-active" : ""}`;
     badge.textContent = field.label;
@@ -610,10 +617,14 @@ const updateControlPanel = () => {
   if (field.type === "select") {
     showControl(controlSelect);
     controlSelectInput.innerHTML = "";
-    const options =
-      field.key === "attachTarget"
-        ? buildAttachTargets(state.activeNode?.type === "item" ? state.activeNode.id : null)
-        : field.options ?? [];
+    let options = [];
+    if (field.key === "attachTarget") {
+      options = buildAttachTargets(state.activeNode?.type === "item" ? state.activeNode.id : null);
+    } else if (field.key === "parentSection") {
+      options = buildParentSectionOptions(state.activeNode?.type === "section" ? state.activeNode.id : null);
+    } else {
+      options = field.options ?? [];
+    }
     options.forEach((option) => {
       const opt = document.createElement("option");
       opt.value = option.value ?? option;
@@ -636,6 +647,10 @@ const updateControlPanel = () => {
 };
 
 const getFieldValue = (node, key) => {
+  if (key === "parentSection") {
+    const parent = findParentSection(state.template.root, node.id, !isItemNode(node));
+    return parent ? parent.id : "";
+  }
   if (isItemNode(node) && key === "attachTarget") {
     if (node.attach) return `${node.attach.targetType}:${node.attach.targetId}`;
     return node.attachTarget ?? "";
@@ -648,6 +663,16 @@ const getFieldValue = (node, key) => {
 };
 
 const setFieldValue = (node, key, value) => {
+  if (key === "parentSection") {
+    const success = reparentNode(node.id, isItemNode(node) ? "item" : "section", value);
+    if (success) {
+      renderNodeList();
+      setStatus("Node reparented. Save template to apply.");
+    } else {
+      setStatus("Cannot reparent to that section.");
+    }
+    return;
+  }
   if (isItemNode(node) && key === "attachTarget") {
     if (!node.attach) {
       node.attach = {
@@ -823,6 +848,101 @@ const buildAttachTargets = (excludeItemId) => {
     options.push({ value: `${node.type}:${node.id}`, label });
   });
   return options;
+};
+
+const buildParentSectionOptions = (excludeSectionId) => {
+  const options = [];
+  const collectSections = (section, depth = 0) => {
+    // Don't include the section itself or any of its descendants
+    if (excludeSectionId && section.id === excludeSectionId) {
+      return; // Skip this section and all its children
+    }
+    
+    options.push({ 
+      value: section.id, 
+      label: `${"  ".repeat(depth)}${section.name}` 
+    });
+    
+    for (const child of section.children) {
+      collectSections(child, depth + 1);
+    }
+  };
+  
+  collectSections(state.template.root);
+  return options;
+};
+
+const findParentSection = (section, targetId, isSection) => {
+  if (isSection) {
+    // For sections, find the parent that contains this section in its children
+    const index = section.children.findIndex((child) => child.id === targetId);
+    if (index >= 0) {
+      return section;
+    }
+    for (const child of section.children) {
+      const found = findParentSection(child, targetId, true);
+      if (found) return found;
+    }
+  } else {
+    // For items, find the parent that contains this item in its items
+    const index = section.items.findIndex((item) => item.id === targetId);
+    if (index >= 0) {
+      return section;
+    }
+    for (const child of section.children) {
+      const found = findParentSection(child, targetId, false);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+const reparentNode = (nodeId, nodeType, newParentId) => {
+  if (!newParentId) return false;
+  
+  // Find the node and its current location
+  const location = findNodeLocation(state.template.root, { type: nodeType, id: nodeId });
+  if (!location) return false;
+  
+  // Find the new parent section
+  const newParent = findSectionById(state.template.root, newParentId);
+  if (!newParent) return false;
+  
+  // For sections, prevent reparenting to itself or its descendants
+  if (nodeType === "section") {
+    const node = findSectionById(state.template.root, nodeId);
+    if (!node) return false;
+    
+    // Check if newParent is the node itself or a descendant
+    const isDescendant = (parent, childId) => {
+      if (parent.id === childId) return true;
+      for (const child of parent.children) {
+        if (isDescendant(child, childId)) return true;
+      }
+      return false;
+    };
+    
+    if (isDescendant(node, newParentId)) {
+      return false; // Can't reparent to self or descendant
+    }
+  }
+  
+  // Remove from current parent
+  const [movedNode] = location.list.splice(location.index, 1);
+  
+  // Add to new parent
+  if (nodeType === "section") {
+    newParent.children.push(movedNode);
+  } else {
+    newParent.items.push(movedNode);
+    // Update attach target if it was pointing to the old parent
+    const oldParent = findParentSection(state.template.root, nodeId, false);
+    if (movedNode.attach && movedNode.attach.targetId === oldParent?.id) {
+      movedNode.attach.targetId = newParentId;
+    }
+  }
+  
+  return true;
 };
 
 const getDebugAttachInfo = () => {
