@@ -129,7 +129,7 @@ export const createGoogleDriveStorage = (options = {}) => {
   const signIn = async () => {
     // Ensure init has been called before signIn is used
     if (!initialized) {
-      throw new Error("Storage not initialized. Call init() first.");
+      throw new Error("Google Drive storage not initialized. Call init() during application startup.");
     }
     // Call requestToken immediately to maintain user gesture context for popup
     await requestToken("consent");
@@ -160,7 +160,8 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const getAccessToken = async () => {
-    // Init should have been called during boot, but check anyway
+    // Fallback to init() for background token refresh (doesn't require user gesture)
+    // Unlike signIn(), this uses silent "none" prompt which doesn't open a popup
     if (!initialized) {
       await init();
     }
