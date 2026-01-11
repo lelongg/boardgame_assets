@@ -28,7 +28,7 @@ const disconnectButton = document.getElementById("disconnect-drive");
 
 const controlLabel = document.getElementById("control-label");
 const controlBody = document.getElementById("control-body");
-const controlActions = document.querySelector(".control-panel__actions");
+const controlActions = document.getElementById("control-actions");
 const controlNumber = document.getElementById("control-number");
 const controlRange = document.getElementById("control-range");
 const controlInput = document.getElementById("control-input");
