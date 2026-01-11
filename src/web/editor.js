@@ -1,5 +1,5 @@
 import { createStorage } from "./storage.js";
-import { injectDebugLabel, renderCardSvg, renderTemplateSvg } from "./render.js";
+import { renderCardSvg, renderTemplateSvg } from "./render.js";
 
 const statusEl = document.getElementById("status");
 const currentGameEl = document.getElementById("current-game");
@@ -195,9 +195,7 @@ const previewDraft = async () => {
   try {
     const card = formToCard();
     sanitizeTemplate(state.template);
-    const debugAttach = getDebugAttachInfo() ?? { note: "no-item-selected" };
-    const baseSvg = renderCardSvg(card, state.template, { debug: true });
-    const svg = injectDebugLabel(baseSvg, debugAttach);
+    const svg = renderCardSvg(card, state.template);
     setPreviewImage(svg, cardPreview, "previewUrl");
     setStatus("Preview updated.");
   } catch (err) {
@@ -665,10 +663,19 @@ const renderDynamicFields = () => {
     const textarea = document.createElement("textarea");
     textarea.rows = 3;
     textarea.dataset.field = fieldId;
+    textarea.addEventListener("input", debouncedAutoPreview);
     label.appendChild(span);
     label.appendChild(textarea);
     dynamicFields.appendChild(label);
   });
+};
+
+let autoPreviewTimeout = null;
+const debouncedAutoPreview = () => {
+  if (autoPreviewTimeout) clearTimeout(autoPreviewTimeout);
+  autoPreviewTimeout = setTimeout(() => {
+    previewDraft();
+  }, 300);
 };
 
 const updateControlPanel = () => {
@@ -1148,19 +1155,6 @@ const reparentNode = (nodeId, nodeType, newParentId) => {
   return true;
 };
 
-const getDebugAttachInfo = () => {
-  if (!state.activeNode || state.activeNode.type !== "item") return null;
-  const node = findItemById(state.template.root, state.activeNode.id);
-  if (!node) return null;
-  return {
-    id: node.id,
-    targetType: node.attach.targetType,
-    targetId: node.attach.targetId,
-    attachAnchor: node.attach.anchor,
-    itemAnchor: node.anchor
-  };
-};
-
 const findNodeLocation = (section, active) => {
   if (!active) return null;
   if (active.type === "section") {
@@ -1243,6 +1237,7 @@ addItemButton.addEventListener("click", createItem);
 saveTemplateButton.addEventListener("click", saveTemplate);
 connectButton.addEventListener("click", connectDrive);
 disconnectButton.addEventListener("click", disconnectDrive);
+fields.name.addEventListener("input", debouncedAutoPreview);
 printLink.addEventListener("click", (event) => {
   event.preventDefault();
   openPrintView();
