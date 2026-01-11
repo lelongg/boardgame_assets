@@ -127,7 +127,9 @@ export const createGoogleDriveStorage = (options = {}) => {
           return;
         }
         accessToken = response.access_token;
-        tokenExpiry = Date.now() + (response.expires_in ?? 0) * 1000 - 30_000;
+        const expiresInMs = (response.expires_in ?? 3600) * 1000;
+        const bufferMs = Math.min(30_000, expiresInMs / 2);
+        tokenExpiry = Date.now() + expiresInMs - bufferMs;
         saveTokenToStorage();
         resolve();
       };
