@@ -232,7 +232,7 @@ export const renderCardSvg = (card, template, options = {}) => {
       const fontFamily = item.font === "title" ? typography.title : typography.body;
       const fontSize = item.fontSize ?? 20;
       const align = item.align ?? "left";
-      const color = item.color ?? palette.ink;
+      const color = escape(item.color ?? palette.ink);
       return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(item.anchor)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`;
     })
     .join("");
