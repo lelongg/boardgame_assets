@@ -229,8 +229,10 @@ body {
   align-items: flex-start;
   justify-content: center;
   min-width: 0;
+  max-width: 100%;
   position: sticky;
   top: 20px;
+  overflow: hidden;
 }
 
 .section-card {
@@ -429,14 +431,17 @@ textarea {
 }
 
 .preview__frame--template {
-  width: 100%;
-  max-width: 360px;
+  width: auto;
+  max-width: 100%;
+  max-height: 600px;
 }
 
 .preview img {
-  width: 100%;
-  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
   height: auto;
+  display: block;
 }
 
 .empty {
