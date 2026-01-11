@@ -294,6 +294,7 @@ const deleteGame = async () => {
 
 const createCard = () => {
   resetForm();
+  renderCards();
   setStatus("New card draft ready.");
 };
 
