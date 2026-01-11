@@ -162,7 +162,30 @@ const populateForm = (card) => {
   const values = card.fields ?? {};
   Object.entries(values).forEach(([key, value]) => {
     const input = dynamicFields.querySelector(`[data-field='${key}']`);
-    if (input) input.value = value;
+    if (input) {
+      input.value = value;
+      
+      // If this is an image field, also update the URL input and preview
+      const container = input.closest('.image-field');
+      if (container) {
+        const urlInput = container.querySelector('.image-field__url');
+        const preview = container.querySelector('.image-field__preview');
+        
+        if (value) {
+          // Check if it's a data URL or regular URL
+          if (value.startsWith('data:')) {
+            urlInput.value = '[Uploaded Image]';
+          } else {
+            urlInput.value = value;
+          }
+          preview.src = value;
+          preview.style.display = "block";
+        } else {
+          urlInput.value = "";
+          preview.style.display = "none";
+        }
+      }
+    }
   });
   cardMeta.textContent = `Card ID: ${card.id}`;
 };
@@ -654,20 +677,121 @@ const renderFieldBadges = () => {
 
 const renderDynamicFields = () => {
   dynamicFields.innerHTML = "";
-  const fieldIds = new Set();
-  collectItemFields(state.template.root, fieldIds);
-  fieldIds.forEach((fieldId) => {
+  const fieldsMap = new Map();
+  collectItemFieldsWithTypes(state.template.root, fieldsMap);
+  fieldsMap.forEach((fieldType, fieldId) => {
     if (fieldId === "name") return;
-    const label = document.createElement("label");
-    label.className = "full";
-    const span = document.createElement("span");
-    span.textContent = fieldId;
-    const textarea = document.createElement("textarea");
-    textarea.rows = 3;
-    textarea.dataset.field = fieldId;
-    label.appendChild(span);
-    label.appendChild(textarea);
-    dynamicFields.appendChild(label);
+    
+    if (fieldType === "image") {
+      // Create image field UI with file upload and URL input
+      const container = document.createElement("div");
+      container.className = "full image-field";
+      
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = fieldId;
+      container.appendChild(labelSpan);
+      
+      // Hidden textarea to store the actual data
+      const textarea = document.createElement("textarea");
+      textarea.rows = 1;
+      textarea.dataset.field = fieldId;
+      textarea.style.display = "none";
+      container.appendChild(textarea);
+      
+      // Image preview
+      const preview = document.createElement("img");
+      preview.className = "image-field__preview";
+      preview.style.maxWidth = "100%";
+      preview.style.maxHeight = "200px";
+      preview.style.display = "none";
+      preview.style.marginTop = "8px";
+      preview.style.border = "1px solid #d7cdbd";
+      preview.style.borderRadius = "8px";
+      container.appendChild(preview);
+      
+      // URL input
+      const urlInput = document.createElement("input");
+      urlInput.type = "text";
+      urlInput.placeholder = "Enter image URL or upload a file";
+      urlInput.className = "image-field__url";
+      urlInput.addEventListener("input", (e) => {
+        const url = e.target.value.trim();
+        textarea.value = url;
+        if (url) {
+          preview.src = url;
+          preview.style.display = "block";
+        } else {
+          preview.style.display = "none";
+        }
+      });
+      container.appendChild(urlInput);
+      
+      // File upload button
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = "image/*";
+      fileInput.style.display = "none";
+      fileInput.addEventListener("change", async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        
+        try {
+          // Convert file to base64 data URL
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const dataUrl = event.target.result;
+            textarea.value = dataUrl;
+            urlInput.value = `[File: ${file.name}]`;
+            preview.src = dataUrl;
+            preview.style.display = "block";
+          };
+          reader.onerror = () => {
+            setStatus(`Failed to read file: ${file.name}`);
+          };
+          reader.readAsDataURL(file);
+        } catch (err) {
+          setStatus(`Error loading file: ${err.message}`);
+        }
+      });
+      container.appendChild(fileInput);
+      
+      const uploadButton = document.createElement("button");
+      uploadButton.type = "button";
+      uploadButton.className = "button button--ghost";
+      uploadButton.textContent = "Upload Image";
+      uploadButton.style.marginTop = "8px";
+      uploadButton.addEventListener("click", () => fileInput.click());
+      container.appendChild(uploadButton);
+      
+      // Clear button
+      const clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.className = "button button--ghost";
+      clearButton.textContent = "Clear";
+      clearButton.style.marginTop = "8px";
+      clearButton.style.marginLeft = "8px";
+      clearButton.addEventListener("click", () => {
+        textarea.value = "";
+        urlInput.value = "";
+        preview.style.display = "none";
+        fileInput.value = "";
+      });
+      container.appendChild(clearButton);
+      
+      dynamicFields.appendChild(container);
+    } else {
+      // Create regular text field UI
+      const label = document.createElement("label");
+      label.className = "full";
+      const span = document.createElement("span");
+      span.textContent = fieldId;
+      const textarea = document.createElement("textarea");
+      textarea.rows = 3;
+      textarea.dataset.field = fieldId;
+      label.appendChild(span);
+      label.appendChild(textarea);
+      dynamicFields.appendChild(label);
+    }
   });
 };
 
@@ -1005,6 +1129,17 @@ const collectItemFields = (section, fieldsSet) => {
     }
   });
   section.children.forEach((child) => collectItemFields(child, fieldsSet));
+};
+
+const collectItemFieldsWithTypes = (section, fieldsMap) => {
+  section.items.forEach((item) => {
+    // Only text and image items have fieldId
+    if (item.fieldId && (!item.type || item.type === "text" || item.type === "image")) {
+      const type = item.type ?? "text";
+      fieldsMap.set(item.fieldId, type);
+    }
+  });
+  section.children.forEach((child) => collectItemFieldsWithTypes(child, fieldsMap));
 };
 
 const findSectionById = (section, id) => {
