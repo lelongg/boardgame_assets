@@ -127,12 +127,19 @@ export const createGoogleDriveStorage = (options = {}) => {
     });
 
   const signIn = async () => {
-    await init();
+    // Ensure init has been called before signIn is used
+    if (!initialized) {
+      throw new Error("Storage not initialized. Call init() first.");
+    }
+    // Call requestToken immediately to maintain user gesture context for popup
     await requestToken("consent");
   };
 
   const tryRestoreSession = async () => {
-    await init();
+    // Init is required for session restore
+    if (!initialized) {
+      await init();
+    }
     if (isAuthorized()) return true;
     try {
       await requestToken("none");
@@ -153,7 +160,10 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const getAccessToken = async () => {
-    await init();
+    // Init should have been called during boot, but check anyway
+    if (!initialized) {
+      await init();
+    }
     if (isAuthorized()) return accessToken;
     try {
       await requestToken("none");
