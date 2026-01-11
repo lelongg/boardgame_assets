@@ -119,7 +119,7 @@ npm run clean           # Clean generated files
 - Tests are in the `test/` directory
 - Import tsx for TypeScript support: `node --test --import tsx test`
 - Write focused unit tests for rendering and data transformation logic
-- Test files follow the pattern `*.test.js`
+- Test files follow the pattern `*.test.js` (JavaScript files that can import TypeScript modules via tsx)
 
 ## CI/CD
 
