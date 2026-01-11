@@ -4,6 +4,7 @@ import path from "node:path";
 import url from "node:url";
 import { renderCardSvg, renderTemplateSvg } from "./render/cardSvg.js";
 import { defaultTemplate } from "./template.js";
+import { normalizeCard, normalizeTemplate } from "./normalize.js";
 import type { CardData, CardTemplate } from "./types.js";
 
 const port = Number(process.argv[2] ?? 5173);
@@ -103,12 +104,12 @@ const loadTemplate = (gameId: string): CardTemplate => {
     writeJson(templatePath(gameId), fallback);
     return fallback;
   }
-  const raw = readJson<CardTemplate | null>(templatePath(gameId), null);
-  if (!raw || raw.version !== 2) {
+  const raw = readJson<unknown>(templatePath(gameId), null);
+  if (!raw || (typeof raw === "object" && (raw as any).version !== 2)) {
     writeJson(templatePath(gameId), fallback);
     return fallback;
   }
-  return raw;
+  return normalizeTemplate(raw);
 };
 
 const serveStatic = (req: http.IncomingMessage, res: http.ServerResponse) => {
@@ -314,21 +315,6 @@ const touchGame = (gameId: string) => {
   const game = readJson<GameMeta | null>(gamePath(gameId), null);
   if (!game) return;
   writeJson(gamePath(gameId), { ...game, updatedAt: new Date().toISOString() });
-};
-
-const normalizeCard = (card: Partial<CardData> | null): CardData => {
-  const fields =
-    card && typeof (card as CardData).fields === "object" && (card as CardData).fields !== null
-      ? (card as CardData).fields
-      : {};
-
-  return {
-    id: card?.id ?? slugify(card?.name ?? "card"),
-    name: String(card?.name ?? "New Card"),
-    fields: Object.fromEntries(
-      Object.entries(fields).map(([key, value]) => [key, String(value ?? "")])
-    )
-  };
 };
 
 const injectDebugLabel = (svg: string, debugAttach: Record<string, unknown>) => {

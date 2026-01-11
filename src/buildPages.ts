@@ -3,6 +3,7 @@ import path from "node:path";
 import { renderCardSvg, renderTemplateSvg } from "./render/cardSvg.js";
 import { defaultTemplate } from "./template.js";
 import { theme } from "./theme.js";
+import { normalizeCard, normalizeTemplate } from "./normalize.js";
 import type { CardData, CardTemplate } from "./types.js";
 
 const docsDir = path.resolve("docs");
@@ -86,16 +87,16 @@ const listCards = (gameId: string): CardData[] => {
   return fs
     .readdirSync(dir)
     .filter((file) => file.endsWith(".json"))
-    .map((file) => readJson<CardData | null>(path.join(dir, file), null))
+    .map((file) => normalizeCard(readJson<unknown>(path.join(dir, file), null)))
     .filter(Boolean) as CardData[];
 };
 
 const loadTemplate = (gameId: string): CardTemplate => {
   const fallback = defaultTemplate();
   if (!fs.existsSync(templatePath(gameId))) return fallback;
-  const raw = readJson<CardTemplate | null>(templatePath(gameId), null);
-  if (!raw || raw.version !== 2) return fallback;
-  return raw;
+  const raw = readJson<unknown>(templatePath(gameId), null);
+  if (!raw || (typeof raw === "object" && (raw as any).version !== 2)) return fallback;
+  return normalizeTemplate(raw);
 };
 
 // Build index page

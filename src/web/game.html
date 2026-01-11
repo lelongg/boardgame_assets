@@ -149,6 +149,28 @@
       </section>
     </main>
 
+    <!-- Modal for selecting item type -->
+    <div id="item-type-modal" class="modal" hidden>
+      <div class="modal__overlay"></div>
+      <div class="modal__content">
+        <h3 class="modal__title">Select Item Type</h3>
+        <div class="modal__body">
+          <label class="modal__label">
+            <span>Item Type:</span>
+            <select id="item-type-select" class="modal__select">
+              <option value="text">Text</option>
+              <option value="frame">Frame</option>
+              <option value="image">Image</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal__actions">
+          <button id="item-type-cancel" class="button button--ghost">Cancel</button>
+          <button id="item-type-confirm" class="button button--primary">Add Item</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="editor.js?v=11"></script>
   </body>
 </html>
