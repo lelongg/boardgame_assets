@@ -67,6 +67,8 @@ const CARD_PRESETS = {
   "custom": { name: "Custom", width: 750, height: 1050, radius: 28, bleed: 18 }
 };
 
+const AUTO_PREVIEW_DEBOUNCE_MS = 300;
+
 const fieldConfigs = {
   template: [
     { key: "name", label: "Name", type: "text" },
@@ -675,7 +677,7 @@ const debouncedAutoPreview = () => {
   if (autoPreviewTimeout) clearTimeout(autoPreviewTimeout);
   autoPreviewTimeout = setTimeout(() => {
     previewDraft();
-  }, 300);
+  }, AUTO_PREVIEW_DEBOUNCE_MS);
 };
 
 const updateControlPanel = () => {
