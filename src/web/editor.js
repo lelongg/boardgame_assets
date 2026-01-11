@@ -59,7 +59,23 @@ const state = {
   templatePreviewUrl: null
 };
 
+const CARD_PRESETS = {
+  "poker": { name: "Poker (2.5\" × 3.5\")", width: 750, height: 1050, radius: 28, bleed: 18 },
+  "bridge": { name: "Bridge (2.25\" × 3.5\")", width: 675, height: 1050, radius: 28, bleed: 18 },
+  "mini": { name: "Mini (1.75\" × 2.5\")", width: 525, height: 750, radius: 21, bleed: 15 },
+  "tarot": { name: "Tarot (2.75\" × 4.75\")", width: 825, height: 1425, radius: 28, bleed: 18 },
+  "custom": { name: "Custom", width: 750, height: 1050, radius: 28, bleed: 18 }
+};
+
 const fieldConfigs = {
+  template: [
+    { key: "name", label: "Name", type: "text" },
+    { key: "preset", label: "Card Size Preset", type: "select", options: Object.keys(CARD_PRESETS).map(k => ({ value: k, label: CARD_PRESETS[k].name })) },
+    { key: "width", label: "Width (px)", type: "number", min: 100, max: 3000, step: 25 },
+    { key: "height", label: "Height (px)", type: "number", min: 100, max: 3000, step: 25 },
+    { key: "radius", label: "Corner Radius (px)", type: "number", min: 0, max: 100, step: 1 },
+    { key: "bleed", label: "Bleed (px)", type: "number", min: 0, max: 50, step: 1 }
+  ],
   section: [
     { key: "name", label: "Name", type: "text" },
     { key: "parentSection", label: "Parent Section", type: "select" },
@@ -525,6 +541,19 @@ const sanitizeTemplate = (template) => {
 
 const renderNodeList = () => {
   nodeList.innerHTML = "";
+  
+  // Add template-level button at the top
+  const templateButton = document.createElement("button");
+  const templateActive = state.activeNode?.type === "template";
+  templateButton.className = `list-item ${templateActive ? "is-active" : ""}`;
+  templateButton.textContent = `Template: ${state.template.name}`;
+  templateButton.onclick = () => {
+    state.activeNode = { type: "template", id: state.template.id };
+    state.activeField = null;
+    renderTemplate();
+  };
+  nodeList.appendChild(templateButton);
+  
   const items = flattenNodes(state.template.root);
   items.forEach((node) => {
     const button = document.createElement("button");
@@ -548,7 +577,7 @@ const renderFieldBadges = () => {
 
   if (!state.activeNode) return;
   const configList = fieldConfigs[state.activeNode.type];
-  const isRoot = state.activeNode.id === state.template.root.id;
+  const isRoot = state.activeNode.type === "section" && state.activeNode.id === state.template.root.id;
   
   configList.forEach((field) => {
     // Skip parent section field for root node
@@ -596,25 +625,31 @@ const updateControlPanel = () => {
     return;
   }
 
-  const node = findNode(state.template.root, state.activeNode);
+  const node = state.activeNode.type === "template" ? state.template : findNode(state.template.root, state.activeNode);
   if (!node) return;
 
   // If no field is selected, show Move Up/Move Down/Delete buttons for the node
   if (!state.activeField) {
     controlBody.hidden = false;
-    showControl(controlActions);
     
-    // Check if the node is movable (not the root)
-    const isRoot = state.activeNode.id === state.template.root.id;
-    const location = findNodeLocation(state.template.root, state.activeNode);
-    const canMove = !isRoot && location !== null;
-    
-    // Show/hide Move Up and Move Down based on whether node is movable
-    moveUpButton.hidden = !canMove;
-    moveDownButton.hidden = !canMove;
-    
-    // Delete button is always shown for selected nodes
-    deleteNodeButton.hidden = false;
+    // Only show actions for non-template nodes
+    if (state.activeNode.type !== "template") {
+      showControl(controlActions);
+      
+      // Check if the node is movable (not the root)
+      const isRoot = state.activeNode.id === state.template.root.id;
+      const location = findNodeLocation(state.template.root, state.activeNode);
+      const canMove = !isRoot && location !== null;
+      
+      // Show/hide Move Up and Move Down based on whether node is movable
+      moveUpButton.hidden = !canMove;
+      moveDownButton.hidden = !canMove;
+      
+      // Delete button is always shown for selected nodes
+      deleteNodeButton.hidden = false;
+    } else {
+      hideControl(controlActions);
+    }
     
     return;
   }
@@ -656,6 +691,8 @@ const updateControlPanel = () => {
       options = buildAttachTargets(state.activeNode?.type === "item" ? state.activeNode.id : null);
     } else if (field.key === "parentSection") {
       options = buildParentSectionOptions(state.activeNode?.type === "section" ? state.activeNode.id : null);
+    } else if (field.key === "preset") {
+      options = field.options;
     } else {
       options = field.options ?? [];
     }
@@ -681,6 +718,16 @@ const updateControlPanel = () => {
 };
 
 const getFieldValue = (node, key) => {
+  if (key === "preset") {
+    // Determine which preset matches the current dimensions
+    for (const [presetKey, preset] of Object.entries(CARD_PRESETS)) {
+      if (preset.width === node.width && preset.height === node.height && 
+          preset.radius === node.radius && preset.bleed === node.bleed) {
+        return presetKey;
+      }
+    }
+    return "custom";
+  }
   if (key === "parentSection") {
     const parent = findParentSection(state.template.root, node.id, !isItemNode(node));
     return parent ? parent.id : "";
@@ -697,6 +744,18 @@ const getFieldValue = (node, key) => {
 };
 
 const setFieldValue = (node, key, value) => {
+  if (key === "preset") {
+    const preset = CARD_PRESETS[value];
+    if (preset && value !== "custom") {
+      node.width = preset.width;
+      node.height = preset.height;
+      node.radius = preset.radius;
+      node.bleed = preset.bleed;
+      renderFieldBadges();
+      renderNodeList();
+    }
+    return;
+  }
   if (key === "parentSection") {
     const success = reparentNode(node.id, isItemNode(node) ? "item" : "section", value);
     if (success) {
@@ -747,7 +806,7 @@ const updateAnchorGrid = (anchor) => {
 
 const bindControlEvents = () => {
   controlRange.addEventListener("input", () => {
-    const node = findNode(state.template.root, state.activeNode);
+    const node = state.activeNode?.type === "template" ? state.template : findNode(state.template.root, state.activeNode);
     if (!node || !state.activeField) return;
     setFieldValue(node, state.activeField.key, Number(controlRange.value));
     updateControlPanel();
@@ -755,7 +814,7 @@ const bindControlEvents = () => {
   });
 
   controlInput.addEventListener("input", () => {
-    const node = findNode(state.template.root, state.activeNode);
+    const node = state.activeNode?.type === "template" ? state.template : findNode(state.template.root, state.activeNode);
     if (!node || !state.activeField) return;
     setFieldValue(node, state.activeField.key, Number(controlInput.value || 0));
     updateControlPanel();
@@ -775,7 +834,7 @@ const bindControlEvents = () => {
   });
 
   controlSelectInput.addEventListener("change", () => {
-    const node = findNode(state.template.root, state.activeNode);
+    const node = state.activeNode?.type === "template" ? state.template : findNode(state.template.root, state.activeNode);
     if (!node || !state.activeField) return;
     setFieldValue(node, state.activeField.key, controlSelectInput.value);
     updateControlPanel();
@@ -783,7 +842,7 @@ const bindControlEvents = () => {
   });
 
   controlTextInput.addEventListener("input", () => {
-    const node = findNode(state.template.root, state.activeNode);
+    const node = state.activeNode?.type === "template" ? state.template : findNode(state.template.root, state.activeNode);
     if (!node || !state.activeField) return;
     setFieldValue(node, state.activeField.key, controlTextInput.value.trim());
     renderNodeList();
@@ -792,7 +851,7 @@ const bindControlEvents = () => {
 
   controlAnchorGrid.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
-      const node = findNode(state.template.root, state.activeNode);
+      const node = state.activeNode?.type === "template" ? state.template : findNode(state.template.root, state.activeNode);
       if (!node || !state.activeField) return;
       const anchor = { x: Number(button.dataset.ax), y: Number(button.dataset.ay) };
       setFieldValue(node, state.activeField.key, anchor);
