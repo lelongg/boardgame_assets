@@ -189,7 +189,6 @@ const populateForm = (card) => {
   });
   cardMeta.textContent = `Card ID: ${card.id}`;
 };
-};
 
 const formToCard = () => {
   const fieldsMap = {};
@@ -694,7 +693,6 @@ const renderDynamicFields = () => {
       
       // Hidden textarea to store the actual data
       const textarea = document.createElement("textarea");
-      textarea.rows = 1;
       textarea.dataset.field = fieldId;
       textarea.style.display = "none";
       container.appendChild(textarea);
