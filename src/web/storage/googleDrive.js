@@ -65,7 +65,7 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const saveTokenToStorage = () => {
     try {
-      if (accessToken && typeof tokenExpiry === "number" && tokenExpiry > 0) {
+      if (typeof accessToken === "string" && accessToken.length > 0 && typeof tokenExpiry === "number" && tokenExpiry > 0) {
         localStorage.setItem(
           TOKEN_STORAGE_KEY,
           JSON.stringify({ accessToken, tokenExpiry })
@@ -83,7 +83,7 @@ export const createGoogleDriveStorage = (options = {}) => {
         const parsed = JSON.parse(stored);
         const token = parsed?.accessToken;
         const expiry = parsed?.tokenExpiry;
-        if (typeof token === "string" && typeof expiry === "number" && expiry > 0) {
+        if (typeof token === "string" && token.length > 0 && typeof expiry === "number" && expiry > 0) {
           if (Date.now() < expiry) {
             accessToken = token;
             tokenExpiry = expiry;
