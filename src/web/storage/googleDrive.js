@@ -53,6 +53,8 @@ export const createGoogleDriveStorage = (options = {}) => {
     throw new Error("Missing default template factory.");
   }
 
+  const TOKEN_STORAGE_KEY = "boardgame_assets_google_token";
+
   let tokenClient = null;
   let accessToken = "";
   let tokenExpiry = 0;
@@ -60,6 +62,44 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const fileCache = new Map();
   const gameCache = new Map();
+
+  const saveTokenToStorage = () => {
+    try {
+      if (accessToken && tokenExpiry) {
+        localStorage.setItem(
+          TOKEN_STORAGE_KEY,
+          JSON.stringify({ accessToken, tokenExpiry })
+        );
+      }
+    } catch (err) {
+      console.warn("Failed to save token to localStorage:", err);
+    }
+  };
+
+  const loadTokenFromStorage = () => {
+    try {
+      const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
+      if (stored) {
+        const { accessToken: token, tokenExpiry: expiry } = JSON.parse(stored);
+        if (token && expiry && Date.now() < expiry) {
+          accessToken = token;
+          tokenExpiry = expiry;
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load token from localStorage:", err);
+    }
+    return false;
+  };
+
+  const clearTokenFromStorage = () => {
+    try {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    } catch (err) {
+      console.warn("Failed to clear token from localStorage:", err);
+    }
+  };
 
   const init = async () => {
     if (initialized) return;
@@ -69,6 +109,7 @@ export const createGoogleDriveStorage = (options = {}) => {
       scope: DRIVE_SCOPE,
       callback: () => {}
     });
+    loadTokenFromStorage();
     initialized = true;
   };
 
@@ -83,6 +124,7 @@ export const createGoogleDriveStorage = (options = {}) => {
         }
         accessToken = response.access_token;
         tokenExpiry = Date.now() + (response.expires_in ?? 0) * 1000 - 30_000;
+        saveTokenToStorage();
         resolve();
       };
       tokenClient.requestAccessToken({ prompt });
@@ -109,6 +151,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     window.google.accounts.oauth2.revoke(accessToken, () => {});
     accessToken = "";
     tokenExpiry = 0;
+    clearTokenFromStorage();
     fileCache.clear();
     gameCache.clear();
   };
