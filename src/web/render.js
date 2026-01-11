@@ -189,15 +189,51 @@ export const renderCardSvg = (card, template, options = {}) => {
   const items = [];
   collectItems(template.root, items);
 
-  const itemTexts = items
+  const renderedItems = items
     .map((item) => {
       const rect = layout.items.get(item.id);
       if (!rect) return "";
+      
+      const itemType = item.type ?? "text"; // Default to text for legacy items
+      
+      if (itemType === "frame") {
+        // Render frame item
+        const strokeWidth = item.strokeWidth ?? 2;
+        const strokeColor = escape(item.strokeColor ?? palette.ink);
+        const fillColor = escape(item.fillColor ?? "none");
+        const cornerRadius = item.cornerRadius ?? 0;
+        return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
+      }
+      
+      if (itemType === "image") {
+        // Render image item
+        const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
+        if (!value) return "";
+        const cornerRadius = item.cornerRadius ?? 0;
+        const fit = item.fit ?? "cover";
+        
+        // Create a clip path for the image - sanitize ID to only contain safe characters
+        const clipId = `clip-${String(item.id).replace(/[^a-zA-Z0-9-_]/g, '')}`;
+        const clipPath = cornerRadius > 0 
+          ? `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" /></clipPath>`
+          : "";
+        
+        // Map fit values to preserveAspectRatio
+        const preserveAspectRatio = fit === "contain" ? "xMidYMid meet" : fit === "fill" ? "none" : "xMidYMid slice";
+        const clipAttr = cornerRadius > 0 ? ` clip-path="url(#${clipId})"` : "";
+        
+        return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${preserveAspectRatio}"${clipAttr} />`;
+      }
+      
+      // Render text item (default)
       const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
       if (!value) return "";
       const anchor = anchorPosition(rect, item.anchor);
       const fontFamily = item.font === "title" ? typography.title : typography.body;
-      return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="${textAnchorFor(item.align)}" dominant-baseline="${baselineFor(item.anchor)}" font-family="${fontFamily}" font-size="${item.fontSize}" fill="${item.color ?? palette.ink}">${escape(value)}</text>`;
+      const fontSize = item.fontSize ?? 20;
+      const align = item.align ?? "left";
+      const color = escape(item.color ?? palette.ink);
+      return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(item.anchor)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`;
     })
     .join("");
 
@@ -253,7 +289,7 @@ export const renderCardSvg = (card, template, options = {}) => {
   ${debugLabel}
   ${debugRects}
   ${debugAnchors}
-  ${itemTexts}
+  ${renderedItems}
 </svg>`;
 };
 

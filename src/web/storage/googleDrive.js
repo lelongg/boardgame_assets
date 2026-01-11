@@ -2,6 +2,8 @@ const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
+import { normalizeCard, normalizeTemplate } from "../normalizeExport.js";
+
 const loadGoogleScript = () =>
   new Promise((resolve, reject) => {
     if (window.google?.accounts?.oauth2) {
@@ -27,18 +29,6 @@ const slugify = (value) =>
 const escapeQueryValue = (value) => String(value).replace(/'/g, "\\'");
 
 const toIsoNow = () => new Date().toISOString();
-
-const normalizeCard = (card) => {
-  const fields =
-    card && typeof card.fields === "object" && card.fields !== null ? card.fields : {};
-  return {
-    id: String(card?.id ?? slugify(card?.name ?? "card")),
-    name: String(card?.name ?? "New Card"),
-    fields: Object.fromEntries(
-      Object.entries(fields).map(([key, value]) => [key, String(value ?? "")])
-    )
-  };
-};
 
 export const createGoogleDriveStorage = (options = {}) => {
   const clientId = options.clientId ?? "";
@@ -449,7 +439,9 @@ export const createGoogleDriveStorage = (options = {}) => {
       cacheFile("template", gameId, "", createdId);
       return content;
     }
-    return getFileContent(fileId);
+    const raw = await getFileContent(fileId);
+    // Normalize template to handle empty/invalid values
+    return normalizeTemplate(raw);
   };
 
   const save = async (gameId, template) => {
