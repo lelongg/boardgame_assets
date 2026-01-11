@@ -91,8 +91,9 @@ const boot = async () => {
   try {
     storage = createStorage();
     await storage.init();
+    const restored = await storage.tryRestoreSession();
     syncAuthUi();
-    if (storage.isAuthorized()) {
+    if (restored) {
       await loadGames();
     } else {
       gamesList.innerHTML = "<p class=\"empty\">Connect to Google Drive to load games.</p>";

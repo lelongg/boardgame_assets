@@ -93,6 +93,17 @@ export const createGoogleDriveStorage = (options = {}) => {
     await requestToken("consent");
   };
 
+  const tryRestoreSession = async () => {
+    await init();
+    if (isAuthorized()) return true;
+    try {
+      await requestToken("none");
+      return true;
+    } catch (err) {
+      return false;
+    }
+  };
+
   const signOut = async () => {
     if (!accessToken) return;
     window.google.accounts.oauth2.revoke(accessToken, () => {});
@@ -422,6 +433,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     init,
     signIn,
     signOut,
+    tryRestoreSession,
     isAuthorized,
     listGames,
     createGame,
