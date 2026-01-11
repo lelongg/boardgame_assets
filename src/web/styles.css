@@ -431,9 +431,12 @@ textarea {
 }
 
 .preview__frame--template {
-  width: auto;
-  max-width: 100%;
-  max-height: 600px;
+  width: 100%;
+  max-width: 360px;
+  height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .preview img {
@@ -442,6 +445,13 @@ textarea {
   width: auto;
   height: auto;
   display: block;
+  object-fit: contain;
+}
+
+.preview__frame--template img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .empty {
@@ -462,6 +472,7 @@ textarea {
 
   .preview__frame--template {
     max-width: 280px;
+    height: 400px;
   }
 }
 
@@ -528,5 +539,6 @@ textarea {
 
   .preview__frame--template {
     max-width: 100%;
+    height: 400px;
   }
 }
