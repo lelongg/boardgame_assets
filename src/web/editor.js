@@ -820,7 +820,7 @@ const renderDynamicFields = () => {
   // Restore saved values
   dynamicFields.querySelectorAll("[data-field]").forEach((input) => {
     const fieldId = input.dataset.field;
-    if (currentValues[fieldId] !== undefined) {
+    if (fieldId in currentValues) {
       input.value = currentValues[fieldId];
       
       // If this is an image field, also update the URL input and preview
@@ -830,7 +830,7 @@ const renderDynamicFields = () => {
         const preview = container.querySelector('.image-field__preview');
         const value = currentValues[fieldId];
         
-        if (value) {
+        if (value && typeof value === 'string') {
           // Check if it's a data URL or regular URL
           if (value.startsWith('data:')) {
             urlInput.value = '[Uploaded Image]';
