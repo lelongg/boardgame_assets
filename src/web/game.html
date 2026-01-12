@@ -130,17 +130,44 @@
           </div>
 
           <div class="editor">
-            <form id="card-form" class="form">
-              <label>
-                <span>Name</span>
-                <input type="text" name="name" required />
-              </label>
-              <div id="dynamic-fields" class="form__dynamic"></div>
-              <div class="meta" id="card-meta">
-                <span>Card ID:</span>
-                <input type="text" id="card-id-input" placeholder="auto-generated" />
+            <div class="editor__controls">
+              <form id="card-form" class="form">
+                <label>
+                  <span>Name</span>
+                  <input type="text" name="name" required />
+                </label>
+                <div class="meta" id="card-meta">
+                  <span>Card ID:</span>
+                  <input type="text" id="card-id-input" placeholder="auto-generated" />
+                </div>
+              </form>
+
+              <!-- Hidden container for backward compatibility with renderDynamicFields -->
+              <div id="dynamic-fields" style="display: none;"></div>
+
+              <div class="field-panel">
+                <p class="kicker">Card Fields</p>
+                <div class="field-badges" id="card-field-badges"></div>
               </div>
-            </form>
+
+              <div class="control-panel" id="card-control-panel">
+                <div class="control-panel__label" id="card-control-label">Select a field to edit.</div>
+                <div class="control-panel__body" id="card-control-body" hidden>
+                  <div class="control-text" id="card-control-text">
+                    <textarea id="card-control-textarea" rows="3"></textarea>
+                  </div>
+                  <div class="control-image" id="card-control-image" hidden>
+                    <img class="image-field__preview" id="card-image-preview" style="max-width: 100%; max-height: 200px; display: none; margin-top: 8px; border: 1px solid #d7cdbd; border-radius: 8px;" />
+                    <input type="text" id="card-image-url" placeholder="Enter image URL or upload a file" style="margin-top: 8px;" />
+                    <input type="file" id="card-image-file" accept="image/*" style="display: none;" />
+                    <div style="margin-top: 8px;">
+                      <button type="button" id="card-image-upload" class="button button--ghost">Upload Image</button>
+                      <button type="button" id="card-image-clear" class="button button--ghost" style="margin-left: 8px;">Clear</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div class="preview">
               <div class="preview__frame">
