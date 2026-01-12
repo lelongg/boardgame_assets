@@ -48,6 +48,7 @@ const itemTypeModal = document.getElementById("item-type-modal");
 const itemTypeSelect = document.getElementById("item-type-select");
 const itemTypeConfirm = document.getElementById("item-type-confirm");
 const itemTypeCancel = document.getElementById("item-type-cancel");
+const cardIdInput = document.getElementById("card-id-input");
 
 const fields = {
   name: cardForm.querySelector("[name='name']")
@@ -157,13 +158,15 @@ const updateHeader = () => {
 
 const resetForm = () => {
   cardForm.reset();
-  cardMeta.textContent = "Card ID: —";
+  cardIdInput.value = "";
+  cardIdInput.placeholder = "auto-generated";
   cardPreview.src = "";
   state.currentCard = null;
 };
 
 const populateForm = (card) => {
   fields.name.value = card.name;
+  cardIdInput.value = card.id;
   const values = card.fields ?? {};
   Object.entries(values).forEach(([key, value]) => {
     const input = dynamicFields.querySelector(`[data-field='${key}']`);
@@ -192,7 +195,6 @@ const populateForm = (card) => {
       }
     }
   });
-  cardMeta.textContent = `Card ID: ${card.id}`;
 };
 
 const formToCard = () => {
@@ -250,7 +252,13 @@ const loadGame = async () => {
     updateHeader();
     renderCards();
     renderTemplate();
-    resetForm();
+    
+    // Auto-select first card if available, otherwise reset form
+    if (state.cards.length > 0) {
+      selectCard(state.cards[0].id);
+    } else {
+      resetForm();
+    }
   } catch (err) {
     setStatus(`Failed to load game: ${err.message}`);
   }
@@ -309,12 +317,21 @@ const saveCard = async () => {
     setStatus("Name is required.");
     return;
   }
+  
+  // Use custom card ID if provided, otherwise let storage generate one
+  const customId = cardIdInput.value.trim();
+  
   try {
     let saved;
     if (state.currentCard) {
-      saved = await activeStorage.saveCard(state.currentGame.id, state.currentCard.id, payload);
+      // Updating existing card
+      // Note: If user changes the ID, this creates a new card with the new ID
+      // and leaves the old card intact (not deleted) to prevent accidental data loss
+      const cardId = customId && customId !== state.currentCard.id ? customId : state.currentCard.id;
+      saved = await activeStorage.saveCard(state.currentGame.id, cardId, payload);
     } else {
-      saved = await activeStorage.saveCard(state.currentGame.id, null, payload);
+      // Creating new card
+      saved = await activeStorage.saveCard(state.currentGame.id, customId || null, payload);
     }
     state.cards = await activeStorage.listCards(state.currentGame.id);
     state.currentCard = saved;
@@ -465,6 +482,12 @@ const updateTemplatePreview = async () => {
     sanitizeTemplate(state.template);
     const svg = renderTemplateSvg(state.template, state.activeNode);
     setPreviewImage(svg, templatePreview, "templatePreviewUrl");
+    
+    // Also update card preview if a card is selected
+    if (state.currentCard) {
+      const card = formToCard();
+      refreshPreviewFromCard(card);
+    }
   } catch (err) {
     setStatus(`Template preview failed: ${err.message}`);
   }
@@ -850,6 +873,28 @@ const renderDynamicFields = () => {
       }
     }
   });
+};
+
+let previewUpdateTimer = null;
+
+const autoUpdatePreview = () => {
+  // Only update if we have a current card and template
+  if (!state.currentCard || !state.template) return;
+  
+  // Debounce updates to avoid excessive re-rendering while typing
+  if (previewUpdateTimer) {
+    clearTimeout(previewUpdateTimer);
+  }
+  
+  previewUpdateTimer = setTimeout(() => {
+    try {
+      const card = formToCard();
+      refreshPreviewFromCard(card);
+    } catch (err) {
+      // Log errors but don't interrupt the user's typing
+      console.error("Preview update error:", err);
+    }
+  }, 300);
 };
 
 const updateControlPanel = () => {
@@ -1450,6 +1495,15 @@ printLink.addEventListener("click", (event) => {
 cardForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveCard();
+});
+
+// Use event delegation for automatic preview updates on all form inputs
+cardForm.addEventListener("input", (event) => {
+  const target = event.target;
+  // Check if the input is the name field or a dynamic field
+  if (target === fields.name || target.hasAttribute('data-field') || target.classList.contains('image-field__url')) {
+    autoUpdatePreview();
+  }
 });
 
 bindControlEvents();

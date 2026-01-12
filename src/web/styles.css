@@ -393,27 +393,81 @@ textarea {
 
 .form {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .form__dynamic {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .form label {
   display: grid;
-  gap: 6px;
-  font-size: 14px;
+  gap: 4px;
+}
+
+.form label > span {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .form label.full {
   grid-column: 1 / -1;
 }
 
-.meta {
-  font-size: 12px;
+.form input[type="text"],
+.form textarea {
+  font-size: 14px;
+  padding: 8px 10px;
+}
+
+.form textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.image-field {
+  display: grid;
+  gap: 6px;
+}
+
+.image-field > span {
+  font-weight: 500;
   color: var(--muted);
+  font-size: 12px;
+}
+
+.image-field__preview {
+  max-width: 100%;
+  max-height: 200px;
+  display: none;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.image-field__url {
+  width: 100%;
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.meta input[type="text"] {
+  font-size: 11px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--ink);
+  max-width: 150px;
 }
 
 .preview {
