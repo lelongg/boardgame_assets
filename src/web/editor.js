@@ -864,17 +864,26 @@ const renderDynamicFields = () => {
   });
 };
 
+let previewUpdateTimer = null;
+
 const autoUpdatePreview = () => {
   // Only update if we have a current card and template
   if (!state.currentCard || !state.template) return;
   
-  try {
-    const card = formToCard();
-    refreshPreviewFromCard(card);
-  } catch (err) {
-    // Silently ignore errors during typing
-    console.error("Preview update error:", err);
+  // Debounce updates to avoid excessive re-rendering while typing
+  if (previewUpdateTimer) {
+    clearTimeout(previewUpdateTimer);
   }
+  
+  previewUpdateTimer = setTimeout(() => {
+    try {
+      const card = formToCard();
+      refreshPreviewFromCard(card);
+    } catch (err) {
+      // Log errors but don't interrupt the user's typing
+      console.error("Preview update error:", err);
+    }
+  }, 300);
 };
 
 const updateControlPanel = () => {
