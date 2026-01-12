@@ -828,20 +828,24 @@ const renderDynamicFields = () => {
       if (container) {
         const urlInput = container.querySelector('.image-field__url');
         const preview = container.querySelector('.image-field__preview');
-        const value = currentValues[fieldId];
         
-        if (value && typeof value === 'string') {
-          // Check if it's a data URL or regular URL
-          if (value.startsWith('data:')) {
-            urlInput.value = '[Uploaded Image]';
+        // Only proceed if the DOM structure is complete
+        if (urlInput && preview) {
+          const value = currentValues[fieldId];
+          
+          if (value && typeof value === 'string') {
+            // Check if it's a data URL or regular URL
+            if (value.startsWith('data:')) {
+              urlInput.value = '[Uploaded Image]';
+            } else {
+              urlInput.value = value;
+            }
+            preview.src = value;
+            preview.style.display = "block";
           } else {
-            urlInput.value = value;
+            urlInput.value = "";
+            preview.style.display = "none";
           }
-          preview.src = value;
-          preview.style.display = "block";
-        } else {
-          urlInput.value = "";
-          preview.style.display = "none";
         }
       }
     }
