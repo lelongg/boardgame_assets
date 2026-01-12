@@ -325,6 +325,8 @@ const saveCard = async () => {
     let saved;
     if (state.currentCard) {
       // Updating existing card
+      // Note: If user changes the ID, this creates a new card with the new ID
+      // and leaves the old card intact (not deleted) to prevent accidental data loss
       const cardId = customId && customId !== state.currentCard.id ? customId : state.currentCard.id;
       saved = await activeStorage.saveCard(state.currentGame.id, cardId, payload);
     } else {
