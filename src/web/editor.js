@@ -694,6 +694,12 @@ const renderFieldBadges = () => {
 };
 
 const renderDynamicFields = () => {
+  // Save current field values before clearing
+  const currentValues = {};
+  dynamicFields.querySelectorAll("[data-field]").forEach((input) => {
+    currentValues[input.dataset.field] = input.value;
+  });
+  
   dynamicFields.innerHTML = "";
   const fieldsMap = new Map();
   collectItemFieldsWithTypes(state.template.root, fieldsMap);
@@ -808,6 +814,36 @@ const renderDynamicFields = () => {
       label.appendChild(span);
       label.appendChild(textarea);
       dynamicFields.appendChild(label);
+    }
+  });
+  
+  // Restore saved values
+  dynamicFields.querySelectorAll("[data-field]").forEach((input) => {
+    const fieldId = input.dataset.field;
+    if (currentValues[fieldId] !== undefined) {
+      input.value = currentValues[fieldId];
+      
+      // If this is an image field, also update the URL input and preview
+      const container = input.closest('.image-field');
+      if (container) {
+        const urlInput = container.querySelector('.image-field__url');
+        const preview = container.querySelector('.image-field__preview');
+        const value = currentValues[fieldId];
+        
+        if (value) {
+          // Check if it's a data URL or regular URL
+          if (value.startsWith('data:')) {
+            urlInput.value = '[Uploaded Image]';
+          } else {
+            urlInput.value = value;
+          }
+          preview.src = value;
+          preview.style.display = "block";
+        } else {
+          urlInput.value = "";
+          preview.style.display = "none";
+        }
+      }
     }
   });
 };
