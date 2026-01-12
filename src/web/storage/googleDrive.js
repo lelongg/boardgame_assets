@@ -230,13 +230,20 @@ export const createGoogleDriveStorage = (options = {}) => {
     return response.json();
   };
 
+  const getParentsArray = (parentId) => {
+    if (parentId) return [parentId];
+    if (folderId) return [folderId];
+    return undefined;
+  };
+
   const createFile = async ({ name, content, appProperties, parentId }) => {
     const boundary = `boundary-${Math.random().toString(16).slice(2)}`;
+    const parents = getParentsArray(parentId);
     const metadata = {
       name,
       mimeType: "application/json",
       appProperties,
-      ...(parentId ? { parents: [parentId] } : folderId ? { parents: [folderId] } : {})
+      ...(parents ? { parents } : {})
     };
     const body = [
       `--${boundary}`,
@@ -272,11 +279,12 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const createFolder = async ({ name, parentId, appProperties }) => {
+    const parents = getParentsArray(parentId);
     const metadata = {
       name,
       mimeType: "application/vnd.google-apps.folder",
       appProperties,
-      ...(parentId ? { parents: [parentId] } : folderId ? { parents: [folderId] } : {})
+      ...(parents ? { parents } : {})
     };
     const data = await driveFetchJson(`${DRIVE_API}/files?fields=id`, {
       method: "POST",
@@ -474,11 +482,13 @@ export const createGoogleDriveStorage = (options = {}) => {
     }
     
     // Also check for legacy flat structure games for backward compatibility
+    const seenGameIds = new Set(games.map(g => g.id));
     const legacyFiles = await listFiles({ type: "game" });
     for (const file of legacyFiles) {
       const meta = await getFileContent(file.id);
-      if (meta?.id && !games.find(g => g.id === meta.id)) {
+      if (meta?.id && !seenGameIds.has(meta.id)) {
         games.push(meta);
+        seenGameIds.add(meta.id);
         cacheFile("game", meta.id, "", file.id);
         gameCache.set(meta.id, { fileId: file.id, meta });
       }
@@ -579,11 +589,13 @@ export const createGoogleDriveStorage = (options = {}) => {
     }
     
     // Also check for legacy flat structure cards (backward compatibility)
+    const seenCardIds = new Set(cards.map(c => c.id));
     const legacyFiles = await listFiles({ type: "card", gameId });
     for (const file of legacyFiles) {
       const card = normalizeCard(await getFileContent(file.id));
-      if (!cards.find(c => c.id === card.id)) {
+      if (!seenCardIds.has(card.id)) {
         cards.push(card);
+        seenCardIds.add(card.id);
         cacheFile("card", gameId, card.id, file.id);
       }
     }
