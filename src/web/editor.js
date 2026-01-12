@@ -250,7 +250,13 @@ const loadGame = async () => {
     updateHeader();
     renderCards();
     renderTemplate();
-    resetForm();
+    
+    // Auto-select first card if available, otherwise reset form
+    if (state.cards.length > 0) {
+      selectCard(state.cards[0].id);
+    } else {
+      resetForm();
+    }
   } catch (err) {
     setStatus(`Failed to load game: ${err.message}`);
   }
@@ -465,6 +471,12 @@ const updateTemplatePreview = async () => {
     sanitizeTemplate(state.template);
     const svg = renderTemplateSvg(state.template, state.activeNode);
     setPreviewImage(svg, templatePreview, "templatePreviewUrl");
+    
+    // Also update card preview if a card is selected
+    if (state.currentCard) {
+      const card = formToCard();
+      refreshPreviewFromCard(card);
+    }
   } catch (err) {
     setStatus(`Template preview failed: ${err.message}`);
   }
@@ -850,6 +862,43 @@ const renderDynamicFields = () => {
       }
     }
   });
+  
+  // Add automatic preview update on field changes
+  attachFieldChangeListeners();
+};
+
+const attachFieldChangeListeners = () => {
+  // Add listener to name field for automatic preview update
+  if (fields.name) {
+    // Remove existing listener to avoid duplicates
+    fields.name.removeEventListener("input", autoUpdatePreview);
+    fields.name.addEventListener("input", autoUpdatePreview);
+  }
+  
+  // Add listeners to all dynamic fields
+  dynamicFields.querySelectorAll("[data-field]").forEach((input) => {
+    input.removeEventListener("input", autoUpdatePreview);
+    input.addEventListener("input", autoUpdatePreview);
+  });
+  
+  // Add listeners to image field URL inputs
+  dynamicFields.querySelectorAll(".image-field__url").forEach((input) => {
+    input.removeEventListener("input", autoUpdatePreview);
+    input.addEventListener("input", autoUpdatePreview);
+  });
+};
+
+const autoUpdatePreview = () => {
+  // Only update if we have a current card and template
+  if (!state.currentCard || !state.template) return;
+  
+  try {
+    const card = formToCard();
+    refreshPreviewFromCard(card);
+  } catch (err) {
+    // Silently ignore errors during typing
+    console.error("Preview update error:", err);
+  }
 };
 
 const updateControlPanel = () => {
