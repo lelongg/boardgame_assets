@@ -48,6 +48,7 @@ const itemTypeModal = document.getElementById("item-type-modal");
 const itemTypeSelect = document.getElementById("item-type-select");
 const itemTypeConfirm = document.getElementById("item-type-confirm");
 const itemTypeCancel = document.getElementById("item-type-cancel");
+const cardIdInput = document.getElementById("card-id-input");
 
 const fields = {
   name: cardForm.querySelector("[name='name']")
@@ -157,13 +158,15 @@ const updateHeader = () => {
 
 const resetForm = () => {
   cardForm.reset();
-  cardMeta.textContent = "Card ID: —";
+  cardIdInput.value = "";
+  cardIdInput.placeholder = "auto-generated";
   cardPreview.src = "";
   state.currentCard = null;
 };
 
 const populateForm = (card) => {
   fields.name.value = card.name;
+  cardIdInput.value = card.id;
   const values = card.fields ?? {};
   Object.entries(values).forEach(([key, value]) => {
     const input = dynamicFields.querySelector(`[data-field='${key}']`);
@@ -192,7 +195,6 @@ const populateForm = (card) => {
       }
     }
   });
-  cardMeta.textContent = `Card ID: ${card.id}`;
 };
 
 const formToCard = () => {
@@ -315,12 +317,19 @@ const saveCard = async () => {
     setStatus("Name is required.");
     return;
   }
+  
+  // Use custom card ID if provided, otherwise let storage generate one
+  const customId = cardIdInput.value.trim();
+  
   try {
     let saved;
     if (state.currentCard) {
-      saved = await activeStorage.saveCard(state.currentGame.id, state.currentCard.id, payload);
+      // Updating existing card
+      const cardId = customId && customId !== state.currentCard.id ? customId : state.currentCard.id;
+      saved = await activeStorage.saveCard(state.currentGame.id, cardId, payload);
     } else {
-      saved = await activeStorage.saveCard(state.currentGame.id, null, payload);
+      // Creating new card
+      saved = await activeStorage.saveCard(state.currentGame.id, customId || null, payload);
     }
     state.cards = await activeStorage.listCards(state.currentGame.id);
     state.currentCard = saved;
