@@ -460,6 +460,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     const parentFolder = folderId || "root";
     const folders = await listFoldersInParent(parentFolder);
     const games = [];
+    const seenGameIds = new Set();
     
     for (const folder of folders) {
       if (folder.appProperties?.type === "game-folder") {
@@ -474,6 +475,7 @@ export const createGoogleDriveStorage = (options = {}) => {
           const meta = await getFileContent(gameFile.id);
           if (meta?.id) {
             games.push(meta);
+            seenGameIds.add(meta.id);
             cacheFile("game", meta.id, "", gameFile.id);
             gameCache.set(meta.id, { fileId: gameFile.id, meta });
           }
@@ -482,7 +484,6 @@ export const createGoogleDriveStorage = (options = {}) => {
     }
     
     // Also check for legacy flat structure games for backward compatibility
-    const seenGameIds = new Set(games.map(g => g.id));
     const legacyFiles = await listFiles({ type: "game" });
     for (const file of legacyFiles) {
       const meta = await getFileContent(file.id);
@@ -559,6 +560,7 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const listCards = async (gameId) => {
     const cards = [];
+    const seenCardIds = new Set();
     
     // Try to get cards from the cards folder (new structure)
     const cardsFolderId = folderCache.get(`cards:${gameId}`);
@@ -567,6 +569,7 @@ export const createGoogleDriveStorage = (options = {}) => {
       for (const file of files) {
         const card = normalizeCard(await getFileContent(file.id));
         cards.push(card);
+        seenCardIds.add(card.id);
         cacheFile("card", gameId, card.id, file.id);
       }
     } else {
@@ -582,6 +585,7 @@ export const createGoogleDriveStorage = (options = {}) => {
           for (const file of files) {
             const card = normalizeCard(await getFileContent(file.id));
             cards.push(card);
+            seenCardIds.add(card.id);
             cacheFile("card", gameId, card.id, file.id);
           }
         }
@@ -589,7 +593,6 @@ export const createGoogleDriveStorage = (options = {}) => {
     }
     
     // Also check for legacy flat structure cards (backward compatibility)
-    const seenCardIds = new Set(cards.map(c => c.id));
     const legacyFiles = await listFiles({ type: "card", gameId });
     for (const file of legacyFiles) {
       const card = normalizeCard(await getFileContent(file.id));
