@@ -3,6 +3,7 @@
   "name": "Sample Card",
   "fields": {
     "title": "Sample Card",
-    "description": "This is a sample card for testing"
+    "description": "This is a sample card for testing",
+    "field-1": "Test content for field 1"
   }
 }
