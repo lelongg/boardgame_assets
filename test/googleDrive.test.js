@@ -65,6 +65,16 @@ const createMockGoogleDrive = () => {
   // Mock fetch API
   const mockFetch = mock.fn(async (url, options = {}) => {
     // Simulate different API responses based on URL
+    const method = options.method || "GET";
+    
+    // Create folder
+    if (url.includes("/files?fields=id") && method === "POST") {
+      return {
+        ok: true,
+        json: async () => ({ id: "new_folder_id" }),
+      };
+    }
+    
     if (url.includes("/files?q=")) {
       return {
         ok: true,
@@ -367,10 +377,35 @@ test("Google Drive storage slugify helper", async () => {
   mockFetch.mock.mockImplementation(async (url, options = {}) => {
     const method = options.method || "GET";
     
+    // Create folder (POST to /files with fields=id)
+    if (url.includes("/files?fields=id") && method === "POST") {
+      const metadata = JSON.parse(options.body);
+      if (metadata.mimeType === "application/vnd.google-apps.folder") {
+        const folderId = `folder_${createdFiles.length + 1}`;
+        createdFiles.push({
+          fileId: folderId,
+          name: metadata.name,
+          mimeType: "application/vnd.google-apps.folder",
+          appProperties: metadata.appProperties || {},
+          type: metadata.appProperties?.type,
+          isFolder: true,
+        });
+        return {
+          ok: true,
+          json: async () => ({ id: folderId }),
+        };
+      }
+    }
+    
     // List files
     if (url.includes("/files?q=")) {
       const query = decodeURIComponent(url.split("q=")[1].split("&")[0]);
       const filteredFiles = createdFiles.filter((file) => {
+        // Filter folders
+        if (query.includes("mimeType='application/vnd.google-apps.folder'")) {
+          return file.isFolder === true;
+        }
+        // Filter files by type
         if (query.includes("type") && query.includes("game")) {
           return file.type === "game";
         }

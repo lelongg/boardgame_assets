@@ -65,11 +65,62 @@ const createComprehensiveMock = () => {
   const mockFetchImpl = async (url, options = {}) => {
     const method = options.method || "GET";
 
+    // Create folder (POST to /files with folder mimeType)
+    if (url.includes("/files?fields=id") && method === "POST") {
+      const metadata = JSON.parse(options.body);
+      if (metadata.mimeType === "application/vnd.google-apps.folder") {
+        const folderId = `folder_${files.length + 1}`;
+        files.push({
+          fileId: folderId,
+          name: metadata.name,
+          mimeType: "application/vnd.google-apps.folder",
+          appProperties: metadata.appProperties || {},
+          type: metadata.appProperties?.type,
+          gameId: metadata.appProperties?.gameId,
+          parents: metadata.parents || [],
+          isFolder: true,
+        });
+        return {
+          ok: true,
+          json: async () => ({ id: folderId }),
+        };
+      }
+    }
+
     // List files
     if (url.includes("/files?q=")) {
       const query = decodeURIComponent(url.split("q=")[1].split("&")[0]);
       const filteredFiles = files.filter((file) => {
-        // Parse query to filter files
+        // Filter folders
+        if (query.includes("mimeType='application/vnd.google-apps.folder'")) {
+          if (!file.isFolder) return false;
+          // Check parent folder
+          const parentMatch = query.match(/'([^']+)' in parents/);
+          if (parentMatch) {
+            const parentId = parentMatch[1];
+            if (!file.parents || !file.parents.includes(parentId)) {
+              return false;
+            }
+          }
+          return true;
+        }
+        
+        // Filter by parent folder for files
+        const parentMatch = query.match(/'([^']+)' in parents/);
+        if (parentMatch) {
+          const parentId = parentMatch[1];
+          if (!file.parents || !file.parents.includes(parentId)) {
+            return false;
+          }
+          // Also check mimeType if specified
+          const mimeMatch = query.match(/mimeType='([^']+)'/);
+          if (mimeMatch && file.mimeType !== mimeMatch[1]) {
+            return false;
+          }
+          return true;
+        }
+        
+        // Parse query to filter files by appProperties
         if (query.includes("type") && query.includes("game")) {
           return file.type === "game";
         }
@@ -93,6 +144,7 @@ const createComprehensiveMock = () => {
             id: f.fileId,
             name: f.name,
             appProperties: f.appProperties,
+            mimeType: f.mimeType,
           })),
         }),
       };
@@ -120,14 +172,22 @@ const createComprehensiveMock = () => {
       }
     }
 
-    // Delete file
+    // Delete file or folder
     if (url.includes("/files/") && method === "DELETE") {
-      const fileId = url.split("/files/")[1];
-      const index = files.findIndex((f) => f.fileId === fileId);
-      if (index >= 0) {
-        files.splice(index, 1);
-        return { ok: true };
+      // Extract file ID - handle both /files/{id} and /files/{id}?params formats
+      const urlParts = url.split("/files/")[1];
+      const fileId = urlParts ? urlParts.split("?")[0].split("/")[0] : null;
+      
+      if (fileId) {
+        const index = files.findIndex((f) => f.fileId === fileId);
+        if (index >= 0) {
+          files.splice(index, 1);
+          return { ok: true };
+        }
       }
+      
+      // Return ok even if file not found (idempotent delete)
+      return { ok: true };
     }
 
     // Create file
@@ -162,10 +222,12 @@ const createComprehensiveMock = () => {
         files.push({
           fileId,
           name: metadata.name,
+          mimeType: metadata.mimeType || "application/json",
           appProperties: metadata.appProperties,
           type: metadata.appProperties.type,
           gameId: metadata.appProperties.gameId,
           cardId: metadata.appProperties.cardId,
+          parents: metadata.parents || [],
           content,
         });
         return {

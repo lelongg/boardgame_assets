@@ -52,6 +52,7 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const fileCache = new Map();
   const gameCache = new Map();
+  const folderCache = new Map();
 
   const saveTokenToStorage = () => {
     try {
@@ -157,6 +158,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     clearTokenFromStorage();
     fileCache.clear();
     gameCache.clear();
+    folderCache.clear();
   };
 
   const getAccessToken = async () => {
@@ -211,19 +213,37 @@ export const createGoogleDriveStorage = (options = {}) => {
     return data.files ?? [];
   };
 
+  const listFilesInFolder = async (folderId, mimeType = "application/json") => {
+    const q = [
+      `mimeType='${escapeQueryValue(mimeType)}'`,
+      `'${escapeQueryValue(folderId)}' in parents`,
+      "trashed=false"
+    ].join(" and ");
+    const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties,createdTime,modifiedTime)`;
+    const data = await driveFetchJson(url);
+    return data.files ?? [];
+  };
+
   const getFileContent = async (fileId) => {
     const url = `${DRIVE_API}/files/${fileId}?alt=media`;
     const response = await driveFetch(url);
     return response.json();
   };
 
-  const createFile = async ({ name, content, appProperties }) => {
+  const getParentsArray = (parentId) => {
+    if (parentId) return [parentId];
+    if (folderId) return [folderId];
+    return undefined;
+  };
+
+  const createFile = async ({ name, content, appProperties, parentId }) => {
     const boundary = `boundary-${Math.random().toString(16).slice(2)}`;
+    const parents = getParentsArray(parentId);
     const metadata = {
       name,
       mimeType: "application/json",
       appProperties,
-      ...(folderId ? { parents: [folderId] } : {})
+      ...(parents ? { parents } : {})
     };
     const body = [
       `--${boundary}`,
@@ -258,6 +278,86 @@ export const createGoogleDriveStorage = (options = {}) => {
     await driveFetch(`${DRIVE_API}/files/${fileId}`, { method: "DELETE" });
   };
 
+  const createFolder = async ({ name, parentId, appProperties }) => {
+    const parents = getParentsArray(parentId);
+    const metadata = {
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      appProperties,
+      ...(parents ? { parents } : {})
+    };
+    const data = await driveFetchJson(`${DRIVE_API}/files?fields=id`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify(metadata)
+    });
+    return data.id;
+  };
+
+  const listFoldersInParent = async (parentId) => {
+    const q = [
+      `mimeType='application/vnd.google-apps.folder'`,
+      `'${escapeQueryValue(parentId)}' in parents`,
+      `appProperties has { key='app' and value='${escapeQueryValue(appTag)}' }`,
+      "trashed=false"
+    ].join(" and ");
+    const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)`;
+    const data = await driveFetchJson(url);
+    return data.files ?? [];
+  };
+
+  const ensureGameFolder = async (gameId) => {
+    const cached = folderCache.get(`game:${gameId}`);
+    if (cached) return cached;
+
+    const parentFolder = folderId || "root";
+    const folders = await listFoldersInParent(parentFolder);
+    const existing = folders.find((f) => f.appProperties?.gameId === gameId);
+    
+    if (existing) {
+      folderCache.set(`game:${gameId}`, existing.id);
+      return existing.id;
+    }
+
+    const newFolderId = await createFolder({
+      name: gameId,
+      parentId: parentFolder === "root" ? null : parentFolder,
+      appProperties: {
+        app: appTag,
+        type: "game-folder",
+        gameId
+      }
+    });
+    folderCache.set(`game:${gameId}`, newFolderId);
+    return newFolderId;
+  };
+
+  const ensureCardsFolder = async (gameId) => {
+    const cached = folderCache.get(`cards:${gameId}`);
+    if (cached) return cached;
+
+    const gameFolderId = await ensureGameFolder(gameId);
+    const folders = await listFoldersInParent(gameFolderId);
+    const existing = folders.find((f) => f.name === "cards");
+    
+    if (existing) {
+      folderCache.set(`cards:${gameId}`, existing.id);
+      return existing.id;
+    }
+
+    const newFolderId = await createFolder({
+      name: "cards",
+      parentId: gameFolderId,
+      appProperties: {
+        app: appTag,
+        type: "cards-folder",
+        gameId
+      }
+    });
+    folderCache.set(`cards:${gameId}`, newFolderId);
+    return newFolderId;
+  };
+
   const fileKey = (type, gameId, cardId = "") => `${type}:${gameId}:${cardId}`;
 
   const cacheFile = (type, gameId, cardId, fileId) => {
@@ -269,6 +369,41 @@ export const createGoogleDriveStorage = (options = {}) => {
   const resolveFileId = async (type, gameId, cardId) => {
     const cached = getCachedFile(type, gameId, cardId);
     if (cached) return cached;
+    
+    // Try to find file in the appropriate folder first (new structure)
+    if (type === "game") {
+      const gameFolderId = folderCache.get(`game:${gameId}`);
+      if (gameFolderId) {
+        const files = await listFilesInFolder(gameFolderId);
+        const gameFile = files.find((f) => f.name === "game.json");
+        if (gameFile) {
+          cacheFile(type, gameId, cardId, gameFile.id);
+          return gameFile.id;
+        }
+      }
+    } else if (type === "template") {
+      const gameFolderId = folderCache.get(`game:${gameId}`);
+      if (gameFolderId) {
+        const files = await listFilesInFolder(gameFolderId);
+        const templateFile = files.find((f) => f.name === "template.json");
+        if (templateFile) {
+          cacheFile(type, gameId, cardId, templateFile.id);
+          return templateFile.id;
+        }
+      }
+    } else if (type === "card") {
+      const cardsFolderId = folderCache.get(`cards:${gameId}`);
+      if (cardsFolderId) {
+        const files = await listFilesInFolder(cardsFolderId);
+        const cardFile = files.find((f) => f.name === `${cardId}.json`);
+        if (cardFile) {
+          cacheFile(type, gameId, cardId, cardFile.id);
+          return cardFile.id;
+        }
+      }
+    }
+    
+    // Fall back to legacy flat structure (backward compatibility)
     const files = await listFiles({
       type,
       gameId,
@@ -298,14 +433,16 @@ export const createGoogleDriveStorage = (options = {}) => {
       gameCache.set(gameId, { fileId, meta });
       return meta;
     }
+    const gameFolderId = await ensureGameFolder(gameId);
     const createdId = await createFile({
-      name: `game-${gameId}.json`,
+      name: "game.json",
       content: meta,
       appProperties: {
         app: appTag,
         type: "game",
         gameId
-      }
+      },
+      parentId: gameFolderId
     });
     cacheFile("game", gameId, "", createdId);
     gameCache.set(gameId, { fileId: createdId, meta });
@@ -320,16 +457,44 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const listGames = async () => {
-    const files = await listFiles({ type: "game" });
+    const parentFolder = folderId || "root";
+    const folders = await listFoldersInParent(parentFolder);
     const games = [];
-    for (const file of files) {
+    const seenGameIds = new Set();
+    
+    for (const folder of folders) {
+      if (folder.appProperties?.type === "game-folder") {
+        const gameId = folder.appProperties.gameId;
+        folderCache.set(`game:${gameId}`, folder.id);
+        
+        // Look for game.json in the folder
+        const files = await listFilesInFolder(folder.id);
+        const gameFile = files.find((f) => f.name === "game.json");
+        
+        if (gameFile) {
+          const meta = await getFileContent(gameFile.id);
+          if (meta?.id) {
+            games.push(meta);
+            seenGameIds.add(meta.id);
+            cacheFile("game", meta.id, "", gameFile.id);
+            gameCache.set(meta.id, { fileId: gameFile.id, meta });
+          }
+        }
+      }
+    }
+    
+    // Also check for legacy flat structure games for backward compatibility
+    const legacyFiles = await listFiles({ type: "game" });
+    for (const file of legacyFiles) {
       const meta = await getFileContent(file.id);
-      if (meta?.id) {
+      if (meta?.id && !seenGameIds.has(meta.id)) {
         games.push(meta);
+        seenGameIds.add(meta.id);
         cacheFile("game", meta.id, "", file.id);
         gameCache.set(meta.id, { fileId: file.id, meta });
       }
     }
+    
     games.sort((a, b) => a.name.localeCompare(b.name));
     return games;
   };
@@ -348,14 +513,16 @@ export const createGoogleDriveStorage = (options = {}) => {
     await writeGame(meta);
     const templateFileId = await resolveFileId("template", id);
     if (!templateFileId) {
+      const gameFolderId = await ensureGameFolder(id);
       const createdId = await createFile({
-        name: `template-${id}.json`,
+        name: "template.json",
         content: defaultTemplate(),
         appProperties: {
           app: appTag,
           type: "template",
           gameId: id
-        }
+        },
+        parentId: gameFolderId
       });
       cacheFile("template", id, "", createdId);
     }
@@ -371,10 +538,20 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const deleteGame = async (gameId) => {
+    // Delete all files with gameId appProperty (for backward compatibility)
     const files = await listFiles({ gameId });
     for (const file of files) {
       await deleteFile(file.id);
     }
+    
+    // Delete the game folder if it exists
+    const gameFolderId = folderCache.get(`game:${gameId}`);
+    if (gameFolderId) {
+      await deleteFile(gameFolderId);
+      folderCache.delete(`game:${gameId}`);
+      folderCache.delete(`cards:${gameId}`);
+    }
+    
     fileCache.forEach((value, key) => {
       if (key.includes(`:${gameId}:`)) fileCache.delete(key);
     });
@@ -382,13 +559,50 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const listCards = async (gameId) => {
-    const files = await listFiles({ type: "card", gameId });
     const cards = [];
-    for (const file of files) {
-      const card = normalizeCard(await getFileContent(file.id));
-      cards.push(card);
-      cacheFile("card", gameId, card.id, file.id);
+    const seenCardIds = new Set();
+    
+    // Try to get cards from the cards folder (new structure)
+    const cardsFolderId = folderCache.get(`cards:${gameId}`);
+    if (cardsFolderId) {
+      const files = await listFilesInFolder(cardsFolderId);
+      for (const file of files) {
+        const card = normalizeCard(await getFileContent(file.id));
+        cards.push(card);
+        seenCardIds.add(card.id);
+        cacheFile("card", gameId, card.id, file.id);
+      }
+    } else {
+      // Check if the game folder exists
+      const gameFolderId = folderCache.get(`game:${gameId}`);
+      if (gameFolderId) {
+        // Try to find cards folder
+        const folders = await listFoldersInParent(gameFolderId);
+        const cardsFolder = folders.find((f) => f.name === "cards");
+        if (cardsFolder) {
+          folderCache.set(`cards:${gameId}`, cardsFolder.id);
+          const files = await listFilesInFolder(cardsFolder.id);
+          for (const file of files) {
+            const card = normalizeCard(await getFileContent(file.id));
+            cards.push(card);
+            seenCardIds.add(card.id);
+            cacheFile("card", gameId, card.id, file.id);
+          }
+        }
+      }
     }
+    
+    // Also check for legacy flat structure cards (backward compatibility)
+    const legacyFiles = await listFiles({ type: "card", gameId });
+    for (const file of legacyFiles) {
+      const card = normalizeCard(await getFileContent(file.id));
+      if (!seenCardIds.has(card.id)) {
+        cards.push(card);
+        seenCardIds.add(card.id);
+        cacheFile("card", gameId, card.id, file.id);
+      }
+    }
+    
     cards.sort((a, b) => a.name.localeCompare(b.name));
     return cards;
   };
@@ -409,15 +623,17 @@ export const createGoogleDriveStorage = (options = {}) => {
       await updateFileContent(fileId, normalized);
       cacheFile("card", gameId, id, fileId);
     } else {
+      const cardsFolderId = await ensureCardsFolder(gameId);
       const createdId = await createFile({
-        name: `card-${gameId}-${id}.json`,
+        name: `${id}.json`,
         content: normalized,
         appProperties: {
           app: appTag,
           type: "card",
           gameId,
           cardId: id
-        }
+        },
+        parentId: cardsFolderId
       });
       cacheFile("card", gameId, id, createdId);
     }
@@ -438,14 +654,16 @@ export const createGoogleDriveStorage = (options = {}) => {
     const fileId = await resolveFileId("template", gameId);
     if (!fileId) {
       const content = defaultTemplate();
+      const gameFolderId = await ensureGameFolder(gameId);
       const createdId = await createFile({
-        name: `template-${gameId}.json`,
+        name: "template.json",
         content,
         appProperties: {
           app: appTag,
           type: "template",
           gameId
-        }
+        },
+        parentId: gameFolderId
       });
       cacheFile("template", gameId, "", createdId);
       return content;
@@ -460,14 +678,16 @@ export const createGoogleDriveStorage = (options = {}) => {
     if (fileId) {
       await updateFileContent(fileId, template);
     } else {
+      const gameFolderId = await ensureGameFolder(gameId);
       const createdId = await createFile({
-        name: `template-${gameId}.json`,
+        name: "template.json",
         content: template,
         appProperties: {
           app: appTag,
           type: "template",
           gameId
-        }
+        },
+        parentId: gameFolderId
       });
       cacheFile("template", gameId, "", createdId);
     }
