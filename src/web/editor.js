@@ -862,30 +862,6 @@ const renderDynamicFields = () => {
       }
     }
   });
-  
-  // Add automatic preview update on field changes
-  attachFieldChangeListeners();
-};
-
-const attachFieldChangeListeners = () => {
-  // Add listener to name field for automatic preview update
-  if (fields.name) {
-    // Remove existing listener to avoid duplicates
-    fields.name.removeEventListener("input", autoUpdatePreview);
-    fields.name.addEventListener("input", autoUpdatePreview);
-  }
-  
-  // Add listeners to all dynamic fields
-  dynamicFields.querySelectorAll("[data-field]").forEach((input) => {
-    input.removeEventListener("input", autoUpdatePreview);
-    input.addEventListener("input", autoUpdatePreview);
-  });
-  
-  // Add listeners to image field URL inputs
-  dynamicFields.querySelectorAll(".image-field__url").forEach((input) => {
-    input.removeEventListener("input", autoUpdatePreview);
-    input.addEventListener("input", autoUpdatePreview);
-  });
 };
 
 const autoUpdatePreview = () => {
@@ -1499,6 +1475,15 @@ printLink.addEventListener("click", (event) => {
 cardForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveCard();
+});
+
+// Use event delegation for automatic preview updates on all form inputs
+cardForm.addEventListener("input", (event) => {
+  const target = event.target;
+  // Check if the input is the name field or a dynamic field
+  if (target === fields.name || target.hasAttribute('data-field') || target.classList.contains('image-field__url')) {
+    autoUpdatePreview();
+  }
 });
 
 bindControlEvents();
