@@ -50,6 +50,19 @@ const itemTypeConfirm = document.getElementById("item-type-confirm");
 const itemTypeCancel = document.getElementById("item-type-cancel");
 const cardIdInput = document.getElementById("card-id-input");
 
+// Card field control elements
+const cardFieldBadges = document.getElementById("card-field-badges");
+const cardControlLabel = document.getElementById("card-control-label");
+const cardControlBody = document.getElementById("card-control-body");
+const cardControlText = document.getElementById("card-control-text");
+const cardControlTextarea = document.getElementById("card-control-textarea");
+const cardControlImage = document.getElementById("card-control-image");
+const cardImagePreview = document.getElementById("card-image-preview");
+const cardImageUrl = document.getElementById("card-image-url");
+const cardImageFile = document.getElementById("card-image-file");
+const cardImageUpload = document.getElementById("card-image-upload");
+const cardImageClear = document.getElementById("card-image-clear");
+
 const fields = {
   name: cardForm.querySelector("[name='name']")
 };
@@ -61,6 +74,8 @@ const state = {
   template: null,
   activeNode: null,
   activeField: null,
+  activeCardField: null,
+  cardFieldValues: {},
   previewUrl: null,
   templatePreviewUrl: null
 };
@@ -162,50 +177,20 @@ const resetForm = () => {
   cardIdInput.placeholder = "auto-generated";
   cardPreview.src = "";
   state.currentCard = null;
+  state.activeCardField = null;
+  state.cardFieldValues = {};
 };
 
 const populateForm = (card) => {
   fields.name.value = card.name;
   cardIdInput.value = card.id;
-  const values = card.fields ?? {};
-  Object.entries(values).forEach(([key, value]) => {
-    const input = dynamicFields.querySelector(`[data-field='${key}']`);
-    if (input) {
-      input.value = value;
-      
-      // If this is an image field, also update the URL input and preview
-      const container = input.closest('.image-field');
-      if (container) {
-        const urlInput = container.querySelector('.image-field__url');
-        const preview = container.querySelector('.image-field__preview');
-        
-        if (value) {
-          // Check if it's a data URL or regular URL
-          if (value.startsWith('data:')) {
-            urlInput.value = '[Uploaded Image]';
-          } else {
-            urlInput.value = value;
-          }
-          preview.src = value;
-          preview.style.display = "block";
-        } else {
-          urlInput.value = "";
-          preview.style.display = "none";
-        }
-      }
-    }
-  });
+  state.cardFieldValues = card.fields ?? {};
 };
 
 const formToCard = () => {
-  const fieldsMap = {};
-  dynamicFields.querySelectorAll("[data-field]").forEach((input) => {
-    fieldsMap[input.dataset.field] = input.value.trim();
-  });
-
   return {
     name: fields.name.value.trim(),
-    fields: fieldsMap
+    fields: state.cardFieldValues
   };
 };
 
@@ -270,6 +255,7 @@ const selectCard = (cardId) => {
   state.currentCard = card;
   populateForm(card);
   renderCards();
+  renderCardFieldBadges();
   refreshPreviewFromCard(card);
 };
 
@@ -303,6 +289,7 @@ const deleteGame = async () => {
 const createCard = () => {
   resetForm();
   renderCards();
+  renderCardFieldBadges();
   setStatus("New card draft ready.");
 };
 
@@ -588,6 +575,7 @@ const renderTemplate = () => {
   renderNodeList();
   renderFieldBadges();
   renderDynamicFields();
+  renderCardFieldBadges();
   updateControlPanel();
   updateTemplatePreview();
 };
@@ -872,6 +860,130 @@ const renderDynamicFields = () => {
         }
       }
     }
+  });
+};
+
+const renderCardFieldBadges = () => {
+  cardFieldBadges.innerHTML = "";
+  cardControlLabel.textContent = "Select a field to edit.";
+  cardControlBody.hidden = true;
+
+  if (!state.template) return;
+
+  const fieldsMap = new Map();
+  collectItemFieldsWithTypes(state.template.root, fieldsMap);
+  
+  fieldsMap.forEach((fieldType, fieldId) => {
+    if (fieldId === "name") return;
+    
+    const badge = document.createElement("button");
+    badge.className = `badge ${state.activeCardField === fieldId ? "is-active" : ""}`;
+    badge.textContent = fieldId;
+    badge.onclick = () => {
+      state.activeCardField = fieldId;
+      renderCardFieldBadges();
+      updateCardFieldControlPanel(fieldId, fieldType);
+    };
+    cardFieldBadges.appendChild(badge);
+  });
+};
+
+const updateCardFieldControlPanel = (fieldId, fieldType) => {
+  if (!fieldId) {
+    cardControlBody.hidden = true;
+    cardControlLabel.textContent = "Select a field to edit.";
+    return;
+  }
+
+  cardControlLabel.textContent = fieldId;
+  cardControlBody.hidden = false;
+
+  const currentValue = state.cardFieldValues[fieldId] || "";
+
+  if (fieldType === "image") {
+    // Show image controls
+    cardControlText.hidden = true;
+    cardControlImage.hidden = false;
+
+    // Set current value
+    if (currentValue) {
+      if (currentValue.startsWith('data:')) {
+        cardImageUrl.value = '[Uploaded Image]';
+      } else {
+        cardImageUrl.value = currentValue;
+      }
+      cardImagePreview.src = currentValue;
+      cardImagePreview.style.display = "block";
+    } else {
+      cardImageUrl.value = "";
+      cardImagePreview.style.display = "none";
+    }
+  } else {
+    // Show text controls (default for text fields)
+    cardControlText.hidden = false;
+    cardControlImage.hidden = true;
+    cardControlTextarea.value = currentValue;
+  }
+};
+
+const bindCardFieldEvents = () => {
+  // Textarea input handler
+  cardControlTextarea.addEventListener("input", () => {
+    if (!state.activeCardField) return;
+    state.cardFieldValues[state.activeCardField] = cardControlTextarea.value.trim();
+    autoUpdatePreview();
+  });
+
+  // Image URL input handler
+  cardImageUrl.addEventListener("input", () => {
+    if (!state.activeCardField) return;
+    const url = cardImageUrl.value.trim();
+    state.cardFieldValues[state.activeCardField] = url;
+    if (url && !url.startsWith('[')) {
+      cardImagePreview.src = url;
+      cardImagePreview.style.display = "block";
+    } else {
+      cardImagePreview.style.display = "none";
+    }
+    autoUpdatePreview();
+  });
+
+  // Image file upload handler
+  cardImageUpload.addEventListener("click", () => {
+    cardImageFile.click();
+  });
+
+  cardImageFile.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !state.activeCardField) return;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target.result;
+        state.cardFieldValues[state.activeCardField] = dataUrl;
+        cardImageUrl.value = '[Uploaded Image]';
+        cardImagePreview.src = dataUrl;
+        cardImagePreview.style.display = "block";
+        autoUpdatePreview();
+      };
+      reader.onerror = () => {
+        setStatus(`Failed to read file: ${file.name}`);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setStatus(`Error loading file: ${err.message}`);
+    }
+  });
+
+  // Image clear handler
+  cardImageClear.addEventListener("click", () => {
+    if (!state.activeCardField) return;
+    state.cardFieldValues[state.activeCardField] = "";
+    cardImageUrl.value = "";
+    cardImagePreview.style.display = "none";
+    cardImageFile.value = "";
+    autoUpdatePreview();
   });
 };
 
@@ -1500,13 +1612,14 @@ cardForm.addEventListener("submit", (event) => {
 // Use event delegation for automatic preview updates on all form inputs
 cardForm.addEventListener("input", (event) => {
   const target = event.target;
-  // Check if the input is the name field or a dynamic field
-  if (target === fields.name || target.hasAttribute('data-field') || target.classList.contains('image-field__url')) {
+  // Check if the input is the name field
+  if (target === fields.name) {
     autoUpdatePreview();
   }
 });
 
 bindControlEvents();
+bindCardFieldEvents();
 const boot = async () => {
   try {
     storage = createStorage();
