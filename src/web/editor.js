@@ -1,5 +1,5 @@
 import { createStorage } from "./storage.js";
-import { injectDebugLabel, renderCardSvg, renderTemplateSvg } from "./render.js";
+import { renderCardSvg, renderTemplateSvg } from "./render.js";
 
 const statusEl = document.getElementById("status");
 const currentGameEl = document.getElementById("current-game");
@@ -210,9 +210,7 @@ const previewDraft = async () => {
   try {
     const card = formToCard();
     sanitizeTemplate(state.template);
-    const debugAttach = getDebugAttachInfo() ?? { note: "no-item-selected" };
-    const baseSvg = renderCardSvg(card, state.template, { debug: true });
-    const svg = injectDebugLabel(baseSvg, debugAttach);
+    const svg = renderCardSvg(card, state.template, { debug: false });
     setPreviewImage(svg, cardPreview, "previewUrl");
     setStatus("Preview updated.");
   } catch (err) {
@@ -1495,19 +1493,6 @@ const reparentNode = (nodeId, nodeType, newParentId) => {
   }
   
   return true;
-};
-
-const getDebugAttachInfo = () => {
-  if (!state.activeNode || state.activeNode.type !== "item") return null;
-  const node = findItemById(state.template.root, state.activeNode.id);
-  if (!node) return null;
-  return {
-    id: node.id,
-    targetType: node.attach.targetType,
-    targetId: node.attach.targetId,
-    attachAnchor: node.attach.anchor,
-    itemAnchor: node.anchor
-  };
 };
 
 const findNodeLocation = (section, active) => {
