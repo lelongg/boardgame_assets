@@ -1,5 +1,5 @@
 import { createStorage } from "./storage.js";
-import { injectDebugLabel, renderCardSvg, renderTemplateSvg } from "./render.js";
+import { renderCardSvg, renderTemplateSvg } from "./render.js";
 
 const statusEl = document.getElementById("status");
 const currentGameEl = document.getElementById("current-game");
@@ -12,7 +12,6 @@ const deleteGameButton = document.getElementById("delete-game");
 const newCardButton = document.getElementById("new-card");
 const saveCardButton = document.getElementById("save-card");
 const deleteCardButton = document.getElementById("delete-card");
-const previewCardButton = document.getElementById("preview-card");
 const cardForm = document.getElementById("card-form");
 const cardPreview = document.getElementById("card-preview");
 const cardMeta = document.getElementById("card-meta");
@@ -202,22 +201,8 @@ const setPreviewImage = (svg, target, key) => {
 
 const refreshPreviewFromCard = (card) => {
   if (!state.template) return;
-  const svg = renderCardSvg(card, state.template);
+  const svg = renderCardSvg(card, state.template, { debug: false });
   setPreviewImage(svg, cardPreview, "previewUrl");
-};
-
-const previewDraft = async () => {
-  try {
-    const card = formToCard();
-    sanitizeTemplate(state.template);
-    const debugAttach = getDebugAttachInfo() ?? { note: "no-item-selected" };
-    const baseSvg = renderCardSvg(card, state.template, { debug: true });
-    const svg = injectDebugLabel(baseSvg, debugAttach);
-    setPreviewImage(svg, cardPreview, "previewUrl");
-    setStatus("Preview updated.");
-  } catch (err) {
-    setStatus(`Preview failed: ${err.message}`);
-  }
 };
 
 const loadGame = async () => {
@@ -308,6 +293,11 @@ const saveCard = async () => {
   // Use custom card ID if provided, otherwise let storage generate one
   const customId = cardIdInput.value.trim();
   
+  // Update button state to show saving
+  const originalText = saveCardButton.textContent;
+  saveCardButton.disabled = true;
+  saveCardButton.textContent = "Saving...";
+  
   try {
     let saved;
     if (state.currentCard) {
@@ -326,8 +316,17 @@ const saveCard = async () => {
     populateForm(saved);
     refreshPreviewFromCard(saved);
     setStatus("Card saved.");
+    
+    // Show success state briefly
+    saveCardButton.textContent = "Saved!";
+    setTimeout(() => {
+      saveCardButton.textContent = originalText;
+      saveCardButton.disabled = false;
+    }, 1500);
   } catch (err) {
     setStatus(`Save failed: ${err.message}`);
+    saveCardButton.textContent = originalText;
+    saveCardButton.disabled = false;
   }
 };
 
@@ -481,6 +480,11 @@ const updateTemplatePreview = async () => {
 };
 
 const saveTemplate = async () => {
+  // Update button state to show saving
+  const originalText = saveTemplateButton.textContent;
+  saveTemplateButton.disabled = true;
+  saveTemplateButton.textContent = "Saving...";
+  
   try {
     sanitizeTemplate(state.template);
     if (!storage) throw new Error("Storage not ready.");
@@ -488,8 +492,17 @@ const saveTemplate = async () => {
     state.template = saved;
     renderTemplate();
     setStatus("Template saved.");
+    
+    // Show success state briefly
+    saveTemplateButton.textContent = "Saved!";
+    setTimeout(() => {
+      saveTemplateButton.textContent = originalText;
+      saveTemplateButton.disabled = false;
+    }, 1500);
   } catch (err) {
     setStatus(`Template save failed: ${err.message}`);
+    saveTemplateButton.textContent = originalText;
+    saveTemplateButton.disabled = false;
   }
 };
 
@@ -1497,19 +1510,6 @@ const reparentNode = (nodeId, nodeType, newParentId) => {
   return true;
 };
 
-const getDebugAttachInfo = () => {
-  if (!state.activeNode || state.activeNode.type !== "item") return null;
-  const node = findItemById(state.template.root, state.activeNode.id);
-  if (!node) return null;
-  return {
-    id: node.id,
-    targetType: node.attach.targetType,
-    targetId: node.attach.targetId,
-    attachAnchor: node.attach.anchor,
-    itemAnchor: node.anchor
-  };
-};
-
 const findNodeLocation = (section, active) => {
   if (!active) return null;
   if (active.type === "section") {
@@ -1584,7 +1584,6 @@ const disconnectDrive = async () => {
 renameGameButton.addEventListener("click", renameGame);
 deleteGameButton.addEventListener("click", deleteGame);
 newCardButton.addEventListener("click", createCard);
-previewCardButton.addEventListener("click", previewDraft);
 saveCardButton.addEventListener("click", saveCard);
 deleteCardButton.addEventListener("click", deleteCard);
 addSectionButton.addEventListener("click", createSection);
