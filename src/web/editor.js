@@ -202,7 +202,7 @@ const setPreviewImage = (svg, target, key) => {
 
 const refreshPreviewFromCard = (card) => {
   if (!state.template) return;
-  const svg = renderCardSvg(card, state.template);
+  const svg = renderCardSvg(card, state.template, { debug: false });
   setPreviewImage(svg, cardPreview, "previewUrl");
 };
 
