@@ -24,7 +24,6 @@
           {
             "id": "item-1767144886268",
             "name": "New Item 1",
-            "fieldId": "field-1",
             "anchor": {
               "x": 0,
               "y": 0.5
@@ -39,6 +38,7 @@
             },
             "widthPct": 63,
             "heightPct": 100,
+            "fieldId": "field-1",
             "fontSize": 20,
             "align": "left",
             "font": "body"
@@ -46,14 +46,13 @@
           {
             "id": "item-1767144925880",
             "name": "New Item 2",
-            "fieldId": "field-2",
             "anchor": {
               "x": 0,
               "y": 0.5
             },
             "attach": {
-              "targetType": "item",
-              "targetId": "item-1767144925880",
+              "targetType": "section",
+              "targetId": "root",
               "anchor": {
                 "x": 1,
                 "y": 0.5
@@ -61,6 +60,7 @@
             },
             "widthPct": 38,
             "heightPct": 77,
+            "fieldId": "field-2",
             "fontSize": 20,
             "align": "left",
             "font": "body"
