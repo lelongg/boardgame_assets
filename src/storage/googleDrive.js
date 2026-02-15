@@ -518,6 +518,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     } catch (err) {
       // If not signed in or any other error, return empty array
       // User can sign in to load their games
+      console.warn('Failed to list games:', err);
       return [];
     }
   };
