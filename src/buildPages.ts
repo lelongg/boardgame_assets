@@ -50,7 +50,12 @@ if (googleClientId && googleClientId !== "YOUR_GOOGLE_CLIENT_ID") {
     }
   }
 } else {
-  console.warn("Warning: GOOGLE_CLIENT_ID environment variable not set. Google Drive integration will not work.");
+  console.warn("\n⚠️  WARNING: GOOGLE_CLIENT_ID environment variable not set!");
+  console.warn("   Google Drive integration will not work in the deployed editor.");
+  console.warn("   To fix this:");
+  console.warn("   1. Go to GitHub repository Settings > Secrets and variables > Actions");
+  console.warn("   2. Add a new secret named 'GOOGLE_CLIENT_ID' with your OAuth client ID");
+  console.warn("   3. Re-run the deployment workflow\n");
 }
 
 // Copy Vite build output to docs/editor
@@ -69,6 +74,15 @@ const copyDir = (source: string, target: string) => {
 
 console.log("Copying React app to docs/editor/...");
 copyDir(distDir, editorDir);
+
+// Copy favicon to docs root and editor directories
+const publicDir = path.resolve("public");
+const faviconPath = path.join(publicDir, "favicon.svg");
+if (fs.existsSync(faviconPath)) {
+  fs.copyFileSync(faviconPath, path.join(docsDir, "favicon.svg"));
+  fs.copyFileSync(faviconPath, path.join(editorDir, "favicon.svg"));
+  console.log("Copied favicon to docs/ and docs/editor/");
+}
 
 // Create 404.html for GitHub Pages SPA routing
 // This redirects all 404s under /editor/ to the React app
@@ -153,6 +167,7 @@ const indexHtml = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Boardgame Asset Gallery</title>
+    <link rel="icon" type="image/svg+xml" href="/boardgame_assets/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -315,6 +330,7 @@ for (const game of games) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(game.name)} - Boardgame Assets</title>
+    <link rel="icon" type="image/svg+xml" href="/boardgame_assets/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -451,6 +467,7 @@ for (const game of games) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Print Sheet - ${escapeHtml(game.name)}</title>
+    <link rel="icon" type="image/svg+xml" href="/boardgame_assets/favicon.svg" />
     <style>
       @page { margin: 10mm; }
       body {
