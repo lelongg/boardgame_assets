@@ -4,16 +4,42 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsx src/build.ts",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:legacy": "tsx src/build.ts",
     "build:pages": "tsx src/buildPages.ts",
     "watch": "tsx watch src/build.ts",
     "clean": "node src/clean.js",
-    "serve": "tsx src/server.ts",
+    "serve": "vite",
+    "serve:api": "tsx src/server.ts 5174",
     "serve:watch": "tsx watch src/server.ts",
+    "preview": "vite preview",
     "test": "node --test --import tsx test"
   },
   "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "autoprefixer": "^10.4.24",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
     "tsx": "^4.15.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.564.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.0",
+    "tailwind-merge": "^3.4.1"
   }
 }

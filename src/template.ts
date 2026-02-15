@@ -1,6 +1,4 @@
-import type { CardTemplate } from "./types.js";
-
-export const defaultTemplate = (): CardTemplate => ({
+export const defaultTemplate = () => ({
   version: 2,
   id: "default",
   name: "Default",
