@@ -36,9 +36,9 @@ export const createGoogleDriveStorage = (options = {}) => {
   const folderId = options.folderId ? String(options.folderId) : "";
   const defaultTemplate = options.defaultTemplate;
 
-  if (!clientId || clientId.includes("YOUR_GOOGLE_CLIENT_ID")) {
-    throw new Error("Missing Google OAuth client ID in src/web/config.js.");
-  }
+  // Check if client ID is properly configured (but don't throw yet)
+  const isConfigured = clientId && !clientId.includes("YOUR_GOOGLE_CLIENT_ID");
+  
   if (typeof defaultTemplate !== "function") {
     throw new Error("Missing default template factory.");
   }
@@ -98,6 +98,12 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const init = async () => {
     if (initialized) return;
+    if (!isConfigured) {
+      // Don't throw - just mark as initialized but not configured
+      // Error will be shown when user tries to actually use Google Drive
+      initialized = true;
+      return;
+    }
     await loadGoogleScript();
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
@@ -131,6 +137,9 @@ export const createGoogleDriveStorage = (options = {}) => {
     // Ensure init has been called before signIn is used
     if (!initialized) {
       throw new Error("Google Drive storage not initialized. Call init() during application startup.");
+    }
+    if (!isConfigured) {
+      throw new Error("Google Drive is not configured. The GOOGLE_CLIENT_ID environment variable was not set during build. Please contact the site administrator.");
     }
     // Call requestToken immediately to maintain user gesture context for popup
     await requestToken("consent");
@@ -166,6 +175,9 @@ export const createGoogleDriveStorage = (options = {}) => {
     // Unlike signIn(), this uses silent "none" prompt which doesn't open a popup
     if (!initialized) {
       await init();
+    }
+    if (!isConfigured) {
+      throw new Error("Google Drive is not configured. The GOOGLE_CLIENT_ID environment variable was not set during build.");
     }
     if (isAuthorized()) return accessToken;
     try {
@@ -457,6 +469,10 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const listGames = async () => {
+    if (!isConfigured) {
+      // Return empty array if not configured - user needs to sign in first
+      return [];
+    }
     const parentFolder = folderId || "root";
     const folders = await listFoldersInParent(parentFolder);
     const games = [];
