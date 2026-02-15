@@ -26,7 +26,7 @@ const slugify = (value) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
-const escapeQueryValue = (value) => String(value).replace(/'/g, "\\'");
+const escapeQueryValue = (value) => String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
 const toIsoNow = () => new Date().toISOString();
 
