@@ -23,32 +23,63 @@ console.log("Building React app...");
 execSync("npm run build", { stdio: "inherit" });
 
 // Inject Google OAuth client ID into built files
-const googleClientId = process.env.GOOGLE_CLIENT_ID || "";
+const googleClientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+
+// Validate the client ID
 if (googleClientId && googleClientId !== "YOUR_GOOGLE_CLIENT_ID") {
+  // Basic validation: Google OAuth client IDs are typically long strings ending in .apps.googleusercontent.com
+  const looksValid = googleClientId.length > 20 && 
+                     (googleClientId.endsWith('.apps.googleusercontent.com') || 
+                      googleClientId.includes('-'));
+  
+  if (!looksValid) {
+    console.error("\n❌ ERROR: GOOGLE_CLIENT_ID appears to be invalid!");
+    console.error(`   Client ID length: ${googleClientId.length} characters`);
+    console.error(`   Expected format: XXXX-XXXX.apps.googleusercontent.com`);
+    console.error("   Please check that the secret is set correctly in GitHub Actions.\n");
+    process.exit(1);
+  }
+  
   console.log("Injecting Google OAuth client ID...");
+  console.log(`  Client ID: ${googleClientId.substring(0, 20)}...${googleClientId.substring(googleClientId.length - 20)} (${googleClientId.length} chars)`);
+  
   const assetsDir = path.join(distDir, "assets");
   
   // Verify assets directory exists
   if (!fs.existsSync(assetsDir)) {
-    console.warn("Warning: assets directory not found. Skipping client ID injection.");
-  } else {
-    const jsFiles = fs.readdirSync(assetsDir).filter(f => f.endsWith(".js"));
+    console.error("❌ ERROR: assets directory not found. Cannot inject client ID.");
+    console.error("   This indicates the Vite build failed or produced unexpected output.");
+    process.exit(1);
+  }
+  
+  const jsFiles = fs.readdirSync(assetsDir).filter(f => f.endsWith(".js"));
+  let injectedCount = 0;
+  
+  for (const jsFile of jsFiles) {
+    const filePath = path.join(assetsDir, jsFile);
+    let content = fs.readFileSync(filePath, "utf8");
+    const originalContent = content;
     
-    for (const jsFile of jsFiles) {
-      const filePath = path.join(assetsDir, jsFile);
-      let content = fs.readFileSync(filePath, "utf8");
-      const originalContent = content;
-      
-      // Replace the placeholder with the actual client ID
-      content = content.replace(/YOUR_GOOGLE_CLIENT_ID/g, googleClientId);
-      
-      // Only write if content changed
-      if (content !== originalContent) {
-        fs.writeFileSync(filePath, content, "utf8");
-        console.log(`  ✓ Injected client ID into ${jsFile}`);
-      }
+    // Replace the placeholder with the actual client ID
+    content = content.replace(/YOUR_GOOGLE_CLIENT_ID/g, googleClientId);
+    
+    // Only write if content changed
+    if (content !== originalContent) {
+      fs.writeFileSync(filePath, content, "utf8");
+      const replacementCount = (originalContent.match(/YOUR_GOOGLE_CLIENT_ID/g) || []).length;
+      console.log(`  ✓ Injected client ID into ${jsFile} (${replacementCount} replacement${replacementCount !== 1 ? 's' : ''})`);
+      injectedCount++;
     }
   }
+  
+  if (injectedCount === 0) {
+    console.error("\n❌ ERROR: No files were modified during client ID injection!");
+    console.error("   The placeholder 'YOUR_GOOGLE_CLIENT_ID' was not found in any built files.");
+    console.error("   This could indicate a build configuration issue.");
+    process.exit(1);
+  }
+  
+  console.log(`  ✓ Successfully injected client ID into ${injectedCount} file${injectedCount !== 1 ? 's' : ''}\n`);
 } else {
   console.warn("\n⚠️  WARNING: GOOGLE_CLIENT_ID environment variable not set!");
   console.warn("   Google Drive integration will not work in the deployed editor.");
