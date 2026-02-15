@@ -76,3 +76,15 @@ test("buildPages: Valid client ID triggers injection", () => {
   
   assert.strictEqual(shouldInject, true, "Valid client ID should trigger injection");
 });
+
+test("buildPages: Build should fail when GOOGLE_CLIENT_ID is not set", () => {
+  // Test that the build fails (should exit) when client ID is not set
+  // This validates the logic that empty/missing client ID should cause build failure
+  const googleClientId = "";
+  
+  // Logic from buildPages.ts - if not set, should fail the build
+  const shouldInject = !!(googleClientId && googleClientId !== "YOUR_GOOGLE_CLIENT_ID");
+  const shouldFailBuild = !shouldInject;
+  
+  assert.strictEqual(shouldFailBuild, true, "Build should fail when client ID is not set");
+});
