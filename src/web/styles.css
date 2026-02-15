@@ -269,6 +269,31 @@ body {
   flex-wrap: wrap;
 }
 
+.panel-title > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mode-toggle {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.mode-toggle__button {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.mode-toggle__button.is-active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
 .kicker {
   text-transform: uppercase;
   letter-spacing: 3px;
@@ -454,6 +479,17 @@ textarea {
 
 .image-field__url {
   width: 100%;
+  margin-top: 8px;
+}
+
+.image-field__upload-file {
+  display: none;
+}
+
+.image-field__actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
 }
 
 .meta {
