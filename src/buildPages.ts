@@ -41,7 +41,7 @@ if (googleClientId && googleClientId !== "YOUR_GOOGLE_CLIENT_ID") {
   }
   
   console.log("Injecting Google OAuth client ID...");
-  console.log(`  Client ID: ${googleClientId.substring(0, 20)}...${googleClientId.substring(googleClientId.length - 20)} (${googleClientId.length} chars)`);
+  console.log(`  Client ID length: ${googleClientId.length} characters`);
   
   const assetsDir = path.join(distDir, "assets");
   

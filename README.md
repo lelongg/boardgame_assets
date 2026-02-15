@@ -90,7 +90,7 @@ This error means the OAuth client ID wasn't properly injected during the build. 
 1. Verify the secret is set correctly in GitHub Actions:
    - Go to Settings → Secrets and variables → Actions
    - Ensure `GOOGLE_CLIENT_ID` exists and contains your OAuth client ID
-   - The value should be 60-80 characters ending in `.apps.googleusercontent.com`
+   - The value should be 20+ characters, typically 60-80 characters ending in `.apps.googleusercontent.com`
 
 2. Re-run the deployment:
    - Go to Actions tab
