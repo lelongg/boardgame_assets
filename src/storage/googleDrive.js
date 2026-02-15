@@ -473,46 +473,53 @@ export const createGoogleDriveStorage = (options = {}) => {
       // Return empty array if not configured - user needs to sign in first
       return [];
     }
-    const parentFolder = folderId || "root";
-    const folders = await listFoldersInParent(parentFolder);
-    const games = [];
-    const seenGameIds = new Set();
     
-    for (const folder of folders) {
-      if (folder.appProperties?.type === "game-folder") {
-        const gameId = folder.appProperties.gameId;
-        folderCache.set(`game:${gameId}`, folder.id);
-        
-        // Look for game.json in the folder
-        const files = await listFilesInFolder(folder.id);
-        const gameFile = files.find((f) => f.name === "game.json");
-        
-        if (gameFile) {
-          const meta = await getFileContent(gameFile.id);
-          if (meta?.id) {
-            games.push(meta);
-            seenGameIds.add(meta.id);
-            cacheFile("game", meta.id, "", gameFile.id);
-            gameCache.set(meta.id, { fileId: gameFile.id, meta });
+    try {
+      const parentFolder = folderId || "root";
+      const folders = await listFoldersInParent(parentFolder);
+      const games = [];
+      const seenGameIds = new Set();
+      
+      for (const folder of folders) {
+        if (folder.appProperties?.type === "game-folder") {
+          const gameId = folder.appProperties.gameId;
+          folderCache.set(`game:${gameId}`, folder.id);
+          
+          // Look for game.json in the folder
+          const files = await listFilesInFolder(folder.id);
+          const gameFile = files.find((f) => f.name === "game.json");
+          
+          if (gameFile) {
+            const meta = await getFileContent(gameFile.id);
+            if (meta?.id) {
+              games.push(meta);
+              seenGameIds.add(meta.id);
+              cacheFile("game", meta.id, "", gameFile.id);
+              gameCache.set(meta.id, { fileId: gameFile.id, meta });
+            }
           }
         }
       }
-    }
-    
-    // Also check for legacy flat structure games for backward compatibility
-    const legacyFiles = await listFiles({ type: "game" });
-    for (const file of legacyFiles) {
-      const meta = await getFileContent(file.id);
-      if (meta?.id && !seenGameIds.has(meta.id)) {
-        games.push(meta);
-        seenGameIds.add(meta.id);
-        cacheFile("game", meta.id, "", file.id);
-        gameCache.set(meta.id, { fileId: file.id, meta });
+      
+      // Also check for legacy flat structure games for backward compatibility
+      const legacyFiles = await listFiles({ type: "game" });
+      for (const file of legacyFiles) {
+        const meta = await getFileContent(file.id);
+        if (meta?.id && !seenGameIds.has(meta.id)) {
+          games.push(meta);
+          seenGameIds.add(meta.id);
+          cacheFile("game", meta.id, "", file.id);
+          gameCache.set(meta.id, { fileId: file.id, meta });
+        }
       }
+      
+      games.sort((a, b) => a.name.localeCompare(b.name));
+      return games;
+    } catch (err) {
+      // If not signed in or any other error, return empty array
+      // User can sign in to load their games
+      return [];
     }
-    
-    games.sort((a, b) => a.name.localeCompare(b.name));
-    return games;
   };
 
   const createGame = async (name) => {

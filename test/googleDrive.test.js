@@ -620,9 +620,7 @@ test("Google Drive storage fetch error handling", async () => {
   await storage.init();
   await storage.signIn();
 
-  await assert.rejects(
-    async () => await storage.listGames(),
-    /Internal Server Error/,
-    "Should throw error on failed fetch"
-  );
+  // listGames() now returns empty array on errors to prevent UI crashes
+  const games = await storage.listGames();
+  assert.deepStrictEqual(games, [], "Should return empty array on fetch error");
 });
