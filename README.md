@@ -71,7 +71,7 @@ The editor can run as a static site and save data directly to Google Drive (no b
    - Click "Add secret"
 
 5. **Deploy to GitHub Pages**:
-   - Push any commit to the `main` branch
+   - Push any commit to trigger the workflow (configured to run on pushes to `main` branch)
    - The GitHub Actions workflow will automatically build and deploy
    - The editor will be available at `https://<username>.github.io/<repo-name>/editor/`
 
