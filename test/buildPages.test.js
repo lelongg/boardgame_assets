@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import fs from "node:fs";
-import path from "node:path";
 
 test("buildPages: Google Client ID injection logic", () => {
   // Test the injection logic that replaces YOUR_GOOGLE_CLIENT_ID with actual value
