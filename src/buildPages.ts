@@ -81,12 +81,13 @@ if (googleClientId && googleClientId !== "YOUR_GOOGLE_CLIENT_ID") {
   
   console.log(`  ✓ Successfully injected client ID into ${injectedCount} file${injectedCount !== 1 ? 's' : ''}\n`);
 } else {
-  console.warn("\n⚠️  WARNING: GOOGLE_CLIENT_ID environment variable not set!");
-  console.warn("   Google Drive integration will not work in the deployed editor.");
-  console.warn("   To fix this:");
-  console.warn("   1. Go to GitHub repository Settings > Secrets and variables > Actions");
-  console.warn("   2. Add a new secret named 'GOOGLE_CLIENT_ID' with your OAuth client ID");
-  console.warn("   3. Re-run the deployment workflow\n");
+  console.error("\n❌ ERROR: GOOGLE_CLIENT_ID environment variable not set!");
+  console.error("   Google Drive integration is required for the deployed editor.");
+  console.error("   To fix this:");
+  console.error("   1. Go to GitHub repository Settings > Secrets and variables > Actions");
+  console.error("   2. Add a new secret named 'GOOGLE_CLIENT_ID' with your OAuth client ID");
+  console.error("   3. Re-run the deployment workflow\n");
+  process.exit(1);
 }
 
 // Copy Vite build output to docs/editor
