@@ -19,11 +19,16 @@ const addSectionButton = document.getElementById("add-section");
 const addItemButton = document.getElementById("add-item");
 const saveTemplateButton = document.getElementById("save-template");
 const nodeList = document.getElementById("node-list");
-const templatePreview = document.getElementById("template-preview");
 const dynamicFields = document.getElementById("dynamic-fields");
 const fieldBadges = document.getElementById("field-badges");
 const connectButton = document.getElementById("connect-drive");
 const disconnectButton = document.getElementById("disconnect-drive");
+
+// Mode toggle elements
+const modeCardButton = document.getElementById("mode-card");
+const modeLayoutButton = document.getElementById("mode-layout");
+const cardModeContent = document.getElementById("card-mode-content");
+const layoutModeContent = document.getElementById("layout-mode-content");
 
 const controlLabel = document.getElementById("control-label");
 const controlBody = document.getElementById("control-body");
@@ -76,7 +81,8 @@ const state = {
   activeCardField: null,
   cardFieldValues: {},
   previewUrl: null,
-  templatePreviewUrl: null
+  templatePreviewUrl: null,
+  editMode: "card" // "card" or "layout"
 };
 
 const CARD_PRESETS = {
@@ -197,6 +203,43 @@ const setPreviewImage = (svg, target, key) => {
   if (state[key]) URL.revokeObjectURL(state[key]);
   state[key] = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
   target.src = state[key];
+};
+
+const switchMode = (mode) => {
+  state.editMode = mode;
+  
+  // Update toggle buttons
+  modeCardButton.classList.toggle("is-active", mode === "card");
+  modeLayoutButton.classList.toggle("is-active", mode === "layout");
+  
+  // Show/hide mode content
+  cardModeContent.hidden = mode !== "card";
+  layoutModeContent.hidden = mode !== "layout";
+  
+  // Show/hide action buttons
+  document.querySelectorAll('[data-mode="card"]').forEach(el => {
+    el.hidden = mode !== "card";
+  });
+  document.querySelectorAll('[data-mode="layout"]').forEach(el => {
+    el.hidden = mode !== "layout";
+  });
+  
+  // Update preview based on mode
+  updatePreview();
+};
+
+const updatePreview = () => {
+  if (!state.template) return;
+  
+  // Always show card preview (either current card or first card)
+  let card = state.currentCard;
+  if (!card && state.cards.length > 0) {
+    card = state.cards[0];
+  }
+  
+  if (card) {
+    refreshPreviewFromCard(card);
+  }
 };
 
 const refreshPreviewFromCard = (card) => {
@@ -466,14 +509,9 @@ const createItemByType = (type, id, parentSection) => {
 const updateTemplatePreview = async () => {
   try {
     sanitizeTemplate(state.template);
-    const svg = renderTemplateSvg(state.template, state.activeNode);
-    setPreviewImage(svg, templatePreview, "templatePreviewUrl");
     
-    // Also update card preview if a card is selected
-    if (state.currentCard) {
-      const card = formToCard();
-      refreshPreviewFromCard(card);
-    }
+    // Always update card preview (not template preview)
+    updatePreview();
   } catch (err) {
     setStatus(`Template preview failed: ${err.message}`);
   }
@@ -1577,7 +1615,6 @@ const disconnectDrive = async () => {
   gameMetaEl.textContent = "";
   cardsList.innerHTML = "<p class=\"empty\">Sign in to load cards.</p>";
   cardPreview.src = "";
-  templatePreview.src = "";
   setStatus("Disconnected.");
 };
 
@@ -1607,6 +1644,10 @@ cardForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveCard();
 });
+
+// Mode toggle event listeners
+modeCardButton.addEventListener("click", () => switchMode("card"));
+modeLayoutButton.addEventListener("click", () => switchMode("layout"));
 
 // Use event delegation for automatic preview updates on all form inputs
 cardForm.addEventListener("input", (event) => {
