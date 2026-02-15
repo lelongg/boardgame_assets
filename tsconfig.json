@@ -22,6 +22,6 @@
     }
   },
   "include": ["src"],
-  "exclude": ["src/build.ts", "src/buildPages.ts", "src/server.ts", "src/clean.js", "src/normalizeExport.js"],
+  "exclude": ["src/build*.ts", "src/server.ts", "src/*.js"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
