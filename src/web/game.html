@@ -99,12 +99,12 @@
                       <textarea id="card-control-textarea" rows="3"></textarea>
                     </div>
                     <div class="control-image" id="card-control-image" hidden>
-                      <img class="image-field__preview" id="card-image-preview" style="max-width: 100%; max-height: 200px; display: none; margin-top: 8px; border: 1px solid #d7cdbd; border-radius: 8px;" />
-                      <input type="text" id="card-image-url" placeholder="Enter image URL or upload a file" style="margin-top: 8px;" />
-                      <input type="file" id="card-image-file" accept="image/*" style="display: none;" />
-                      <div style="margin-top: 8px;">
+                      <img class="image-field__preview" id="card-image-preview" />
+                      <input type="text" class="image-field__url" id="card-image-url" placeholder="Enter image URL or upload a file" />
+                      <input type="file" class="image-field__upload-file" id="card-image-file" accept="image/*" />
+                      <div class="image-field__actions">
                         <button type="button" id="card-image-upload" class="button button--ghost">Upload Image</button>
-                        <button type="button" id="card-image-clear" class="button button--ghost" style="margin-left: 8px;">Clear</button>
+                        <button type="button" id="card-image-clear" class="button button--ghost">Clear</button>
                       </div>
                     </div>
                   </div>

@@ -479,6 +479,17 @@ textarea {
 
 .image-field__url {
   width: 100%;
+  margin-top: 8px;
+}
+
+.image-field__upload-file {
+  display: none;
+}
+
+.image-field__actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
 }
 
 .meta {

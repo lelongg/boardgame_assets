@@ -231,12 +231,13 @@ const switchMode = (mode) => {
 const updatePreview = () => {
   if (!state.template) return;
   
-  // Always show card preview (either current card or first card)
+  // Always show card preview (current card, first card, or no preview if no cards exist)
   let card = state.currentCard;
   if (!card && state.cards.length > 0) {
     card = state.cards[0];
   }
   
+  // If no card is available, the preview remains unchanged (previous preview stays visible)
   if (card) {
     refreshPreviewFromCard(card);
   }
