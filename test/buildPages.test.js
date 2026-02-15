@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 test("buildPages: Google Client ID injection logic", () => {
   // Test the injection logic that replaces YOUR_GOOGLE_CLIENT_ID with actual value
+  // Note: The test client ID below is just a test fixture string, not used for URL validation
   
   const mockJsContent = `
     const config = {
@@ -16,6 +17,7 @@ test("buildPages: Google Client ID injection logic", () => {
     };
   `;
   
+  // Test fixture - not used for security-critical operations
   const testClientId = "123456789-abc.apps.googleusercontent.com";
   const injectedContent = mockJsContent.replace(/YOUR_GOOGLE_CLIENT_ID/g, testClientId);
   
