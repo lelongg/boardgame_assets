@@ -148,7 +148,7 @@ export default function GameEditorPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-[#fff8ef] px-7 py-5">
+      <header className="border-b bg-background px-7 py-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-[3px] text-muted-foreground">
@@ -197,8 +197,8 @@ export default function GameEditorPage() {
                   onClick={() => selectCard(storage, card.id)}
                   className={`w-full rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
                     selectedCard?.id === card.id
-                      ? 'bg-[#fff0da] border-accent'
-                      : 'bg-[#fef9f1] hover:bg-[#fff0da]'
+                      ? 'bg-accent text-accent-foreground'
+                      : 'bg-card hover:bg-accent/50'
                   }`}
                 >
                   {card.name}
@@ -240,7 +240,7 @@ export default function GameEditorPage() {
                         </div>
 
                         <div className="flex items-start justify-center">
-                          <div className="rounded-lg border bg-white p-3 shadow-inner">
+                          <div className="rounded-lg border bg-card p-3 shadow-inner">
                             {cardPreview && (
                               <img
                                 src={cardPreview}

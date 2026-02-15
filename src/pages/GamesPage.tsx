@@ -72,7 +72,7 @@ export default function GamesPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-[#fff8ef] px-7 py-5">
+      <header className="border-b bg-background px-7 py-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-[3px] text-muted-foreground">
@@ -110,7 +110,7 @@ export default function GamesPage() {
                 <button
                   key={game.id}
                   onClick={() => navigate(`/game/${game.id}`)}
-                  className="w-full rounded-lg border bg-[#fef9f1] px-3 py-2.5 text-left font-medium transition-colors hover:bg-[#fff0da] hover:border-accent"
+                  className="w-full rounded-lg border bg-card px-3 py-2.5 text-left font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
                   {game.name}
                 </button>
