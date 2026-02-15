@@ -22,6 +22,37 @@ fs.mkdirSync(docsDir, { recursive: true });
 console.log("Building React app...");
 execSync("npm run build", { stdio: "inherit" });
 
+// Inject Google OAuth client ID into built files
+const googleClientId = process.env.GOOGLE_CLIENT_ID || "";
+if (googleClientId && googleClientId !== "YOUR_GOOGLE_CLIENT_ID") {
+  console.log("Injecting Google OAuth client ID...");
+  const assetsDir = path.join(distDir, "assets");
+  
+  // Verify assets directory exists
+  if (!fs.existsSync(assetsDir)) {
+    console.warn("Warning: assets directory not found. Skipping client ID injection.");
+  } else {
+    const jsFiles = fs.readdirSync(assetsDir).filter(f => f.endsWith(".js"));
+    
+    for (const jsFile of jsFiles) {
+      const filePath = path.join(assetsDir, jsFile);
+      let content = fs.readFileSync(filePath, "utf8");
+      const originalContent = content;
+      
+      // Replace the placeholder with the actual client ID
+      content = content.replace(/YOUR_GOOGLE_CLIENT_ID/g, googleClientId);
+      
+      // Only write if content changed
+      if (content !== originalContent) {
+        fs.writeFileSync(filePath, content, "utf8");
+        console.log(`  ✓ Injected client ID into ${jsFile}`);
+      }
+    }
+  }
+} else {
+  console.warn("Warning: GOOGLE_CLIENT_ID environment variable not set. Google Drive integration will not work.");
+}
+
 // Copy Vite build output to docs/editor
 const copyDir = (source: string, target: string) => {
   fs.mkdirSync(target, { recursive: true });
