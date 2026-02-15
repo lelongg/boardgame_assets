@@ -168,7 +168,7 @@ test("Google Drive storage initialization", async () => {
   );
 });
 
-test("Google Drive storage initialization without client ID throws error", async () => {
+test("Google Drive storage initialization without client ID shows error on signIn", async () => {
   createMockGoogleDrive();
 
   const { createGoogleDriveStorage } = await import(
@@ -177,22 +177,40 @@ test("Google Drive storage initialization without client ID throws error", async
 
   const defaultTemplate = () => ({ id: "default" });
 
-  assert.throws(
-    () =>
-      createGoogleDriveStorage({
-        clientId: "",
-        defaultTemplate,
-      }),
-    /Missing Google OAuth client ID/
+  // Storage creation should not throw
+  const storage1 = createGoogleDriveStorage({
+    clientId: "",
+    defaultTemplate,
+  });
+  
+  assert.ok(storage1, "Storage should be created without error");
+  
+  // Init should also not throw
+  await storage1.init();
+  
+  // But signIn should throw a helpful error
+  await assert.rejects(
+    async () => await storage1.signIn(),
+    /Google Drive is not configured/,
+    "Should throw error when trying to sign in without client ID"
   );
 
-  assert.throws(
-    () =>
-      createGoogleDriveStorage({
-        clientId: "YOUR_GOOGLE_CLIENT_ID",
-        defaultTemplate,
-      }),
-    /Missing Google OAuth client ID/
+  // Same for placeholder client ID
+  const storage2 = createGoogleDriveStorage({
+    clientId: "YOUR_GOOGLE_CLIENT_ID",
+    defaultTemplate,
+  });
+  
+  assert.ok(storage2, "Storage should be created with placeholder client ID");
+  
+  // Init should not throw
+  await storage2.init();
+  
+  // But signIn should throw
+  await assert.rejects(
+    async () => await storage2.signIn(),
+    /Google Drive is not configured/,
+    "Should throw error when trying to sign in with placeholder client ID"
   );
 });
 
@@ -602,9 +620,7 @@ test("Google Drive storage fetch error handling", async () => {
   await storage.init();
   await storage.signIn();
 
-  await assert.rejects(
-    async () => await storage.listGames(),
-    /Internal Server Error/,
-    "Should throw error on failed fetch"
-  );
+  // listGames() now returns empty array on errors to prevent UI crashes
+  const games = await storage.listGames();
+  assert.deepStrictEqual(games, [], "Should return empty array on fetch error");
 });

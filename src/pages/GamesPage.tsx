@@ -15,10 +15,15 @@ export default function GamesPage() {
 
   useEffect(() => {
     const initStorage = async () => {
-      const s = await createStorage()
-      setStorage(s)
-      setIsAuthorized(s.isAuthorized())
-      loadGames(s)
+      try {
+        const s = await createStorage()
+        setStorage(s)
+        setIsAuthorized(s.isAuthorized())
+        loadGames(s)
+      } catch (error) {
+        setStatus('Error initializing storage.')
+        console.error('Storage initialization failed:', error)
+      }
     }
     initStorage()
   }, [])
@@ -37,6 +42,10 @@ export default function GamesPage() {
 
   const handleCreateGame = async () => {
     if (!newGameName.trim()) return
+    if (!storage) {
+      setStatus('Storage not initialized.')
+      return
+    }
     try {
       setStatus('Creating game...')
       await storage.createGame(newGameName.trim())
@@ -49,6 +58,10 @@ export default function GamesPage() {
   }
 
   const handleConnectDrive = async () => {
+    if (!storage) {
+      setStatus('Storage not initialized.')
+      return
+    }
     try {
       await storage.signIn()
       setIsAuthorized(storage.isAuthorized())
@@ -60,6 +73,7 @@ export default function GamesPage() {
   }
 
   const handleDisconnect = async () => {
+    if (!storage) return
     try {
       await storage.signOut()
       setIsAuthorized(false)
