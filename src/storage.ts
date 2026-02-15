@@ -3,7 +3,7 @@ import { defaultTemplate } from "./template";
 import { createGoogleDriveStorage } from "./storage/googleDrive";
 import { createLocalFileStorage } from "./storage/localFile";
 
-const providers = {
+const providers: Record<string, typeof createGoogleDriveStorage | typeof createLocalFileStorage> = {
   googleDrive: createGoogleDriveStorage,
   localFile: createLocalFileStorage
 };
@@ -18,7 +18,7 @@ export const createStorage = async () => {
   if (!factory) {
     throw new Error(`Unknown storage provider: ${providerKey}`);
   }
-  const providerConfig = config?.storage?.[providerKey] ?? {};
+  const providerConfig = (config?.storage as Record<string, unknown>)?.[providerKey] ?? {};
   const storage = factory({ ...providerConfig, defaultTemplate });
   
   // Initialize the storage provider

@@ -1,6 +1,33 @@
 import { theme } from "./theme.js";
+import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection } from "./types.js";
 
-const escape = (value) =>
+type Rect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type LayoutResult = {
+  sections: Map<string, Rect>;
+  items: Map<string, Rect>;
+};
+
+type ItemPlacement = {
+  item: CardTemplateItem;
+  sectionId: string;
+};
+
+type RenderOptions = {
+  debug?: boolean;
+};
+
+type SelectedNode = {
+  type: "section" | "item";
+  id: string;
+};
+
+const escape = (value: unknown): string =>
   String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -13,7 +40,7 @@ const SELECTION_STROKE_WIDTH = "2.5";
 const SECTION_SELECTION_OPACITY = 0.08;
 const ITEM_SELECTION_OPACITY = 0.15;
 
-const anchorPoints = [
+const anchorPoints: AnchorPoint[] = [
   { x: 0, y: 0 },
   { x: 0.5, y: 0 },
   { x: 1, y: 0 },
@@ -25,24 +52,24 @@ const anchorPoints = [
   { x: 1, y: 1 }
 ];
 
-const textAnchorFor = (align) => {
+const textAnchorFor = (align: string): string => {
   if (align === "center") return "middle";
   if (align === "right") return "end";
   return "start";
 };
 
-const baselineFor = (anchor) => {
+const baselineFor = (anchor: AnchorPoint): string => {
   if (anchor.y === 0) return "hanging";
   if (anchor.y === 0.5) return "middle";
   return "baseline";
 };
 
-const anchorPosition = (rect, anchor) => ({
+const anchorPosition = (rect: Rect, anchor: AnchorPoint): { x: number; y: number } => ({
   x: rect.x + rect.width * anchor.x,
   y: rect.y + rect.height * anchor.y
 });
 
-const layoutSections = (section, rect, result) => {
+const layoutSections = (section: CardTemplateSection, rect: Rect, result: LayoutResult): void => {
   result.sections.set(section.id, rect);
 
   if (!section.children.length) return;
@@ -79,12 +106,12 @@ const layoutSections = (section, rect, result) => {
   });
 };
 
-const collectItemPlacements = (section, result, list) => {
+const collectItemPlacements = (section: CardTemplateSection, result: LayoutResult, list: ItemPlacement[]): void => {
   section.items.forEach((item) => list.push({ item, sectionId: section.id }));
   section.children.forEach((child) => collectItemPlacements(child, result, list));
 };
 
-const placeItem = (item, sectionRect, targetRect) => {
+const placeItem = (item: CardTemplateItem, sectionRect: Rect, targetRect: Rect): Rect => {
   const sizeWidth = sectionRect.width * (item.widthPct / 100);
   const sizeHeight = sectionRect.height * (item.heightPct / 100);
   const target = anchorPosition(targetRect, item.attach.anchor);
@@ -97,14 +124,14 @@ const placeItem = (item, sectionRect, targetRect) => {
   };
 };
 
-const layoutItems = (template, result) => {
-  const placements = [];
+const layoutItems = (template: CardTemplate, result: LayoutResult): void => {
+  const placements: ItemPlacement[] = [];
   collectItemPlacements(template.root, result, placements);
 
   const placementMap = new Map();
   placements.forEach((placement) => placementMap.set(placement.item.id, placement));
 
-  const resolveItem = (itemId, chain) => {
+  const resolveItem = (itemId: string, chain: Set<string>): Rect | null => {
     const existing = result.items.get(itemId);
     if (existing) return existing;
 
@@ -139,7 +166,7 @@ const layoutItems = (template, result) => {
   });
 };
 
-const computeLayout = (template) => {
+const computeLayout = (template: CardTemplate): LayoutResult => {
   const result = {
     sections: new Map(),
     items: new Map()
@@ -158,12 +185,12 @@ const computeLayout = (template) => {
   return result;
 };
 
-const collectItems = (section, list) => {
+const collectItems = (section: CardTemplateSection, list: CardTemplateItem[]): void => {
   list.push(...section.items);
   section.children.forEach((child) => collectItems(child, list));
 };
 
-const findSection = (section, id) => {
+const findSection = (section: CardTemplateSection, id: string): CardTemplateSection | null => {
   if (section.id === id) return section;
   for (const child of section.children) {
     const found = findSection(child, id);
@@ -172,7 +199,7 @@ const findSection = (section, id) => {
   return null;
 };
 
-const findItem = (section, id) => {
+const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | null => {
   const item = section.items.find((candidate) => candidate.id === id);
   if (item) return item;
   for (const child of section.children) {
@@ -182,11 +209,11 @@ const findItem = (section, id) => {
   return null;
 };
 
-export const renderCardSvg = (card, template, options = {}) => {
+export const renderCardSvg = (card: CardData, template: CardTemplate, options: RenderOptions = {}): string => {
   const { palette, typography } = theme;
   const { width, height, radius } = template;
   const layout = computeLayout(template);
-  const items = [];
+  const items: CardTemplateItem[] = [];
   collectItems(template.root, items);
 
   const renderedItems = items
@@ -197,7 +224,8 @@ export const renderCardSvg = (card, template, options = {}) => {
       const itemType = item.type ?? "text"; // Default to text for legacy items
       
       if (itemType === "frame") {
-        // Render frame item
+        // Render frame item - type guard
+        if (item.type !== "frame") return "";
         const strokeWidth = item.strokeWidth ?? 2;
         const strokeColor = escape(item.strokeColor ?? palette.ink);
         const fillColor = escape(item.fillColor ?? "none");
@@ -206,7 +234,8 @@ export const renderCardSvg = (card, template, options = {}) => {
       }
       
       if (itemType === "image") {
-        // Render image item
+        // Render image item - type guard
+        if (item.type !== "image") return "";
         const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
         if (!value) return "";
         const cornerRadius = item.cornerRadius ?? 0;
@@ -225,7 +254,8 @@ export const renderCardSvg = (card, template, options = {}) => {
         return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${preserveAspectRatio}"${clipAttr} />`;
       }
       
-      // Render text item (default)
+      // Render text item (default) - type guard
+      if (item.type === "frame" || item.type === "image") return "";
       const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
       if (!value) return "";
       const anchor = anchorPosition(rect, item.anchor);
@@ -293,14 +323,13 @@ export const renderCardSvg = (card, template, options = {}) => {
 </svg>`;
 };
 
-export const renderTemplateSvg = (template, selectedNode = null) => {
+export const renderTemplateSvg = (template: CardTemplate, selectedNode: SelectedNode | null = null): string => {
   const { palette } = theme;
   const { width, height, radius } = template;
   const layout = computeLayout(template);
 
   const sectionRects = Array.from(layout.sections.entries())
     .map(([id, rect]) => {
-      const section = findSection(template.root, id);
       const isSelected = selectedNode && selectedNode.type === "section" && selectedNode.id === id;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.muted;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
@@ -320,7 +349,6 @@ export const renderTemplateSvg = (template, selectedNode = null) => {
 
   const itemRects = Array.from(layout.items.entries())
     .map(([id, rect]) => {
-      const item = findItem(template.root, id);
       const isSelected = selectedNode && selectedNode.type === "item" && selectedNode.id === id;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.ink;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
@@ -346,7 +374,7 @@ export const renderTemplateSvg = (template, selectedNode = null) => {
 </svg>`;
 };
 
-export const injectDebugLabel = (svg, debugAttach) => {
+export const injectDebugLabel = (svg: string, debugAttach: unknown): string => {
   const label = `ATTACH ${JSON.stringify(debugAttach)}`.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   const insert = `<text x="24" y="70" font-size="12" fill="#d64545" font-family="Space Grotesk, sans-serif">${label}</text>`;
   return svg.replace("</svg>", `${insert}</svg>`);
