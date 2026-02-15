@@ -2,6 +2,8 @@
 
 Web editor to create multiple games and card assets, with SVG previews and print sheets.
 
+Built with **React**, **TypeScript**, **Vite**, and **shadcn/ui**.
+
 ## Live Gallery
 
 View the static gallery of all games and cards on [GitHub Pages](https://lelongg.github.io/boardgame_assets/).
@@ -12,13 +14,29 @@ View the static gallery of all games and cards on [GitHub Pages](https://lelongg
 npm install
 ```
 
-## Run the editor
+## Run the editor (Development)
 
+The editor requires two servers running:
+
+1. **Vite dev server** (React app):
 ```bash
-npm run serve
+npm run dev
 ```
 
-Open `http://127.0.0.1:5173/`.
+2. **API server** (in a separate terminal):
+```bash
+npm run serve:api
+```
+
+Then open `http://localhost:5173/` in your browser.
+
+## Tech Stack
+
+- **React 19** with TypeScript
+- **Vite** for fast development and building
+- **shadcn/ui** components (built on Radix UI)
+- **Tailwind CSS** for styling
+- **React Router** for navigation
 
 ## Google Drive storage (hosted editor)
 
@@ -26,11 +44,11 @@ The editor can run as a static site and save data directly to Google Drive (no b
 
 1. Create a Google OAuth client ID (see instructions in the repo docs/chat).
 2. Set the GitHub Actions secret `GOOGLE_CLIENT_ID` (used during `build:pages` to inject the OAuth client ID).
-3. Optional: update `src/web/config.js` to set a Drive `folderId`.
+3. Optional: update `src/config.ts` to set a Drive `folderId`.
 4. Deploy to GitHub Pages (the editor is copied to `docs/editor/`).
 5. Open the editor at `https://<user>.github.io/<repo>/editor/`.
 
-To swap storage providers later, replace `src/web/storage/googleDrive.js` and update `src/web/storage.js` to point at the new provider.
+To swap storage providers later, replace the storage implementation in `src/storage/` and update `src/storage.ts`.
 
 ## Data layout (local server)
 
@@ -39,14 +57,14 @@ To swap storage providers later, replace `src/web/storage/googleDrive.js` and up
 
 ## Print sheets
 
-Use the “Print Sheets” button in the UI to open a printable grid.
+Use the "Print Sheets" button in the UI to open a printable grid.
 
 ## Legacy build (optional)
 
 The original SVG batch renderer still exists:
 
 ```bash
-npm run build
+npm run build:legacy
 ```
 
 Outputs to `output/` using `src/data/cards.ts`.
