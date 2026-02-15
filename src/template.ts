@@ -1,4 +1,6 @@
-export const defaultTemplate = () => ({
+import type { CardTemplate } from "./types";
+
+export const defaultTemplate = (): CardTemplate => ({
   version: 2,
   id: "default",
   name: "Default",
@@ -72,7 +74,7 @@ export const defaultTemplate = () => ({
             attach: {
               targetType: "section",
               targetId: "body",
-              anchor: { x: 0.5, y: 0.1 }
+              anchor: { x: 0.5, y: 0 }
             },
             widthPct: 70,
             heightPct: 50,
