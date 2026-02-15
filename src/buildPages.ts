@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { renderCardSvg, renderTemplateSvg } from "./render/cardSvg.js";
 import { defaultTemplate } from "./template.js";
 import { theme } from "./theme.js";
@@ -8,13 +9,20 @@ import type { CardData, CardTemplate } from "./types.js";
 
 const docsDir = path.resolve("docs");
 const gamesDir = path.resolve("games");
-const editorSrc = path.resolve("src/web");
+const distDir = path.resolve("dist");
 const editorDir = path.join(docsDir, "editor");
-const driveClientId = process.env.GOOGLE_CLIENT_ID ?? "";
 
-// Create docs directory
+// Clean and create docs directory
+if (fs.existsSync(docsDir)) {
+  fs.rmSync(docsDir, { recursive: true, force: true });
+}
 fs.mkdirSync(docsDir, { recursive: true });
 
+// Build React app with Vite
+console.log("Building React app...");
+execSync("npm run build", { stdio: "inherit" });
+
+// Copy Vite build output to docs/editor
 const copyDir = (source: string, target: string) => {
   fs.mkdirSync(target, { recursive: true });
   fs.readdirSync(source, { withFileTypes: true }).forEach((entry) => {
@@ -28,23 +36,29 @@ const copyDir = (source: string, target: string) => {
   });
 };
 
-copyDir(editorSrc, editorDir);
+console.log("Copying React app to docs/editor/...");
+copyDir(distDir, editorDir);
 
-if (driveClientId) {
-  const configPath = path.join(editorDir, "config.js");
-  const configContent = `export const config = {
-  storage: {
-    provider: "googleDrive",
-    googleDrive: {
-      clientId: "${driveClientId}",
-      appTag: "boardgame-assets",
-      folderId: ""
-    }
-  }
-};
-`;
-  fs.writeFileSync(configPath, configContent, "utf8");
-}
+// Create 404.html for GitHub Pages SPA routing
+// This redirects all 404s under /editor/ to the React app
+const notFoundHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="refresh" content="0;url=/boardgame_assets/editor/" />
+    <title>Redirecting...</title>
+    <script>
+      // Store the path for the React app to handle
+      sessionStorage.setItem('redirectPath', window.location.pathname);
+      window.location.href = '/boardgame_assets/editor/';
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to editor...</p>
+  </body>
+</html>`;
+
+fs.writeFileSync(path.join(editorDir, "404.html"), notFoundHtml, "utf8");
 
 type GameMeta = {
   id: string;
@@ -189,6 +203,27 @@ const indexHtml = `<!doctype html>
         color: var(--muted);
         font-size: 14px;
       }
+      .editor-link {
+        text-align: center;
+        padding: 0 24px 24px;
+      }
+      .editor-link a {
+        display: inline-block;
+        padding: 12px 28px;
+        background: var(--primary);
+        color: white;
+        text-decoration: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 16px;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px rgba(124, 93, 63, 0.2);
+      }
+      .editor-link a:hover {
+        background: #6a4d35;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(124, 93, 63, 0.3);
+      }
     </style>
   </head>
   <body>
@@ -196,6 +231,9 @@ const indexHtml = `<!doctype html>
       <h1>Boardgame Asset Gallery</h1>
       <p>Static gallery of boardgame assets • ${games.length} game${games.length !== 1 ? 's' : ''}</p>
     </header>
+    <div class="editor-link">
+      <a href="editor/">Open Asset Editor</a>
+    </div>
     <main>
       ${games.length === 0 ? '<p class="empty">No games found. Add games to the repository to see them here.</p>' : `
       <div class="games-grid">
