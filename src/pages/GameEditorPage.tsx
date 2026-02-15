@@ -30,7 +30,7 @@ export default function GameEditorPage() {
     try {
       if (!gameId) return
       setStatus('Loading game...')
-      const gameData = await s.readGame(gameId)
+      const gameData = await s.getGame(gameId)
       setGame(gameData)
       
       const cardList = await s.listCards(gameId)
@@ -50,7 +50,7 @@ export default function GameEditorPage() {
   const selectCard = async (s: any, cardId: string) => {
     try {
       if (!gameId) return
-      const cardData = await s.readCard(gameId, cardId)
+      const cardData = await s.getCard(gameId, cardId)
       setSelectedCard(cardData)
       
       // Generate preview
@@ -68,7 +68,7 @@ export default function GameEditorPage() {
     try {
       if (!gameId || !selectedCard) return
       setStatus('Saving card...')
-      await storage.writeCard(gameId, selectedCard.id, selectedCard)
+      await storage.saveCard(gameId, selectedCard.id, selectedCard)
       setStatus('Card saved.')
       await loadGame(storage)
     } catch (error) {
@@ -86,7 +86,7 @@ export default function GameEditorPage() {
         name: 'New Card',
         fields: {}
       }
-      await storage.writeCard(gameId, newCard.id, newCard)
+      await storage.saveCard(gameId, newCard.id, newCard)
       await loadGame(storage)
       await selectCard(storage, newCard.id)
       setStatus('Card created.')
@@ -200,50 +200,60 @@ export default function GameEditorPage() {
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Card Editor</CardTitle>
-                  <Tabs defaultValue="card" className="w-auto">
-                    <TabsList>
-                      <TabsTrigger value="card">Edit Card Data</TabsTrigger>
-                      <TabsTrigger value="layout">Edit Layout</TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                </div>
+                <CardTitle>Card Editor</CardTitle>
               </CardHeader>
               <CardContent>
                 {selectedCard && (
-                  <TabsContent value="card" className="mt-0">
-                    <div className="grid grid-cols-[1fr_360px] gap-6">
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>Name</Label>
-                          <Input
-                            value={selectedCard.name || ''}
-                            onChange={(e) => updateCardField('name', e.target.value)}
-                          />
-                        </div>
-                        
-                        <div className="flex gap-2">
-                          <Button onClick={handleSaveCard}>Save Card</Button>
-                          <Button variant="destructive" onClick={handleDeleteCard}>
-                            Delete Card
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="flex items-start justify-center">
-                        <div className="rounded-lg border bg-white p-3 shadow-inner">
-                          {cardPreview && (
-                            <img
-                              src={cardPreview}
-                              alt="Card preview"
-                              className="max-w-full"
+                  <Tabs defaultValue="card" className="w-full">
+                    <TabsList className="mb-4">
+                      <TabsTrigger value="card">Edit Card Data</TabsTrigger>
+                      <TabsTrigger value="layout">Edit Layout</TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="card">
+                      <div className="grid grid-cols-[1fr_360px] gap-6">
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Name</Label>
+                            <Input
+                              value={selectedCard.name || ''}
+                              onChange={(e) => updateCardField('name', e.target.value)}
                             />
-                          )}
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <Button onClick={handleSaveCard}>Save Card</Button>
+                            <Button variant="destructive" onClick={handleDeleteCard}>
+                              Delete Card
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start justify-center">
+                          <div className="rounded-lg border bg-white p-3 shadow-inner">
+                            {cardPreview && (
+                              <img
+                                src={cardPreview}
+                                alt="Card preview"
+                                className="max-w-full"
+                              />
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </TabsContent>
+                    </TabsContent>
+                    
+                    <TabsContent value="layout">
+                      <div className="text-muted-foreground">
+                        Layout editor coming soon...
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                )}
+                {!selectedCard && (
+                  <div className="text-center text-muted-foreground py-8">
+                    Select a card or create a new one to start editing
+                  </div>
                 )}
               </CardContent>
             </Card>
