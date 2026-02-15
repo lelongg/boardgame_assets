@@ -11,7 +11,7 @@
     "watch": "tsx watch src/build.ts",
     "clean": "node src/clean.js",
     "serve": "vite",
-    "serve:api": "tsx src/server.ts",
+    "serve:api": "tsx src/server.ts 5174",
     "serve:watch": "tsx watch src/server.ts",
     "preview": "vite preview",
     "test": "node --test --import tsx test"
@@ -23,7 +23,7 @@
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.24",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.18",
+    "tailwindcss": "^3.4.19",
     "tsx": "^4.15.0",
     "typescript": "^5.6.2",
     "vite": "^7.3.1"
