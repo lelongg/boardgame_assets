@@ -177,7 +177,7 @@ export const createGoogleDriveStorage = (options = {}) => {
       await init();
     }
     if (!isConfigured) {
-      throw new Error("Google Drive is not configured. The GOOGLE_CLIENT_ID environment variable was not set during build.");
+      throw new Error("Google Drive is not configured. The GOOGLE_CLIENT_ID environment variable was not set during build. Please contact the site administrator.");
     }
     if (isAuthorized()) return accessToken;
     try {
