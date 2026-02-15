@@ -1,3 +1,5 @@
+import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem } from "./types";
+
 /**
  * Safely parse a number from a value that might be empty, null, or undefined.
  * Returns the default value if parsing fails or the value is empty.
@@ -25,7 +27,6 @@ const safeEnum = <T extends string>(value: unknown, allowedValues: readonly T[],
     const str = String(value ?? "");
     return (allowedValues as readonly string[]).includes(str) ? (str as T) : defaultValue;
 };
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem } from "./types";
 
 /**
  * Normalize an anchor point to ensure x and y are valid values (0, 0.5, or 1).

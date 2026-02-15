@@ -330,7 +330,6 @@ export const renderTemplateSvg = (template: CardTemplate, selectedNode: Selected
 
   const sectionRects = Array.from(layout.sections.entries())
     .map(([id, rect]) => {
-      void findSection(template.root, id); // Keep for potential future use
       const isSelected = selectedNode && selectedNode.type === "section" && selectedNode.id === id;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.muted;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
@@ -350,7 +349,6 @@ export const renderTemplateSvg = (template: CardTemplate, selectedNode: Selected
 
   const itemRects = Array.from(layout.items.entries())
     .map(([id, rect]) => {
-      void findItem(template.root, id); // Keep for potential future use
       const isSelected = selectedNode && selectedNode.type === "item" && selectedNode.id === id;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.ink;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
