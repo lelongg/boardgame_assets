@@ -26,41 +26,51 @@ export default function GameEditorPage() {
     initStorage()
   }, [gameId])
 
+  const selectCard = async (s: any, cardId: string, gameWithTemplate?: any) => {
+    try {
+      if (!gameId) return
+      const cardData = await s.getCard(gameId, cardId)
+      setSelectedCard(cardData)
+      
+      // Use the provided game object or the state
+      const currentGame = gameWithTemplate || game
+      
+      // Generate preview only if we have a template
+      if (currentGame?.template) {
+        const { renderCardSvg } = await import('../render')
+        const svg = renderCardSvg(cardData, currentGame.template)
+        const blob = new Blob([svg], { type: 'image/svg+xml' })
+        const url = URL.createObjectURL(blob)
+        setCardPreview(url)
+      }
+    } catch (error) {
+      console.error('Error loading card:', error)
+    }
+  }
+
   const loadGame = async (s: any) => {
     try {
       if (!gameId) return
       setStatus('Loading game...')
       const gameData = await s.getGame(gameId)
+      
+      // Load template separately
+      const template = await s.loadTemplate(gameId)
+      gameData.template = template
+      
       setGame(gameData)
       
       const cardList = await s.listCards(gameId)
       setCards(cardList)
       
       if (cardList.length > 0) {
-        await selectCard(s, cardList[0].id)
+        await selectCard(s, cardList[0].id, gameData)
       }
       
       setStatus('Ready.')
     } catch (error) {
       setStatus('Error loading game.')
       console.error(error)
-    }
-  }
-
-  const selectCard = async (s: any, cardId: string) => {
-    try {
-      if (!gameId) return
-      const cardData = await s.getCard(gameId, cardId)
-      setSelectedCard(cardData)
-      
-      // Generate preview
-      const { renderCardSvg } = await import('../render')
-      const svg = renderCardSvg(cardData, game?.template)
-      const blob = new Blob([svg], { type: 'image/svg+xml' })
-      const url = URL.createObjectURL(blob)
-      setCardPreview(url)
-    } catch (error) {
-      console.error('Error loading card:', error)
     }
   }
 

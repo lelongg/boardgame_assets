@@ -11,7 +11,7 @@ const providers = {
 // Detect if we're running in local development mode (server provides /api endpoints)
 const isLocalDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
-export const createStorage = () => {
+export const createStorage = async () => {
   // Override provider to localFile if in dev mode
   const providerKey = isLocalDev ? "localFile" : (config?.storage?.provider ?? "googleDrive");
   const factory = providers[providerKey];
@@ -19,5 +19,17 @@ export const createStorage = () => {
     throw new Error(`Unknown storage provider: ${providerKey}`);
   }
   const providerConfig = config?.storage?.[providerKey] ?? {};
-  return factory({ ...providerConfig, defaultTemplate });
+  const storage = factory({ ...providerConfig, defaultTemplate });
+  
+  // Initialize the storage provider
+  if (storage.init) {
+    await storage.init();
+  }
+  
+  // Try to restore session (for Google Drive)
+  if (storage.tryRestoreSession) {
+    await storage.tryRestoreSession();
+  }
+  
+  return storage;
 };

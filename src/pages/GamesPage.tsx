@@ -50,7 +50,7 @@ export default function GamesPage() {
 
   const handleConnectDrive = async () => {
     try {
-      await storage.authorize()
+      await storage.signIn()
       setIsAuthorized(storage.isAuthorized())
       await loadGames(storage)
     } catch (error) {
