@@ -245,12 +245,11 @@ export default function GameEditorPage() {
     if (property === 'attachAnchor') {
       if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
       node.attach.anchor = value
-    } else if (property === 'attachTargetType') {
-      if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
-      node.attach.targetType = value
     } else if (property === 'attachTargetId') {
       if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
       node.attach.targetId = value
+      // Auto-detect target type from the ID
+      node.attach.targetType = getNodeKind(t.root, value as string) ?? 'section'
     } else {
       node[property] = value
     }

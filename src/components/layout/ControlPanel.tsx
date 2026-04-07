@@ -1,6 +1,7 @@
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import AnchorGrid from './AnchorGrid'
+import { flattenNodes } from './templateHelpers'
 import type { CardTemplate } from '../../types'
 
 type ControlPanelProps = {
@@ -46,10 +47,13 @@ const getFieldMeta = (property: string, template: CardTemplate): FieldMeta => {
       { value: 'contain', label: 'Contain' },
       { value: 'fill', label: 'Fill' },
     ]}
-    case 'attachTargetType': return { type: 'select', options: [
-      { value: 'section', label: 'Section' },
-      { value: 'item', label: 'Item' },
-    ]}
+    case 'attachTargetId': {
+      const nodes = flattenNodes(template.root)
+      return { type: 'select', options: nodes.map((n) => ({
+        value: n.id,
+        label: `${n.kind === 'section' ? '▸' : '·'} ${n.name}`,
+      }))}
+    }
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
     default: return { type: 'text' }

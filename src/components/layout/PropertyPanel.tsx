@@ -26,7 +26,6 @@ const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
   { key: 'heightPct', label: 'Height %' },
   { key: 'anchor', label: 'Anchor' },
   { key: 'attachAnchor', label: 'Attach Anchor' },
-  { key: 'attachTargetType', label: 'Attach Type' },
   { key: 'attachTargetId', label: 'Attach Target' },
 ]
 
