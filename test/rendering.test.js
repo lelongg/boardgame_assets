@@ -17,6 +17,7 @@ test("renderCardSvg generates valid SVG", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -53,6 +54,7 @@ test("renderCardSvg with nested sections", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -145,6 +147,7 @@ test("renderCardSvg with multiple items in same section", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -229,6 +232,7 @@ test("renderCardSvg with frame item", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -282,6 +286,7 @@ test("renderCardSvg with image item", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -334,6 +339,7 @@ test("renderCardSvg with text alignment left", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -382,6 +388,7 @@ test("renderCardSvg with text alignment center", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -430,6 +437,7 @@ test("renderCardSvg with text alignment right", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -478,6 +486,7 @@ test("renderCardSvg with row layout", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -564,6 +573,7 @@ test("renderCardSvg with column layout", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -644,6 +654,7 @@ test("renderTemplateSvg generates valid SVG", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -679,6 +690,7 @@ test("renderCardSvg escapes special characters in text", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -730,6 +742,7 @@ test("renderCardSvg with empty fields", () => {
     height: 1050,
     radius: 28,
     bleed: 18,
+    fonts: {},
     root: {
       id: "root",
       name: "Root",
@@ -762,4 +775,153 @@ test("renderCardSvg with empty fields", () => {
   const svg = renderCardSvg(card, template);
   assert.ok(svg.includes("<svg"), "Should generate SVG even with missing fields");
   assert.ok(svg.includes("</svg>"), "Should close SVG properly");
+});
+
+test("renderCardSvg uses font names from template.fonts", () => {
+  const card = {
+    id: "test",
+    name: "Test Card",
+    fields: { text: "Hello" },
+  };
+
+  const template = {
+    version: 2,
+    id: "test",
+    name: "Test",
+    width: 750,
+    height: 1050,
+    radius: 28,
+    bleed: 18,
+    fonts: {
+      heading: { name: "Cinzel", file: "abc.woff2", source: "google" },
+      body: { name: "Roboto", file: "def.woff2", source: "upload" },
+    },
+    root: {
+      id: "root",
+      name: "Root",
+      layout: "stack",
+      sizePct: 100,
+      gap: 0,
+      children: [],
+      items: [
+        {
+          type: "text",
+          id: "text1",
+          name: "Text",
+          fieldId: "text",
+          anchor: { x: 0, y: 0 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
+          widthPct: 80,
+          heightPct: 20,
+          fontSize: 20,
+          align: "left",
+          font: "heading",
+        },
+      ],
+    },
+  };
+
+  const svg = renderCardSvg(card, template);
+  assert.ok(svg.includes("Cinzel"), "Should use font name from template.fonts");
+  assert.ok(!svg.includes("Fraunces"), "Should not use hardcoded theme font");
+});
+
+test("renderCardSvg falls back to first font slot for unknown slot", () => {
+  const card = {
+    id: "test",
+    name: "Test Card",
+    fields: { text: "Hello" },
+  };
+
+  const template = {
+    version: 2,
+    id: "test",
+    name: "Test",
+    width: 750,
+    height: 1050,
+    radius: 28,
+    bleed: 18,
+    fonts: {
+      title: { name: "Cinzel", file: "", source: "google" },
+    },
+    root: {
+      id: "root",
+      name: "Root",
+      layout: "stack",
+      sizePct: 100,
+      gap: 0,
+      children: [],
+      items: [
+        {
+          type: "text",
+          id: "text1",
+          name: "Text",
+          fieldId: "text",
+          anchor: { x: 0, y: 0 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
+          widthPct: 80,
+          heightPct: 20,
+          fontSize: 20,
+          align: "left",
+          font: "nonexistent",
+        },
+      ],
+    },
+  };
+
+  const svg = renderCardSvg(card, template);
+  assert.ok(svg.includes("Cinzel"), "Should fall back to first font slot");
+});
+
+test("renderCardSvg embeds fonts when fontData provided", () => {
+  const card = {
+    id: "test",
+    name: "Test Card",
+    fields: { text: "Hello" },
+  };
+
+  const template = {
+    version: 2,
+    id: "test",
+    name: "Test",
+    width: 750,
+    height: 1050,
+    radius: 28,
+    bleed: 18,
+    fonts: {
+      title: { name: "TestFont", file: "abc.woff2", source: "google" },
+    },
+    root: {
+      id: "root",
+      name: "Root",
+      layout: "stack",
+      sizePct: 100,
+      gap: 0,
+      children: [],
+      items: [
+        {
+          type: "text",
+          id: "text1",
+          name: "Text",
+          fieldId: "text",
+          anchor: { x: 0, y: 0 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
+          widthPct: 80,
+          heightPct: 20,
+          fontSize: 20,
+          align: "left",
+          font: "title",
+        },
+      ],
+    },
+  };
+
+  const fontData = {
+    title: { name: "TestFont", data: Buffer.from("fake-font-data") },
+  };
+
+  const svg = renderCardSvg(card, template, { fonts: fontData });
+  assert.ok(svg.includes("@font-face"), "Should contain @font-face rule");
+  assert.ok(svg.includes("TestFont"), "Should reference font name");
+  assert.ok(svg.includes("data:font/woff2;base64,"), "Should contain base64 data URI");
 });

@@ -210,7 +210,8 @@ const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | 
 };
 
 export const renderCardSvg = (card: CardData, template: CardTemplate, options: RenderOptions = {}): string => {
-  const { palette, typography } = theme;
+  const { palette } = theme;
+  const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
   const { width, height, radius } = template;
   const layout = computeLayout(template);
   const items: CardTemplateItem[] = [];

@@ -18,9 +18,5 @@ export const theme = {
       rare: "#7fa0c7",
       legendary: "#c79b53"
     }
-  },
-  typography: {
-    title: "'Fraunces', serif",
-    body: "'Space Grotesk', sans-serif"
   }
 };

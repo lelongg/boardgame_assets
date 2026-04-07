@@ -183,7 +183,8 @@ const findItem = (section, id) => {
 };
 
 export const renderCardSvg = (card, template, options = {}) => {
-  const { palette, typography } = theme;
+  const { palette } = theme;
+  const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
   const { width, height, radius } = template;
   const layout = computeLayout(template);
   const items = [];

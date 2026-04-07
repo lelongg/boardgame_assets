@@ -1,6 +1,8 @@
 import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem } from "../types.js";
 import { theme } from "../theme.js";
 
+const DEBUG_FONT = "'Space Grotesk', sans-serif";
+
 const escape = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -15,8 +17,11 @@ type LayoutResult = {
   items: Map<string, Rect>;
 };
 
+type FontData = { name: string; data: Buffer };
+
 type RenderOptions = {
   debug?: boolean;
+  fonts?: Record<string, FontData>;
 };
 
 const anchorPoints: AnchorPoint[] = [
@@ -193,9 +198,10 @@ const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | 
 };
 
 export const renderCardSvg = (card: CardData, template: CardTemplate, options: RenderOptions = {}): string => {
-  const { palette, typography } = theme;
+  const { palette } = theme;
   const { width, height, radius } = template;
   const layout = computeLayout(template);
+  const fontSlots = Object.keys(template.fonts ?? {});
   const items: CardTemplateItem[] = [];
   collectItems(template.root, items);
 
@@ -215,7 +221,9 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       const value = textItem.fieldId === "name" ? card.name : card.fields[textItem.fieldId] ?? "";
       if (!value) return;
       const anchor = anchorPosition(rect, textItem.anchor);
-      const fontFamily = textItem.font === "title" ? typography.title : typography.body;
+      const slotName = textItem.font && template.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
+      const fontSlot = template.fonts?.[slotName];
+      const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
       itemElements.push(`<text x="${anchor.x}" y="${anchor.y}" text-anchor="${textAnchorFor(textItem.align)}" dominant-baseline="${baselineFor(textItem.anchor)}" font-family="${fontFamily}" font-size="${textItem.fontSize}" fill="${textItem.color ?? palette.ink}">${escape(value)}</text>`);
     }
     
@@ -254,7 +262,30 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
   });
 
   const itemTexts = itemElements.join("");
-  const defs = clipPaths.length > 0 ? `<defs>${clipPaths.join("")}</defs>` : "";
+
+  const usedSlots = new Set<string>();
+  items.forEach((item) => {
+    if ((item.type ?? "text") === "text") {
+      const textItem = item as CardTemplateTextItem;
+      const slotName = textItem.font && template.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
+      if (slotName) usedSlots.add(slotName);
+    }
+  });
+
+  let fontStyles = "";
+  if (options.fonts) {
+    const rules = Array.from(usedSlots)
+      .filter((slot) => options.fonts![slot])
+      .map((slot) => {
+        const fd = options.fonts![slot];
+        const b64 = fd.data.toString("base64");
+        return `@font-face { font-family: '${fd.name}'; src: url('data:font/woff2;base64,${b64}') format('woff2'); }`;
+      })
+      .join("\n      ");
+    if (rules) fontStyles = `<style>${rules}</style>`;
+  }
+
+  const defs = (clipPaths.length > 0 || fontStyles) ? `<defs>${fontStyles}${clipPaths.join("")}</defs>` : "";
 
   const debugRects = options.debug
     ? items
@@ -289,7 +320,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
           const itemPoint = anchorPosition(rect, item.anchor);
           const missingLabel = targetRect
             ? ""
-            : `<text x="${targetPoint.x + 8}" y="${targetPoint.y + 4}" font-size="12" fill="#d64545" font-family="${theme.typography.body}">missing ${escape(item.attach.targetType)}:${escape(item.attach.targetId)}</text>`;
+            : `<text x="${targetPoint.x + 8}" y="${targetPoint.y + 4}" font-size="12" fill="#d64545" font-family="${DEBUG_FONT}">missing ${escape(item.attach.targetType)}:${escape(item.attach.targetId)}</text>`;
           return `
   <circle cx="${targetPoint.x}" cy="${targetPoint.y}" r="8" fill="none" stroke="#d64545" stroke-width="3" />
   <circle cx="${itemPoint.x}" cy="${itemPoint.y}" r="6" fill="#2f6f4e" stroke="#ffffff" stroke-width="1" />
@@ -299,7 +330,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     : "";
 
   const debugLabel = options.debug
-    ? `<text x="24" y="36" font-size="20" fill="#d64545" font-family="${theme.typography.body}">DEBUG RENDER</text>`
+    ? `<text x="24" y="36" font-size="20" fill="#d64545" font-family="${DEBUG_FONT}">DEBUG RENDER</text>`
     : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -331,7 +362,7 @@ export const renderTemplateSvg = (template: CardTemplate): string => {
 
       return `
   <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="none" stroke="${palette.muted}" stroke-width="1" stroke-dasharray="6 6" />
-  <text x="${rect.x + 8}" y="${rect.y + 18}" font-size="12" fill="${palette.muted}" font-family="${theme.typography.body}">${escape(label)}</text>
+  <text x="${rect.x + 8}" y="${rect.y + 18}" font-size="12" fill="${palette.muted}" font-family="${DEBUG_FONT}">${escape(label)}</text>
   ${anchors}`;
     })
     .join("");
@@ -348,7 +379,7 @@ export const renderTemplateSvg = (template: CardTemplate): string => {
 
       return `
   <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="none" stroke="${palette.ink}" stroke-width="1" />
-  ${item ? `<text x="${rect.x + 6}" y="${rect.y + 16}" font-size="11" fill="${palette.ink}" font-family="${theme.typography.body}">${escape(item.name || item.id)}</text>` : ""}
+  ${item ? `<text x="${rect.x + 6}" y="${rect.y + 16}" font-size="11" fill="${palette.ink}" font-family="${DEBUG_FONT}">${escape(item.name || item.id)}</text>` : ""}
   ${anchors}`;
     })
     .join("");

@@ -37,7 +37,7 @@ const html = `<!doctype html>
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        font-family: ${theme.typography.body};
+        font-family: 'Space Grotesk', sans-serif;
         color: var(--ink);
         background: radial-gradient(circle at top, #fff6e3 0%, #efe5d7 45%, #eadcc8 100%);
       }
@@ -46,7 +46,7 @@ const html = `<!doctype html>
         text-align: center;
       }
       header h1 {
-        font-family: ${theme.typography.title};
+        font-family: 'Fraunces', serif;
         font-size: 40px;
         margin: 0 0 6px;
       }
