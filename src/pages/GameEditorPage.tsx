@@ -78,7 +78,9 @@ export default function GameEditorPage() {
       // Generate preview only if we have a template
       if (currentGame?.template) {
         const { renderCardSvg } = await import('../render')
-        const svg = renderCardSvg(cardData, currentGame.template)
+        let svg = renderCardSvg(cardData, currentGame.template)
+        // Convert relative URLs to absolute so they resolve inside blob SVGs
+        svg = svg.replace(/href="(\/api\/[^"]+)"/g, `href="${window.location.origin}$1"`)
         const blob = new Blob([svg], { type: 'image/svg+xml' })
         const url = URL.createObjectURL(blob)
         setCardPreview(url)
