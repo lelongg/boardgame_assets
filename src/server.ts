@@ -212,6 +212,35 @@ const server = http.createServer(async (req, res) => {
         const game: GameMeta = { id, name, createdAt: now, updatedAt: now };
         writeJson(gamePath(id), game);
         writeJson(templatePath(id), defaultTemplate());
+        // Download default fonts in background (don't block game creation)
+        (async () => {
+          try {
+            const dir = fontsDir(id);
+            fs.mkdirSync(dir, { recursive: true });
+            const defaults = [
+              { slot: "title", fontName: "Fraunces" },
+              { slot: "body", fontName: "Space Grotesk" },
+            ];
+            const template = readJson<any>(templatePath(id), null);
+            if (!template?.fonts) return;
+            for (const { slot, fontName } of defaults) {
+              try {
+                const { data } = await fetchGoogleFont(fontName);
+                const hash = hashBuffer(data);
+                const fileName = `${hash}.woff2`;
+                fs.writeFileSync(path.join(dir, fileName), data);
+                if (template.fonts[slot]) {
+                  template.fonts[slot].file = fileName;
+                }
+              } catch {
+                // Font download failed, leave file empty
+              }
+            }
+            writeJson(templatePath(id), template);
+          } catch {
+            // Non-critical, ignore
+          }
+        })();
         return send(res, 201, JSON.stringify(game));
       }
     }
