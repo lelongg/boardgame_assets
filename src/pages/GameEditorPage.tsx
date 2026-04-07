@@ -343,43 +343,42 @@ export default function GameEditorPage() {
                               onChange={(e) => updateCardField('name', e.target.value)}
                             />
                           </div>
-                          
+
                           {game?.template?.root && (() => {
-                            const textItems: any[] = []
-                            const collectTextItems = (section: any) => {
+                            const fields: { fieldId: string; itemName: string; itemType: string }[] = []
+                            const seen = new Set<string>()
+                            const collectFields = (section: any) => {
                               section.items?.forEach((item: any) => {
-                                if (!item.type || item.type === 'text') textItems.push(item)
+                                const type = item.type ?? 'text'
+                                if ((type === 'text' || type === 'image') && item.fieldId && item.fieldId !== 'name' && !seen.has(item.fieldId)) {
+                                  seen.add(item.fieldId)
+                                  fields.push({ fieldId: item.fieldId, itemName: item.name, itemType: type })
+                                }
                               })
-                              section.children?.forEach(collectTextItems)
+                              section.children?.forEach(collectFields)
                             }
-                            collectTextItems(game.template.root)
-                            const fontSlots = Object.keys(game.template.fonts ?? {})
-                            if (textItems.length === 0 || fontSlots.length === 0) return null
+                            collectFields(game.template.root)
+                            if (fields.length === 0) return null
                             return (
-                              <div className="space-y-2 mt-4">
-                                <Label>Text Item Fonts</Label>
-                                {textItems.map((item: any) => (
-                                  <div key={item.id} className="flex items-center gap-2 text-sm">
-                                    <span className="w-24 truncate text-muted-foreground">{item.name}</span>
-                                    <select
-                                      value={item.font ?? fontSlots[0] ?? ''}
-                                      onChange={(e) => {
-                                        const updatedTemplate = JSON.parse(JSON.stringify(game.template))
-                                        const findAndUpdate = (section: any) => {
-                                          section.items?.forEach((i: any) => {
-                                            if (i.id === item.id) i.font = e.target.value
-                                          })
-                                          section.children?.forEach(findAndUpdate)
-                                        }
-                                        findAndUpdate(updatedTemplate.root)
-                                        handleTemplateSave(updatedTemplate)
-                                      }}
-                                      className="rounded-md border bg-background px-2 py-1 text-sm"
-                                    >
-                                      {fontSlots.map((slot) => (
-                                        <option key={slot} value={slot}>{slot} ({game.template.fonts[slot]?.name})</option>
-                                      ))}
-                                    </select>
+                              <div className="space-y-3">
+                                {fields.map(({ fieldId, itemName, itemType }) => (
+                                  <div key={fieldId} className="space-y-1">
+                                    <Label className="text-sm">{itemName} <span className="text-muted-foreground font-normal">({fieldId})</span></Label>
+                                    {itemType === 'image' ? (
+                                      <Input
+                                        value={selectedCard.fields?.[fieldId] ?? ''}
+                                        onChange={(e) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: e.target.value } })}
+                                        placeholder="Image URL"
+                                      />
+                                    ) : (
+                                      <textarea
+                                        value={selectedCard.fields?.[fieldId] ?? ''}
+                                        onChange={(e) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: e.target.value } })}
+                                        rows={2}
+                                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                        placeholder={`Enter ${fieldId}`}
+                                      />
+                                    )}
                                   </div>
                                 ))}
                               </div>
