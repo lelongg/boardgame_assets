@@ -261,7 +261,7 @@ export default function GameEditorPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-background px-7 py-5">
+      <header className="border-b bg-background px-4 py-4 md:px-7 md:py-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-[3px] text-muted-foreground">
@@ -277,9 +277,9 @@ export default function GameEditorPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-7 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-4 md:px-7 md:py-6">
         <Card className="mb-4">
-          <CardContent className="flex gap-2 pt-6">
+          <CardContent className="flex flex-wrap gap-2 pt-6">
             <Button variant="outline" onClick={() => navigate('/')}>
               Back to Games
             </Button>
@@ -295,7 +295,7 @@ export default function GameEditorPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-[240px_1fr] gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Cards</CardTitle>
@@ -334,7 +334,7 @@ export default function GameEditorPage() {
                     </TabsList>
                     
                     <TabsContent value="card">
-                      <div className="grid grid-cols-[1fr_360px] gap-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
                         <div className="space-y-4">
                           <div className="space-y-2">
                             <Label>Name</Label>
@@ -416,7 +416,7 @@ export default function GameEditorPage() {
                           onFontsChange={handleFontsChange}
                         />
                         <hr className="border-border" />
-                        <div className="grid grid-cols-[1fr_360px] gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
                           <div className="space-y-4">
                             <TemplateActions
                               template={game.template}
