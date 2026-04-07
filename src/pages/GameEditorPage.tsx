@@ -365,11 +365,53 @@ export default function GameEditorPage() {
                                   <div key={fieldId} className="space-y-1">
                                     <Label className="text-sm">{itemName} <span className="text-muted-foreground font-normal">({fieldId})</span></Label>
                                     {itemType === 'image' ? (
-                                      <Input
-                                        value={selectedCard.fields?.[fieldId] ?? ''}
-                                        onChange={(e) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: e.target.value } })}
-                                        placeholder="Image URL"
-                                      />
+                                      <div className="space-y-2">
+                                        {selectedCard.fields?.[fieldId] && (
+                                          <img
+                                            src={selectedCard.fields[fieldId]}
+                                            alt={fieldId}
+                                            className="max-h-32 rounded border object-contain"
+                                          />
+                                        )}
+                                        <div className="flex gap-2">
+                                          <Input
+                                            value={selectedCard.fields?.[fieldId] ?? ''}
+                                            onChange={(e) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: e.target.value } })}
+                                            placeholder="Image URL"
+                                            className="flex-1"
+                                          />
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                              const input = document.createElement('input')
+                                              input.type = 'file'
+                                              input.accept = 'image/*'
+                                              input.onchange = async () => {
+                                                const file = input.files?.[0]
+                                                if (!file || !gameId) return
+                                                try {
+                                                  setStatus('Uploading image...')
+                                                  const res = await fetch(`/api/games/${gameId}/images/upload`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Disposition': `attachment; filename="${file.name}"` },
+                                                    body: await file.arrayBuffer(),
+                                                  })
+                                                  if (!res.ok) throw new Error('Upload failed')
+                                                  const { url } = await res.json()
+                                                  setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldId]: url } }))
+                                                  setStatus('Image uploaded.')
+                                                } catch {
+                                                  setStatus('Error uploading image.')
+                                                }
+                                              }
+                                              input.click()
+                                            }}
+                                          >
+                                            Upload
+                                          </Button>
+                                        </div>
+                                      </div>
                                     ) : (
                                       <textarea
                                         value={selectedCard.fields?.[fieldId] ?? ''}

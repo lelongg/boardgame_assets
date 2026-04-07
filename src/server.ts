@@ -76,6 +76,7 @@ const templatePath = (gameId: string) => path.join(dataRoot, gameId, "template.j
 const cardsDir = (gameId: string) => path.join(dataRoot, gameId, "cards");
 const cardPath = (gameId: string, cardId: string) => path.join(cardsDir(gameId), `${cardId}.json`);
 const fontsDir = (gameId: string) => path.join(dataRoot, gameId, "fonts");
+const imagesDir = (gameId: string) => path.join(dataRoot, gameId, "images");
 
 const hashBuffer = (data: Buffer): string => {
   const hash = crypto.createHash("sha256").update(data).digest("hex");
@@ -447,6 +448,50 @@ const server = http.createServer(async (req, res) => {
           const fontFile = segments[4];
           const fp = path.join(fontsDir(gameId), fontFile);
           fs.rmSync(fp, { force: true });
+          return send(res, 204, "", "text/plain; charset=utf-8");
+        }
+      }
+
+      // Image routes: /api/games/:id/images/...
+      if (segments.length >= 5 && segments[3] === "images") {
+        // POST /api/games/:id/images/upload
+        if (segments[4] === "upload" && req.method === "POST") {
+          const data = await readRawBody(req);
+          const disposition = req.headers["content-disposition"] ?? "";
+          const nameMatch = disposition.match(/filename="?([^";\s]+)"?/);
+          const originalName = nameMatch ? nameMatch[1] : `image-${Date.now()}.png`;
+          const ext = path.extname(originalName) || ".png";
+          const allowedExts = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"];
+          if (!allowedExts.includes(ext.toLowerCase())) {
+            return send(res, 400, JSON.stringify({ error: "Unsupported image format" }));
+          }
+          const hash = hashBuffer(data);
+          const fileName = `${hash}${ext.toLowerCase()}`;
+          const dir = imagesDir(gameId);
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(path.join(dir, fileName), data);
+          const url = `/api/games/${gameId}/images/${fileName}`;
+          return send(res, 201, JSON.stringify({ file: fileName, url }));
+        }
+
+        // GET /api/games/:id/images/:file
+        if (segments.length === 5 && req.method === "GET") {
+          const fileName = segments[4];
+          const filePath = path.join(imagesDir(gameId), fileName);
+          if (!fs.existsSync(filePath)) return send(res, 404, JSON.stringify({ error: "Not found" }));
+          const ext = path.extname(fileName);
+          const ct = contentTypes.get(ext) ?? "application/octet-stream";
+          const data = fs.readFileSync(filePath);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", ct);
+          res.end(data);
+          return;
+        }
+
+        // DELETE /api/games/:id/images/:file
+        if (segments.length === 5 && req.method === "DELETE") {
+          const fileName = segments[4];
+          fs.rmSync(path.join(imagesDir(gameId), fileName), { force: true });
           return send(res, 204, "", "text/plain; charset=utf-8");
         }
       }
