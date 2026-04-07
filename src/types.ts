@@ -29,7 +29,7 @@ export type CardTemplateTextItem = CardTemplateItemBase & {
   fieldId: string;
   fontSize: number;
   align: "left" | "center" | "right";
-  font?: "title" | "body";
+  font?: string;
   color?: string;
 };
 
@@ -66,6 +66,12 @@ export type CardTemplateSection = {
   items: CardTemplateItem[];
 };
 
+export type FontSlot = {
+  name: string;
+  file: string;
+  source: "upload" | "google";
+};
+
 export type CardTemplate = {
   version: 2;
   id: string;
@@ -74,5 +80,6 @@ export type CardTemplate = {
   height: number;
   radius: number;
   bleed: number;
+  fonts: Record<string, FontSlot>;
   root: CardTemplateSection;
 };

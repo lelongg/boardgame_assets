@@ -184,7 +184,7 @@ test("normalizeTemplate handles text item with empty values", () => {
   assert.equal(item.heightPct, 50);
   assert.equal(item.fontSize, 16);
   assert.equal(item.align, "left");
-  assert.equal(item.font, "body");
+  assert.equal(item.font, undefined);
 });
 
 test("normalizeTemplate handles frame item with empty values", () => {
@@ -349,6 +349,86 @@ test("normalizeTemplate handles nested sections", () => {
   assert.equal(template.root.children[0].layout, "stack");
   assert.equal(template.root.children[0].sizePct, 100);
   assert.equal(template.root.children[0].gap, 0);
+});
+
+test("normalizeTemplate adds default fonts when missing", () => {
+  const template = normalizeTemplate({
+    version: 2,
+    id: "test",
+    name: "Test",
+    width: 750,
+    height: 1050,
+    radius: 28,
+    bleed: 18,
+    root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
+  });
+  assert.ok(template.fonts, "Should have fonts field");
+  assert.ok(template.fonts.title, "Should have title font slot");
+  assert.ok(template.fonts.body, "Should have body font slot");
+  assert.equal(template.fonts.title.name, "Fraunces");
+  assert.equal(template.fonts.body.name, "Space Grotesk");
+  assert.equal(template.fonts.title.source, "google");
+  assert.equal(template.fonts.body.source, "google");
+  assert.equal(template.fonts.title.file, "");
+  assert.equal(template.fonts.body.file, "");
+});
+
+test("normalizeTemplate preserves existing fonts", () => {
+  const template = normalizeTemplate({
+    version: 2,
+    id: "test",
+    name: "Test",
+    width: 750,
+    height: 1050,
+    radius: 28,
+    bleed: 18,
+    fonts: {
+      heading: { name: "Cinzel", file: "abc123.woff2", source: "google" },
+      flavor: { name: "MyFont", file: "def456.otf", source: "upload" }
+    },
+    root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
+  });
+  assert.deepEqual(Object.keys(template.fonts), ["heading", "flavor"]);
+  assert.equal(template.fonts.heading.name, "Cinzel");
+  assert.equal(template.fonts.heading.file, "abc123.woff2");
+  assert.equal(template.fonts.flavor.source, "upload");
+});
+
+test("normalizeTemplate text item font accepts arbitrary string", () => {
+  const template = normalizeTemplate({
+    version: 2,
+    id: "test",
+    name: "Test",
+    width: 750,
+    height: 1050,
+    radius: 28,
+    bleed: 18,
+    root: {
+      id: "root",
+      name: "Root",
+      layout: "column",
+      sizePct: 100,
+      gap: 0,
+      children: [],
+      items: [
+        {
+          type: "text",
+          id: "text1",
+          name: "Text",
+          fieldId: "name",
+          anchor: { x: 0, y: 0 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
+          widthPct: 80,
+          heightPct: 20,
+          fontSize: 20,
+          align: "left",
+          font: "flavor"
+        }
+      ]
+    }
+  });
+  const item = template.root.items[0];
+  assert.equal(item.font, "flavor");
 });
 
 test("normalizeTemplate handles anchor point rounding", () => {

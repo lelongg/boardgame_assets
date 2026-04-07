@@ -8,6 +8,10 @@ export const defaultTemplate = (): CardTemplate => ({
   height: 1050,
   radius: 28,
   bleed: 18,
+  fonts: {
+    title: { name: "Fraunces", file: "", source: "google" as const },
+    body: { name: "Space Grotesk", file: "", source: "google" as const }
+  },
   root: {
     id: "root",
     name: "Root",

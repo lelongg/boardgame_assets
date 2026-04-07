@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem } from "./types";
+import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem, FontSlot } from "./types";
 
 /**
  * Safely parse a number from a value that might be empty, null, or undefined.
@@ -26,6 +26,27 @@ const safeString = (value: unknown, defaultValue: string): string => {
 const safeEnum = <T extends string>(value: unknown, allowedValues: readonly T[], defaultValue: T): T => {
     const str = String(value ?? "");
     return (allowedValues as readonly string[]).includes(str) ? (str as T) : defaultValue;
+};
+
+const DEFAULT_FONTS: Record<string, FontSlot> = {
+    title: { name: "Fraunces", file: "", source: "google" },
+    body: { name: "Space Grotesk", file: "", source: "google" }
+};
+
+const normalizeFonts = (fonts: unknown): Record<string, FontSlot> => {
+    if (!fonts || typeof fonts !== "object" || Array.isArray(fonts)) {
+        return { ...DEFAULT_FONTS };
+    }
+    const result: Record<string, FontSlot> = {};
+    for (const [key, value] of Object.entries(fonts as Record<string, unknown>)) {
+        const slot = value && typeof value === "object" ? value as Record<string, unknown> : {};
+        result[key] = {
+            name: safeString(slot.name, "Sans Serif"),
+            file: safeString(slot.file, ""),
+            source: safeEnum(slot.source, ["upload", "google"] as const, "google")
+        };
+    }
+    return Object.keys(result).length > 0 ? result : { ...DEFAULT_FONTS };
 };
 
 /**
@@ -107,7 +128,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         fieldId: safeString(obj.fieldId, "name"),
         fontSize: safeNumber(obj.fontSize, 16),
         align: safeEnum(obj.align, ["left", "center", "right"] as const, "left" as const),
-        font: obj.font !== undefined && obj.font !== null ? safeEnum(obj.font, ["title", "body"] as const, "body" as const) : undefined,
+        font: obj.font !== undefined && obj.font !== null && obj.font !== "" ? safeString(obj.font, "body") : undefined,
         color: obj.color !== undefined && obj.color !== null ? safeString(obj.color, "#000000") : undefined
     };
     return textItem;
@@ -152,6 +173,7 @@ export const normalizeTemplate = (template: unknown): CardTemplate => {
         height: safeNumber(obj.height, 1050),
         radius: safeNumber(obj.radius, 28),
         bleed: safeNumber(obj.bleed, 18),
+        fonts: normalizeFonts(obj.fonts),
         root: normalizeSection(obj.root)
     };
 };
