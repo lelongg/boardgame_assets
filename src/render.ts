@@ -324,7 +324,8 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
 </svg>`;
 };
 
-export const renderTemplateSvg = (template: CardTemplate, selectedNode: SelectedNode | null = null): string => {
+export const renderTemplateSvg = (template: CardTemplate, selectedNode: SelectedNode | null = null, options: { showWireframes?: boolean } = {}): string => {
+  const { showWireframes = true } = options;
   const { palette } = theme;
   const { width, height, radius } = template;
   const layout = computeLayout(template);
@@ -332,6 +333,7 @@ export const renderTemplateSvg = (template: CardTemplate, selectedNode: Selected
   const sectionRects = Array.from(layout.sections.entries())
     .map(([id, rect]) => {
       const isSelected = selectedNode && selectedNode.type === "section" && selectedNode.id === id;
+      if (!showWireframes && !isSelected) return "";
       const strokeColor = isSelected ? SELECTION_COLOR : palette.muted;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
       const fillColor = isSelected ? `rgba(198, 90, 50, ${SECTION_SELECTION_OPACITY})` : "none";
@@ -351,6 +353,7 @@ export const renderTemplateSvg = (template: CardTemplate, selectedNode: Selected
   const itemRects = Array.from(layout.items.entries())
     .map(([id, rect]) => {
       const isSelected = selectedNode && selectedNode.type === "item" && selectedNode.id === id;
+      if (!showWireframes && !isSelected) return "";
       const strokeColor = isSelected ? SELECTION_COLOR : palette.ink;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
       const fillColor = isSelected ? `rgba(198, 90, 50, ${ITEM_SELECTION_OPACITY})` : "none";

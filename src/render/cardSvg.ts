@@ -344,42 +344,58 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
 </svg>`;
 };
 
-export const renderTemplateSvg = (template: CardTemplate): string => {
+type TemplateSvgOptions = {
+  showWireframes?: boolean;
+  selectedNodeId?: string | null;
+};
+
+export const renderTemplateSvg = (template: CardTemplate, options: TemplateSvgOptions = {}): string => {
+  const { showWireframes = true, selectedNodeId = null } = options;
   const { palette } = theme;
   const { width, height, radius } = template;
   const layout = computeLayout(template);
 
+  const selectedColor = "#2563eb";
+
   const sectionRects = Array.from(layout.sections.entries())
     .map(([id, rect]) => {
+      const isSelected = id === selectedNodeId;
+      if (!showWireframes && !isSelected) return "";
       const section = findSection(template.root, id);
       const label = section ? section.name || section.id : id;
-      const anchors = anchorPoints
+      const stroke = isSelected ? selectedColor : palette.muted;
+      const strokeWidth = isSelected ? 2.5 : 1;
+      const anchors = !isSelected ? "" : anchorPoints
         .map((anchor) => {
           const point = anchorPosition(rect, anchor);
-          return `<circle cx="${point.x}" cy="${point.y}" r="3" fill="${palette.muted}" />`;
+          return `<circle cx="${point.x}" cy="${point.y}" r="3" fill="${stroke}" />`;
         })
         .join("");
 
       return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="none" stroke="${palette.muted}" stroke-width="1" stroke-dasharray="6 6" />
-  <text x="${rect.x + 8}" y="${rect.y + 18}" font-size="12" fill="${palette.muted}" font-family="${DEBUG_FONT}">${escape(label)}</text>
+  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-dasharray="6 6" />
+  <text x="${rect.x + 8}" y="${rect.y + 18}" font-size="12" fill="${stroke}" font-family="${DEBUG_FONT}">${escape(label)}</text>
   ${anchors}`;
     })
     .join("");
 
   const itemRects = Array.from(layout.items.entries())
     .map(([id, rect]) => {
+      const isSelected = id === selectedNodeId;
+      if (!showWireframes && !isSelected) return "";
       const item = findItem(template.root, id);
-      const anchors = anchorPoints
+      const stroke = isSelected ? selectedColor : palette.ink;
+      const strokeWidth = isSelected ? 2.5 : 1;
+      const anchors = !isSelected ? "" : anchorPoints
         .map((anchor) => {
           const point = anchorPosition(rect, anchor);
-          return `<circle cx="${point.x}" cy="${point.y}" r="2.5" fill="${palette.ink}" />`;
+          return `<circle cx="${point.x}" cy="${point.y}" r="2.5" fill="${stroke}" />`;
         })
         .join("");
 
       return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="none" stroke="${palette.ink}" stroke-width="1" />
-  ${item ? `<text x="${rect.x + 6}" y="${rect.y + 16}" font-size="11" fill="${palette.ink}" font-family="${DEBUG_FONT}">${escape(item.name || item.id)}</text>` : ""}
+  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="${isSelected ? selectedColor + "08" : "none"}" stroke="${stroke}" stroke-width="${strokeWidth}" />
+  ${item ? `<text x="${rect.x + 6}" y="${rect.y + 16}" font-size="11" fill="${stroke}" font-family="${DEBUG_FONT}">${escape(item.name || item.id)}</text>` : ""}
   ${anchors}`;
     })
     .join("");

@@ -24,6 +24,7 @@ export default function GameEditorPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
   const [templatePreview, setTemplatePreview] = useState<string>('')
+  const [showWireframes, setShowWireframes] = useState(true)
 
   useEffect(() => {
     const initStorage = async () => {
@@ -52,10 +53,18 @@ export default function GameEditorPage() {
   }, [game?.template?.fonts, gameId])
 
   useEffect(() => {
-    if (!gameId) return
-    const url = `/api/games/${gameId}/template.svg?t=${Date.now()}`
-    setTemplatePreview(url)
-  }, [game?.template, gameId])
+    if (!game?.template) return
+    const updatePreview = async () => {
+      const { renderTemplateSvg } = await import('../render')
+      const kind = selectedNodeId ? getNodeKind(game.template.root, selectedNodeId) : null
+      const selectedNode = selectedNodeId && kind ? { type: kind, id: selectedNodeId } : null
+      const svg = renderTemplateSvg(game.template, selectedNode, { showWireframes })
+      const blob = new Blob([svg], { type: 'image/svg+xml' })
+      const url = URL.createObjectURL(blob)
+      setTemplatePreview((prev) => { if (prev) URL.revokeObjectURL(prev); return url })
+    }
+    updatePreview()
+  }, [game?.template, showWireframes, selectedNodeId])
 
   const selectCard = async (s: any, cardId: string, gameWithTemplate?: any) => {
     try {
@@ -432,7 +441,16 @@ export default function GameEditorPage() {
                               />
                             )}
                           </div>
-                          <div className="flex items-start justify-center">
+                          <div className="space-y-2">
+                            <div className="flex justify-end">
+                              <Button
+                                size="sm"
+                                variant={showWireframes ? 'default' : 'outline'}
+                                onClick={() => setShowWireframes(!showWireframes)}
+                              >
+                                Wireframes
+                              </Button>
+                            </div>
                             <div className="rounded-lg border bg-card p-3 shadow-inner">
                               {templatePreview && (
                                 <img
