@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createStorage } from '../storage'
+import FontManager from '@/components/FontManager'
 
 export default function GameEditorPage() {
   const { gameId } = useParams<{ gameId: string }>()
@@ -25,6 +26,23 @@ export default function GameEditorPage() {
     }
     initStorage()
   }, [gameId])
+
+  useEffect(() => {
+    if (!game?.template?.fonts || !gameId) return
+    const styleId = 'game-fonts-style'
+    let style = document.getElementById(styleId) as HTMLStyleElement | null
+    if (!style) {
+      style = document.createElement('style')
+      style.id = styleId
+      document.head.appendChild(style)
+    }
+    const rules = Object.values(game.template.fonts)
+      .filter((f: any) => f.file)
+      .map((f: any) => `@font-face { font-family: '${f.name}'; src: url('/api/games/${gameId}/fonts/${f.file}'); }`)
+      .join('\n')
+    style.textContent = rules
+    return () => { if (style) style.textContent = '' }
+  }, [game?.template?.fonts, gameId])
 
   const selectCard = async (s: any, cardId: string, gameWithTemplate?: any) => {
     try {
@@ -138,6 +156,33 @@ export default function GameEditorPage() {
     })
   }
 
+  const handleFontsChange = async (newFonts: Record<string, any>) => {
+    if (!gameId || !game) return
+    const updatedTemplate = { ...game.template, fonts: newFonts }
+    try {
+      setStatus('Saving fonts...')
+      await storage.saveTemplate(gameId, updatedTemplate)
+      setGame({ ...game, template: updatedTemplate })
+      setStatus('Fonts saved.')
+    } catch (error) {
+      setStatus('Error saving fonts.')
+      console.error(error)
+    }
+  }
+
+  const handleTemplateSave = async (updatedTemplate: any) => {
+    if (!gameId || !game) return
+    try {
+      setStatus('Saving template...')
+      await storage.saveTemplate(gameId, updatedTemplate)
+      setGame({ ...game, template: updatedTemplate })
+      setStatus('Template saved.')
+    } catch (error) {
+      setStatus('Error saving template.')
+      console.error(error)
+    }
+  }
+
   if (!game) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -231,6 +276,48 @@ export default function GameEditorPage() {
                             />
                           </div>
                           
+                          {game?.template?.root && (() => {
+                            const textItems: any[] = []
+                            const collectTextItems = (section: any) => {
+                              section.items?.forEach((item: any) => {
+                                if (!item.type || item.type === 'text') textItems.push(item)
+                              })
+                              section.children?.forEach(collectTextItems)
+                            }
+                            collectTextItems(game.template.root)
+                            const fontSlots = Object.keys(game.template.fonts ?? {})
+                            if (textItems.length === 0 || fontSlots.length === 0) return null
+                            return (
+                              <div className="space-y-2 mt-4">
+                                <Label>Text Item Fonts</Label>
+                                {textItems.map((item: any) => (
+                                  <div key={item.id} className="flex items-center gap-2 text-sm">
+                                    <span className="w-24 truncate text-muted-foreground">{item.name}</span>
+                                    <select
+                                      value={item.font ?? fontSlots[0] ?? ''}
+                                      onChange={(e) => {
+                                        const updatedTemplate = JSON.parse(JSON.stringify(game.template))
+                                        const findAndUpdate = (section: any) => {
+                                          section.items?.forEach((i: any) => {
+                                            if (i.id === item.id) i.font = e.target.value
+                                          })
+                                          section.children?.forEach(findAndUpdate)
+                                        }
+                                        findAndUpdate(updatedTemplate.root)
+                                        handleTemplateSave(updatedTemplate)
+                                      }}
+                                      className="rounded-md border bg-background px-2 py-1 text-sm"
+                                    >
+                                      {fontSlots.map((slot) => (
+                                        <option key={slot} value={slot}>{slot} ({game.template.fonts[slot]?.name})</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          })()}
+
                           <div className="flex gap-2">
                             <Button onClick={handleSaveCard}>Save Card</Button>
                             <Button variant="destructive" onClick={handleDeleteCard}>
@@ -254,9 +341,11 @@ export default function GameEditorPage() {
                     </TabsContent>
                     
                     <TabsContent value="layout">
-                      <div className="text-muted-foreground">
-                        Layout editor coming soon...
-                      </div>
+                      <FontManager
+                        gameId={gameId!}
+                        fonts={game?.template?.fonts ?? {}}
+                        onFontsChange={handleFontsChange}
+                      />
                     </TabsContent>
                   </Tabs>
                 )}
