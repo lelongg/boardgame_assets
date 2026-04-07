@@ -77,13 +77,18 @@ export default function GameEditorPage() {
       
       // Generate preview only if we have a template
       if (currentGame?.template) {
-        const { renderCardSvg } = await import('../render')
-        let svg = renderCardSvg(cardData, currentGame.template)
-        // Convert relative URLs to absolute so they resolve inside blob SVGs
-        svg = svg.replace(/href="(\/api\/[^"]+)"/g, `href="${window.location.origin}$1"`)
-        const blob = new Blob([svg], { type: 'image/svg+xml' })
-        const url = URL.createObjectURL(blob)
-        setCardPreview(url)
+        // Use server render endpoint to get SVG with embedded images
+        const res = await fetch(`/api/games/${gameId}/render`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ card: cardData, template: currentGame.template }),
+        })
+        if (res.ok) {
+          const svg = await res.text()
+          const blob = new Blob([svg], { type: 'image/svg+xml' })
+          const url = URL.createObjectURL(blob)
+          setCardPreview(url)
+        }
       }
     } catch (error) {
       console.error('Error loading card:', error)

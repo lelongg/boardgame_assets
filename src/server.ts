@@ -113,6 +113,27 @@ const readRawBody = (req: http.IncomingMessage, maxSize = 10_000_000): Promise<B
     req.on("error", reject);
   });
 
+const embedLocalImages = (svg: string, gameId: string): string => {
+  const imageUrlPattern = /href="(\/api\/games\/[^/]+\/images\/([^"]+))"/g;
+  return svg.replace(imageUrlPattern, (_match, _url, fileName) => {
+    const filePath = path.join(imagesDir(gameId), fileName);
+    if (!fs.existsSync(filePath)) return _match;
+    const data = fs.readFileSync(filePath);
+    const ext = path.extname(fileName).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".webp": "image/webp",
+      ".gif": "image/gif",
+      ".svg": "image/svg+xml",
+    };
+    const mime = mimeTypes[ext] ?? "application/octet-stream";
+    const b64 = data.toString("base64");
+    return `href="data:${mime};base64,${b64}"`;
+  });
+};
+
 type GameMeta = {
   id: string;
   name: string;
@@ -316,7 +337,9 @@ const server = http.createServer(async (req, res) => {
             }
           }
         }
-        const svg = renderCardSvg(card, template, { debug, fonts: fontData });
+        let svg = renderCardSvg(card, template, { debug, fonts: fontData });
+        // Embed local images as base64 data URIs
+        svg = embedLocalImages(svg, gameId);
         const debugAttach = body && "debugAttach" in body ? body.debugAttach : null;
         const withDebug = debugAttach ? injectDebugLabel(svg, debugAttach) : svg;
         return send(res, 200, withDebug, "image/svg+xml");
@@ -363,7 +386,9 @@ const server = http.createServer(async (req, res) => {
               }
             }
           }
-          return send(res, 200, renderCardSvg(card, template, { fonts: fontData }), "image/svg+xml");
+          let svg = renderCardSvg(card, template, { fonts: fontData });
+          svg = embedLocalImages(svg, gameId);
+          return send(res, 200, svg, "image/svg+xml");
         }
 
         if (segments.length === 5 && req.method === "GET") {
