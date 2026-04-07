@@ -7,6 +7,10 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createStorage } from '../storage'
 import FontManager from '@/components/FontManager'
+import NodeTree from '@/components/layout/NodeTree'
+import PropertyPanel from '@/components/layout/PropertyPanel'
+import TemplateActions from '@/components/layout/TemplateActions'
+import { getNodeKind } from '@/components/layout/templateHelpers'
 
 export default function GameEditorPage() {
   const { gameId } = useParams<{ gameId: string }>()
@@ -17,6 +21,9 @@ export default function GameEditorPage() {
   const [cards, setCards] = useState<any[]>([])
   const [selectedCard, setSelectedCard] = useState<any>(null)
   const [cardPreview, setCardPreview] = useState<string>('')
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
+  const [templatePreview, setTemplatePreview] = useState<string>('')
 
   useEffect(() => {
     const initStorage = async () => {
@@ -43,6 +50,12 @@ export default function GameEditorPage() {
     style.textContent = rules
     return () => { if (style) style.textContent = '' }
   }, [game?.template?.fonts, gameId])
+
+  useEffect(() => {
+    if (!gameId) return
+    const url = `/api/games/${gameId}/template.svg?t=${Date.now()}`
+    setTemplatePreview(url)
+  }, [game?.template, gameId])
 
   const selectCard = async (s: any, cardId: string, gameWithTemplate?: any) => {
     try {
@@ -181,6 +194,52 @@ export default function GameEditorPage() {
       setStatus('Error saving template.')
       console.error(error)
     }
+  }
+
+  const handleNodeSelect = (id: string) => {
+    setSelectedNodeId(id)
+    setSelectedProperty(null)
+  }
+
+  const handlePropertyChange = (property: string, value: unknown) => {
+    if (!game?.template || !selectedNodeId) return
+    const t = JSON.parse(JSON.stringify(game.template))
+    const kind = getNodeKind(t.root, selectedNodeId)
+    if (!kind) return
+
+    let node: any
+    if (kind === 'section') {
+      const findSection = (s: any): any => {
+        if (s.id === selectedNodeId) return s
+        for (const c of s.children) { const f = findSection(c); if (f) return f }
+        return null
+      }
+      node = findSection(t.root)
+    } else {
+      const findItem = (s: any): any => {
+        const item = s.items.find((i: any) => i.id === selectedNodeId)
+        if (item) return item
+        for (const c of s.children) { const f = findItem(c); if (f) return f }
+        return null
+      }
+      node = findItem(t.root)
+    }
+    if (!node) return
+
+    if (property === 'attachAnchor') {
+      if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
+      node.attach.anchor = value
+    } else if (property === 'attachTargetType') {
+      if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
+      node.attach.targetType = value
+    } else if (property === 'attachTargetId') {
+      if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
+      node.attach.targetId = value
+    } else {
+      node[property] = value
+    }
+
+    handleTemplateSave(t)
   }
 
   if (!game) {
@@ -341,11 +400,51 @@ export default function GameEditorPage() {
                     </TabsContent>
                     
                     <TabsContent value="layout">
-                      <FontManager
-                        gameId={gameId!}
-                        fonts={game?.template?.fonts ?? {}}
-                        onFontsChange={handleFontsChange}
-                      />
+                      <div className="space-y-6">
+                        <FontManager
+                          gameId={gameId!}
+                          fonts={game?.template?.fonts ?? {}}
+                          onFontsChange={handleFontsChange}
+                        />
+                        <hr className="border-border" />
+                        <div className="grid grid-cols-[1fr_360px] gap-6">
+                          <div className="space-y-4">
+                            <TemplateActions
+                              template={game.template}
+                              selectedNodeId={selectedNodeId}
+                              onTemplateChange={handleTemplateSave}
+                              onSelectNode={setSelectedNodeId}
+                            />
+                            {game.template?.root && (
+                              <NodeTree
+                                root={game.template.root}
+                                selectedNodeId={selectedNodeId}
+                                onSelectNode={handleNodeSelect}
+                              />
+                            )}
+                            {selectedNodeId && (
+                              <PropertyPanel
+                                template={game.template}
+                                selectedNodeId={selectedNodeId}
+                                selectedProperty={selectedProperty}
+                                onSelectProperty={setSelectedProperty}
+                                onPropertyChange={handlePropertyChange}
+                              />
+                            )}
+                          </div>
+                          <div className="flex items-start justify-center">
+                            <div className="rounded-lg border bg-card p-3 shadow-inner">
+                              {templatePreview && (
+                                <img
+                                  src={templatePreview}
+                                  alt="Template preview"
+                                  className="max-w-full"
+                                />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </TabsContent>
                   </Tabs>
                 )}
