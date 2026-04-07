@@ -89,3 +89,80 @@ export const getNodeKind = (root: CardTemplateSection, id: string): "section" | 
   if (findItemById(root, id)) return "item"
   return null
 }
+
+export const isDescendant = (parent: CardTemplateSection, childId: string): boolean => {
+  if (parent.id === childId) return true
+  for (const child of parent.children) {
+    if (isDescendant(child, childId)) return true
+  }
+  return false
+}
+
+/**
+ * Move a node to a new position. Returns true if successful.
+ * - dropTargetId: the section or item being dropped onto
+ * - position: "inside" to append to a section, "before"/"after" to insert relative to the target
+ */
+export const moveNode = (
+  root: CardTemplateSection,
+  dragId: string,
+  dragKind: "section" | "item",
+  dropTargetId: string,
+  position: "before" | "after" | "inside"
+): boolean => {
+  // Can't move root
+  if (dragId === root.id) return false
+
+  const dropKind = getNodeKind(root, dropTargetId)
+  if (!dropKind) return false
+
+  // "inside" only works on sections
+  if (position === "inside" && dropKind !== "section") return false
+
+  // Prevent dropping a section into its own descendant
+  if (dragKind === "section") {
+    const dragSection = findSectionById(root, dragId)
+    if (dragSection && isDescendant(dragSection, dropTargetId)) return false
+  }
+
+  // Remove the dragged node from its current location
+  const loc = findNodeLocation(root, dragId, dragKind)
+  if (!loc) return false
+  const [node] = loc.list.splice(loc.index, 1)
+
+  if (position === "inside") {
+    // Append to the target section
+    const target = findSectionById(root, dropTargetId)
+    if (!target) return false
+    if (dragKind === "section") target.children.push(node)
+    else target.items.push(node)
+    return true
+  }
+
+  // "before" or "after" — insert relative to the drop target
+  // Items can only go into item lists, sections into children lists
+  if (dropKind === "item" && dragKind === "item") {
+    const dropLoc = findNodeLocation(root, dropTargetId, "item")
+    if (!dropLoc) return false
+    const insertAt = position === "before" ? dropLoc.index : dropLoc.index + 1
+    dropLoc.list.splice(insertAt, 0, node)
+    return true
+  }
+
+  if (dropKind === "section" && dragKind === "section") {
+    const dropLoc = findNodeLocation(root, dropTargetId, "section")
+    if (!dropLoc) return false
+    const insertAt = position === "before" ? dropLoc.index : dropLoc.index + 1
+    dropLoc.list.splice(insertAt, 0, node)
+    return true
+  }
+
+  // Cross-kind: item dropped before/after a section → add to that section's parent's items
+  // section dropped before/after an item → add to that item's parent's children
+  // These are less intuitive so fall back to "inside" the parent
+  const dropParent = findParentSection(root, dropTargetId, dropKind)
+  if (!dropParent) return false
+  if (dragKind === "section") dropParent.children.push(node)
+  else dropParent.items.push(node)
+  return true
+}

@@ -10,7 +10,7 @@ import FontManager from '@/components/FontManager'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import TemplateActions from '@/components/layout/TemplateActions'
-import { getNodeKind } from '@/components/layout/templateHelpers'
+import { getNodeKind, moveNode } from '@/components/layout/templateHelpers'
 
 export default function GameEditorPage() {
   const { gameId } = useParams<{ gameId: string }>()
@@ -476,6 +476,12 @@ export default function GameEditorPage() {
                                 root={game.template.root}
                                 selectedNodeId={selectedNodeId}
                                 onSelectNode={handleNodeSelect}
+                                onDrop={(dragId, dragKind, dropTargetId, position) => {
+                                  const t = JSON.parse(JSON.stringify(game.template))
+                                  if (moveNode(t.root, dragId, dragKind, dropTargetId, position)) {
+                                    handleTemplateSave(t)
+                                  }
+                                }}
                               />
                             )}
                             {selectedNodeId && (

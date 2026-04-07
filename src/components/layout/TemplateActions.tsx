@@ -66,16 +66,6 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
   const canAddSection = !selectedKind || selectedKind === 'section'
   const canAddItem = !selectedKind || selectedKind === 'section'
 
-  let canMoveUp = false
-  let canMoveDown = false
-  if (selectedNodeId && selectedKind && !isRoot) {
-    const loc = findNodeLocation(template.root, selectedNodeId, selectedKind)
-    if (loc) {
-      canMoveUp = loc.index > 0
-      canMoveDown = loc.index < loc.list.length - 1
-    }
-  }
-
   const clone = (): CardTemplate => JSON.parse(JSON.stringify(template))
 
   const handleAddSection = () => {
@@ -124,18 +114,6 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
     setShowItemType(false)
   }
 
-  const handleMove = (direction: -1 | 1) => {
-    if (!selectedNodeId || !selectedKind || isRoot) return
-    const t = clone()
-    const loc = findNodeLocation(t.root, selectedNodeId, selectedKind)
-    if (!loc) return
-    const target = loc.index + direction
-    if (target < 0 || target >= loc.list.length) return
-    const [moved] = loc.list.splice(loc.index, 1)
-    loc.list.splice(target, 0, moved)
-    onTemplateChange(t)
-  }
-
   const handleDelete = () => {
     if (!selectedNodeId || !selectedKind || isRoot) return
     if (!confirm('Delete this node?')) return
@@ -165,11 +143,7 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
         )}
       </div>
       {selectedNodeId && !isRoot && (
-        <>
-          <Button size="sm" variant="outline" onClick={() => handleMove(-1)} disabled={!canMoveUp}>Move Up</Button>
-          <Button size="sm" variant="outline" onClick={() => handleMove(1)} disabled={!canMoveDown}>Move Down</Button>
-          <Button size="sm" variant="destructive" onClick={handleDelete}>Delete</Button>
-        </>
+        <Button size="sm" variant="destructive" onClick={handleDelete}>Delete</Button>
       )}
     </div>
   )
