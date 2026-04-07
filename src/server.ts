@@ -282,11 +282,11 @@ const server = http.createServer(async (req, res) => {
         if (segments.length === 5 && req.method === "PUT") {
           const body = (await parseBody(req)) as Partial<CardData> | null;
           const raw = readJson<Partial<CardData> | null>(cardPath(gameId, cardId), null);
-          if (!raw) return send(res, 404, JSON.stringify({ error: "Not found" }));
           const updated = normalizeCard({ ...raw, ...body, id: cardId });
           writeJson(cardPath(gameId, cardId), updated);
           touchGame(gameId);
-          return send(res, 200, JSON.stringify(updated));
+          const status = raw ? 200 : 201;
+          return send(res, status, JSON.stringify(updated));
         }
 
         if (segments.length === 5 && req.method === "DELETE") {
