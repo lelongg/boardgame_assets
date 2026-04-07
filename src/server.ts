@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
+import crypto from "node:crypto";
 import { renderCardSvg, renderTemplateSvg } from "./render/cardSvg.js";
 import { defaultTemplate } from "./template.js";
 import { normalizeCard, normalizeTemplate } from "./normalize.js";
@@ -22,7 +23,11 @@ const contentTypes = new Map([
   [".png", "image/png"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
-  [".webp", "image/webp"]
+  [".webp", "image/webp"],
+  [".woff2", "font/woff2"],
+  [".woff", "font/woff"],
+  [".ttf", "font/ttf"],
+  [".otf", "font/otf"],
 ]);
 
 const send = (res: http.ServerResponse, status: number, body: string, type = "application/json; charset=utf-8") => {
@@ -70,6 +75,42 @@ const gamePath = (gameId: string) => path.join(dataRoot, gameId, "game.json");
 const templatePath = (gameId: string) => path.join(dataRoot, gameId, "template.json");
 const cardsDir = (gameId: string) => path.join(dataRoot, gameId, "cards");
 const cardPath = (gameId: string, cardId: string) => path.join(cardsDir(gameId), `${cardId}.json`);
+const fontsDir = (gameId: string) => path.join(dataRoot, gameId, "fonts");
+
+const hashBuffer = (data: Buffer): string => {
+  const hash = crypto.createHash("sha256").update(data).digest("hex");
+  return hash.slice(0, 12);
+};
+
+const fetchGoogleFont = async (fontName: string): Promise<{ data: Buffer; name: string }> => {
+  const encoded = encodeURIComponent(fontName);
+  const cssUrl = `https://fonts.googleapis.com/css2?family=${encoded}`;
+  const cssRes = await fetch(cssUrl, {
+    headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+  });
+  if (!cssRes.ok) throw new Error(`Font not found: ${fontName}`);
+  const css = await cssRes.text();
+  const urlMatch = css.match(/src:\s*url\(([^)]+)\)\s*format\(['"]woff2['"]\)/);
+  if (!urlMatch) throw new Error(`No woff2 URL found for: ${fontName}`);
+  const fontUrl = urlMatch[1];
+  const fontRes = await fetch(fontUrl);
+  if (!fontRes.ok) throw new Error(`Failed to download font file`);
+  const arrayBuffer = await fontRes.arrayBuffer();
+  return { data: Buffer.from(arrayBuffer), name: fontName };
+};
+
+const readRawBody = (req: http.IncomingMessage, maxSize = 10_000_000): Promise<Buffer> =>
+  new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxSize) { req.destroy(); reject(new Error("Body too large")); return; }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
 
 type GameMeta = {
   id: string;
@@ -234,7 +275,18 @@ const server = http.createServer(async (req, res) => {
         const card = normalizeCard(candidate);
         const template = body && "template" in body && body.template ? body.template : loadTemplate(gameId);
         const debug = Boolean(body && "debug" in body && body.debug);
-        const svg = renderCardSvg(card, template, { debug });
+        const fontData: Record<string, { name: string; data: Buffer }> = {};
+        if (template.fonts) {
+          for (const [slot, fontSlot] of Object.entries(template.fonts as Record<string, { name: string; file: string }>)) {
+            if (fontSlot.file) {
+              const fp = path.join(fontsDir(gameId), fontSlot.file);
+              if (fs.existsSync(fp)) {
+                fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
+              }
+            }
+          }
+        }
+        const svg = renderCardSvg(card, template, { debug, fonts: fontData });
         const debugAttach = body && "debugAttach" in body ? body.debugAttach : null;
         const withDebug = debugAttach ? injectDebugLabel(svg, debugAttach) : svg;
         return send(res, 200, withDebug, "image/svg+xml");
@@ -270,7 +322,18 @@ const server = http.createServer(async (req, res) => {
           if (!raw) return send(res, 404, JSON.stringify({ error: "Not found" }));
           const card = normalizeCard(raw);
           const template = loadTemplate(gameId);
-          return send(res, 200, renderCardSvg(card, template), "image/svg+xml");
+          const fontData: Record<string, { name: string; data: Buffer }> = {};
+          if (template.fonts) {
+            for (const [slot, fontSlot] of Object.entries(template.fonts as Record<string, { name: string; file: string }>)) {
+              if (fontSlot.file) {
+                const fp = path.join(fontsDir(gameId), fontSlot.file);
+                if (fs.existsSync(fp)) {
+                  fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
+                }
+              }
+            }
+          }
+          return send(res, 200, renderCardSvg(card, template, { fonts: fontData }), "image/svg+xml");
         }
 
         if (segments.length === 5 && req.method === "GET") {
@@ -292,6 +355,69 @@ const server = http.createServer(async (req, res) => {
         if (segments.length === 5 && req.method === "DELETE") {
           fs.rmSync(cardPath(gameId, cardId), { force: true });
           touchGame(gameId);
+          return send(res, 204, "", "text/plain; charset=utf-8");
+        }
+      }
+
+      // Font routes: /api/games/:id/fonts/...
+      if (segments.length >= 5 && segments[3] === "fonts") {
+        // POST /api/games/:id/fonts/google
+        if (segments[4] === "google" && req.method === "POST") {
+          const body = (await parseBody(req)) as { name?: string } | null;
+          const fontName = body?.name?.trim();
+          if (!fontName) return send(res, 400, JSON.stringify({ error: "Font name required" }));
+          try {
+            const { data, name } = await fetchGoogleFont(fontName);
+            const hash = hashBuffer(data);
+            const file = `${hash}.woff2`;
+            const dir = fontsDir(gameId);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, file), data);
+            return send(res, 200, JSON.stringify({ file, name }));
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "Failed to fetch font";
+            return send(res, 400, JSON.stringify({ error: msg }));
+          }
+        }
+
+        // POST /api/games/:id/fonts/upload
+        if (segments[4] === "upload" && req.method === "POST") {
+          const disposition = req.headers["content-disposition"] ?? "";
+          const filenameMatch = disposition.match(/filename="?([^";\s]+)"?/);
+          const originalName = filenameMatch ? filenameMatch[1] : "font.woff2";
+          const ext = path.extname(originalName).toLowerCase();
+          const allowed = [".woff2", ".woff", ".ttf", ".otf"];
+          if (!allowed.includes(ext)) {
+            return send(res, 400, JSON.stringify({ error: `Unsupported font format: ${ext}` }));
+          }
+          const data = await readRawBody(req);
+          const hash = hashBuffer(data);
+          const file = `${hash}${ext}`;
+          const dir = fontsDir(gameId);
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(path.join(dir, file), data);
+          return send(res, 200, JSON.stringify({ file, name: originalName }));
+        }
+
+        // GET /api/games/:id/fonts/:file
+        if (segments.length === 5 && req.method === "GET") {
+          const fontFile = segments[4];
+          const fp = path.join(fontsDir(gameId), fontFile);
+          if (!fs.existsSync(fp)) return send(res, 404, JSON.stringify({ error: "Not found" }));
+          const ext = path.extname(fontFile);
+          const ct = contentTypes.get(ext) ?? "application/octet-stream";
+          const data = fs.readFileSync(fp);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", ct);
+          res.end(data);
+          return;
+        }
+
+        // DELETE /api/games/:id/fonts/:file
+        if (segments.length === 5 && req.method === "DELETE") {
+          const fontFile = segments[4];
+          const fp = path.join(fontsDir(gameId), fontFile);
+          fs.rmSync(fp, { force: true });
           return send(res, 204, "", "text/plain; charset=utf-8");
         }
       }
