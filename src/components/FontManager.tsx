@@ -8,58 +8,69 @@ type FontManagerProps = {
   gameId: string
   fonts: Record<string, FontSlot>
   onFontsChange: (fonts: Record<string, FontSlot>) => void
+  onStatus: (status: string) => void
 }
 
-export default function FontManager({ gameId, fonts, onFontsChange }: FontManagerProps) {
+export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: FontManagerProps) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [slotName, setSlotName] = useState('')
   const [source, setSource] = useState<'google' | 'upload'>('google')
   const [googleFontName, setGoogleFontName] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
 
   const handleAddGoogle = async () => {
-    if (!slotName.trim() || !googleFontName.trim()) return
+    if (!googleFontName.trim()) return
+    const slot = slotName.trim() || googleFontName.trim().toLowerCase().replace(/\s+/g, '-')
     setLoading(true)
-    setError('')
+    onStatus('Adding font...')
     try {
       const res = await fetch(`/api/games/${gameId}/fonts/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotName: slotName.trim(), fontName: googleFontName.trim() }),
+        body: JSON.stringify({ slotName: slot, name: googleFontName.trim() }),
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || 'Failed to add font')
+      }
       const data = await res.json()
       onFontsChange(data.fonts)
       setSlotName('')
       setGoogleFontName('')
       setShowAddForm(false)
+      onStatus('Font added.')
     } catch (err: any) {
-      setError(err.message || 'Failed to add font')
+      onStatus(`Error: ${err.message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleUpload = async (file: File) => {
-    if (!slotName.trim()) return
+  const handleUpload = async (file: File, overrideSlotName?: string) => {
+    const slot = (overrideSlotName ?? slotName).trim()
+    if (!slot) return
     setLoading(true)
-    setError('')
+    onStatus('Uploading font...')
     try {
-      const formData = new FormData()
-      formData.append('slotName', slotName.trim())
-      formData.append('font', file)
       const res = await fetch(`/api/games/${gameId}/fonts/upload`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Disposition': `attachment; filename="${file.name}"`,
+          'X-Slot-Name': slot,
+        },
+        body: await file.arrayBuffer(),
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || 'Failed to upload font')
+      }
       const data = await res.json()
       onFontsChange(data.fonts)
       setSlotName('')
       setShowAddForm(false)
+      onStatus('Font uploaded.')
     } catch (err: any) {
-      setError(err.message || 'Failed to upload font')
+      onStatus(`Error: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -67,19 +78,34 @@ export default function FontManager({ gameId, fonts, onFontsChange }: FontManage
 
   const handleDelete = async (slotKey: string) => {
     const font = fonts[slotKey]
-    if (!font?.file) return
-    if (!confirm(`Delete font "${font.name}"?`)) return
+    if (!font) return
     setLoading(true)
-    setError('')
+    onStatus('Deleting font...')
     try {
-      const res = await fetch(`/api/games/${gameId}/fonts/${font.file}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
-      onFontsChange(data.fonts)
+      if (font.file) {
+        const res = await fetch(`/api/games/${gameId}/fonts/${font.file}`, {
+          method: 'DELETE',
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          throw new Error(body?.error || 'Failed to delete font')
+        }
+        const data = await res.json()
+        onFontsChange(data.fonts)
+      } else {
+        // Font has no file, remove the slot and save template
+        const updated = { ...fonts }
+        delete updated[slotKey]
+        await fetch(`/api/games/${gameId}/template`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...await (await fetch(`/api/games/${gameId}/template`)).json(), fonts: updated }),
+        })
+        onFontsChange(updated)
+      }
+      onStatus('Font deleted.')
     } catch (err: any) {
-      setError(err.message || 'Failed to delete font')
+      onStatus(`Error: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -92,11 +118,9 @@ export default function FontManager({ gameId, fonts, onFontsChange }: FontManage
       <div className="flex items-center justify-between">
         <Label className="text-base font-semibold">Fonts</Label>
         <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>
-          {showAddForm ? 'Cancel' : 'Add slot'}
+          {showAddForm ? 'Cancel' : 'Add Font'}
         </Button>
       </div>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {fontEntries.length === 0 && !showAddForm && (
         <p className="text-sm text-muted-foreground">No fonts added yet.</p>
@@ -104,9 +128,8 @@ export default function FontManager({ gameId, fonts, onFontsChange }: FontManage
 
       {fontEntries.map(([key, font]) => (
         <div key={key} className="flex items-center gap-3 rounded-md border px-3 py-2">
-          <span className="text-sm font-medium">{key}</span>
-          <span className="text-sm text-muted-foreground">{font.name}</span>
-          <span className="ml-auto text-xs text-muted-foreground">{font.source}</span>
+          <span className="text-sm font-medium">{font.name}</span>
+          <span className="ml-auto text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
           <Button
             size="sm"
             variant="destructive"
@@ -120,15 +143,6 @@ export default function FontManager({ gameId, fonts, onFontsChange }: FontManage
 
       {showAddForm && (
         <div className="space-y-3 rounded-md border p-4">
-          <div className="space-y-2">
-            <Label>Slot name</Label>
-            <Input
-              value={slotName}
-              onChange={(e) => setSlotName(e.target.value)}
-              placeholder="e.g. heading, body"
-            />
-          </div>
-
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -142,7 +156,7 @@ export default function FontManager({ gameId, fonts, onFontsChange }: FontManage
               variant={source === 'upload' ? 'default' : 'outline'}
               onClick={() => setSource('upload')}
             >
-              Upload file
+              File
             </Button>
           </div>
 
@@ -150,11 +164,23 @@ export default function FontManager({ gameId, fonts, onFontsChange }: FontManage
             <div className="flex gap-2">
               <Input
                 value={googleFontName}
-                onChange={(e) => setGoogleFontName(e.target.value)}
-                placeholder="Font name (e.g. Roboto)"
+                onChange={(e) => {
+                  const val = e.target.value
+                  // Accept Google Fonts URLs: extract font name from specimen or family URL
+                  const urlMatch = val.match(/fonts\.google\.com\/(?:specimen|share)\/([\w+]+)/)
+                    || val.match(/fonts\.googleapis\.com\/css2?\?family=([\w+]+)/)
+                  if (urlMatch) {
+                    const name = urlMatch[1].replace(/\+/g, ' ')
+                    setGoogleFontName(name)
+                    if (!slotName.trim()) setSlotName(name.toLowerCase().replace(/\s+/g, '-'))
+                  } else {
+                    setGoogleFontName(val)
+                  }
+                }}
+                placeholder="Name or Google Fonts URL"
                 className="flex-1"
               />
-              <Button disabled={loading || !slotName.trim() || !googleFontName.trim()} onClick={handleAddGoogle}>
+              <Button disabled={loading || !googleFontName.trim()} onClick={handleAddGoogle}>
                 Add
               </Button>
             </div>
@@ -162,16 +188,27 @@ export default function FontManager({ gameId, fonts, onFontsChange }: FontManage
 
           {source === 'upload' && (
             <div>
-              <input
-                type="file"
-                accept=".woff2,.woff,.ttf,.otf"
-                disabled={loading || !slotName.trim()}
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) handleUpload(file)
+              <Button
+                disabled={loading}
+                onClick={() => {
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.accept = '.woff2,.woff,.ttf,.otf'
+                  input.onchange = () => {
+                    const file = input.files?.[0]
+                    if (!file) return
+                    let slot = slotName.trim()
+                    if (!slot) {
+                      slot = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ')
+                      setSlotName(slot)
+                    }
+                    handleUpload(file, slot)
+                  }
+                  input.click()
                 }}
-                className="text-sm"
-              />
+              >
+                Choose File
+              </Button>
             </div>
           )}
         </div>

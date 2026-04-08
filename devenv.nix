@@ -9,5 +9,5 @@
   languages.typescript.enable = true;
 
   processes.vite.exec = "npm run dev";
-  processes.api.exec = "npm run serve:watch";
+  processes.api.exec = "npm run serve:watch -- 5174";
 }

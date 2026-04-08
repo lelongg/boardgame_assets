@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import ConfirmButton from '@/components/ConfirmButton'
+
 import { createStorage } from '../storage'
 
 export default function GamesPage() {
   const [games, setGames] = useState<any[]>([])
-  const [newGameName, setNewGameName] = useState('')
   const [status, setStatus] = useState('Ready.')
   const [storage, setStorage] = useState<any>(null)
   const [isAuthorized, setIsAuthorized] = useState(false)
+  const [expandedGame, setExpandedGame] = useState<string | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -41,16 +42,15 @@ export default function GamesPage() {
   }
 
   const handleCreateGame = async () => {
-    if (!newGameName.trim()) return
     if (!storage) {
       setStatus('Storage not initialized.')
       return
     }
     try {
       setStatus('Creating game...')
-      await storage.createGame(newGameName.trim())
-      setNewGameName('')
-      await loadGames(storage)
+      const name = `Game ${games.length + 1}`
+      const created = await storage.createGame(name)
+      navigate(`/game/${created.id}`)
     } catch (error) {
       setStatus('Error creating game.')
       console.error(error)
@@ -115,32 +115,51 @@ export default function GamesPage() {
 
       <main className="mx-auto max-w-4xl px-7 py-6">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Games</CardTitle>
+            <Button size="sm" onClick={handleCreateGame}>
+              New
+            </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               {games.map((game) => (
-                <button
+                <div
                   key={game.id}
-                  onClick={() => navigate(`/game/${game.id}`)}
-                  className="w-full rounded-lg border bg-card px-3 py-2.5 text-left font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                  className={`rounded-lg border bg-card cursor-pointer ${expandedGame === game.id ? 'ring-1 ring-primary' : ''}`}
+                  onClick={() => setExpandedGame(expandedGame === game.id ? null : game.id)}
                 >
-                  {game.name}
-                </button>
+                  <div className="px-3 py-2.5 font-medium">
+                    {game.name}
+                  </div>
+                  {expandedGame === game.id && (
+                    <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                      <Button size="sm" onClick={() => navigate(`/game/${game.id}`)}>
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(`/print/${game.id}`, '_blank')}
+                      >
+                        Print
+                      </Button>
+                      <ConfirmButton onConfirm={async () => {
+                        try {
+                          await storage.deleteGame(game.id)
+                          await loadGames(storage)
+                          setStatus('Game deleted.')
+                        } catch {
+                          setStatus('Error deleting game.')
+                        }
+                      }} />
+                    </div>
+                  )}
+                </div>
               ))}
               {games.length === 0 && (
                 <p className="text-sm text-muted-foreground">No games yet. Create one below!</p>
               )}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={newGameName}
-                onChange={(e) => setNewGameName(e.target.value)}
-                placeholder="New game name"
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateGame()}
-              />
-              <Button onClick={handleCreateGame}>Create</Button>
             </div>
           </CardContent>
         </Card>

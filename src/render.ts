@@ -166,7 +166,7 @@ const layoutItems = (template: CardTemplate, result: LayoutResult): void => {
   });
 };
 
-const computeLayout = (template: CardTemplate): LayoutResult => {
+export const computeLayout = (template: CardTemplate): LayoutResult => {
   const result = {
     sections: new Map(),
     items: new Map()
@@ -301,7 +301,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
           const itemPoint = anchorPosition(rect, item.anchor);
           const missingLabel = targetRect
             ? ""
-            : `<text x="${targetPoint.x + 8}" y="${targetPoint.y + 4}" font-size="12" fill="#d64545" font-family="${theme.typography.body}">missing ${escape(item.attach.targetType)}:${escape(item.attach.targetId)}</text>`;
+            : `<text x="${targetPoint.x + 8}" y="${targetPoint.y + 4}" font-size="12" fill="#d64545" font-family="'Space Grotesk', sans-serif">missing ${escape(item.attach.targetType)}:${escape(item.attach.targetId)}</text>`;
           return `
   <circle cx="${targetPoint.x}" cy="${targetPoint.y}" r="8" fill="none" stroke="#d64545" stroke-width="3" />
   <circle cx="${itemPoint.x}" cy="${itemPoint.y}" r="6" fill="#2f6f4e" stroke="#ffffff" stroke-width="1" />
@@ -311,7 +311,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     : "";
 
   const debugLabel = options.debug
-    ? `<text x="24" y="36" font-size="20" fill="#d64545" font-family="${theme.typography.body}">DEBUG RENDER</text>`
+    ? `<text x="24" y="36" font-size="20" fill="#d64545" font-family="'Space Grotesk', sans-serif">DEBUG RENDER</text>`
     : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -324,49 +324,38 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
 </svg>`;
 };
 
-export const renderTemplateSvg = (template: CardTemplate, selectedNode: SelectedNode | null = null, options: { showWireframes?: boolean } = {}): string => {
-  const { showWireframes = true } = options;
+export const renderTemplateSvg = (template: CardTemplate, options: { showWireframes?: boolean; selectedNodeId?: string | null } = {}): string => {
+  const { showWireframes = true, selectedNodeId = null } = options;
   const { palette } = theme;
   const { width, height, radius } = template;
   const layout = computeLayout(template);
 
   const sectionRects = Array.from(layout.sections.entries())
     .map(([id, rect]) => {
-      const isSelected = selectedNode && selectedNode.type === "section" && selectedNode.id === id;
+      const isSelected = id === selectedNodeId;
       if (!showWireframes && !isSelected) return "";
+      const section = findSection(template.root, id);
+      const label = section ? section.name || section.id : id;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.muted;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
       const fillColor = isSelected ? `rgba(198, 90, 50, ${SECTION_SELECTION_OPACITY})` : "none";
-      const anchors = anchorPoints
-        .map((anchor) => {
-          const point = anchorPosition(rect, anchor);
-          return `<circle cx="${point.x}" cy="${point.y}" r="3" fill="${palette.muted}" />`;
-        })
-        .join("");
 
       return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="6 6" />
-  ${anchors}`;
+  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="6 6" />`;
     })
     .join("");
 
   const itemRects = Array.from(layout.items.entries())
     .map(([id, rect]) => {
-      const isSelected = selectedNode && selectedNode.type === "item" && selectedNode.id === id;
+      const isSelected = id === selectedNodeId;
       if (!showWireframes && !isSelected) return "";
+      const item = findItem(template.root, id);
       const strokeColor = isSelected ? SELECTION_COLOR : palette.ink;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
       const fillColor = isSelected ? `rgba(198, 90, 50, ${ITEM_SELECTION_OPACITY})` : "none";
-      const anchors = anchorPoints
-        .map((anchor) => {
-          const point = anchorPosition(rect, anchor);
-          return `<circle cx="${point.x}" cy="${point.y}" r="2.5" fill="${palette.ink}" />`;
-        })
-        .join("");
 
       return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
-  ${anchors}`;
+  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
     })
     .join("");
 

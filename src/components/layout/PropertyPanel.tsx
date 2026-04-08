@@ -1,4 +1,3 @@
-import { Label } from '@/components/ui/label'
 import ControlPanel from './ControlPanel'
 import type { CardTemplate, CardTemplateSection } from '../../types'
 import { findSectionById, findItemById, getNodeKind } from './templateHelpers'
@@ -90,8 +89,7 @@ export default function PropertyPanel({
   return (
     <div className="space-y-3">
       <div>
-        <Label className="text-xs text-muted-foreground">Properties</Label>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {properties.map((prop) => (
             <button
               key={prop.key}
@@ -109,14 +107,12 @@ export default function PropertyPanel({
       </div>
 
       {selectedProperty && (
-        <div className="rounded-md border p-3">
-          <Label className="text-xs text-muted-foreground mb-2 block">
-            {properties.find((p) => p.key === selectedProperty)?.label ?? selectedProperty}
-          </Label>
+        <div>
           <ControlPanel
             property={selectedProperty}
             value={currentValue}
             template={template}
+            selectedNodeId={selectedNodeId}
             onChange={(value) => onPropertyChange(selectedProperty, value)}
           />
         </div>

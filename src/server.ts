@@ -1,45 +1,23 @@
-import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import url from "node:url";
 import crypto from "node:crypto";
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
 import { renderCardSvg, renderTemplateSvg } from "./render/cardSvg.js";
 import { defaultTemplate } from "./template.js";
 import { normalizeCard, normalizeTemplate } from "./normalize.js";
 import type { CardData, CardTemplate } from "./types.js";
 
 const port = Number(process.argv[2] ?? 5173);
-const webRoot = path.resolve("src/web");
 const dataRoot = path.resolve("games");
 
 fs.mkdirSync(dataRoot, { recursive: true });
 
-const contentTypes = new Map([
-  [".html", "text/html; charset=utf-8"],
-  [".css", "text/css; charset=utf-8"],
-  [".js", "text/javascript; charset=utf-8"],
-  [".svg", "image/svg+xml"],
-  [".json", "application/json; charset=utf-8"],
-  [".png", "image/png"],
-  [".jpg", "image/jpeg"],
-  [".jpeg", "image/jpeg"],
-  [".webp", "image/webp"],
-  [".woff2", "font/woff2"],
-  [".woff", "font/woff"],
-  [".ttf", "font/ttf"],
-  [".otf", "font/otf"],
-]);
-
-const send = (res: http.ServerResponse, status: number, body: string, type = "application/json; charset=utf-8") => {
-  res.statusCode = status;
-  res.setHeader("Content-Type", type);
-  res.end(body);
-};
+// --- Helpers ---
 
 const readJson = <T>(filePath: string, fallback: T): T => {
   if (!fs.existsSync(filePath)) return fallback;
-  const data = fs.readFileSync(filePath, "utf8");
-  return JSON.parse(data) as T;
+  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
 };
 
 const writeJson = (filePath: string, value: unknown) => {
@@ -47,29 +25,8 @@ const writeJson = (filePath: string, value: unknown) => {
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf8");
 };
 
-const parseBody = (req: http.IncomingMessage) =>
-  new Promise<unknown>((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-      if (data.length > 2_000_000) req.destroy();
-    });
-    req.on("end", () => {
-      if (!data) return resolve(null);
-      try {
-        resolve(JSON.parse(data));
-      } catch (err) {
-        reject(err);
-      }
-    });
-  });
-
 const slugify = (value: string) =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+  value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
 const gamePath = (gameId: string) => path.join(dataRoot, gameId, "game.json");
 const templatePath = (gameId: string) => path.join(dataRoot, gameId, "template.json");
@@ -78,87 +35,71 @@ const cardPath = (gameId: string, cardId: string) => path.join(cardsDir(gameId),
 const fontsDir = (gameId: string) => path.join(dataRoot, gameId, "fonts");
 const imagesDir = (gameId: string) => path.join(dataRoot, gameId, "images");
 
-const hashBuffer = (data: Buffer): string => {
-  const hash = crypto.createHash("sha256").update(data).digest("hex");
-  return hash.slice(0, 12);
+const hashBuffer = (data: Buffer): string =>
+  crypto.createHash("sha256").update(data).digest("hex").slice(0, 12);
+
+const touchGame = (gameId: string) => {
+  const game = readJson<GameMeta | null>(gamePath(gameId), null);
+  if (!game) return;
+  writeJson(gamePath(gameId), { ...game, updatedAt: new Date().toISOString() });
 };
 
 const fetchGoogleFont = async (fontName: string): Promise<{ data: Buffer; name: string }> => {
-  const encoded = encodeURIComponent(fontName);
-  const cssUrl = `https://fonts.googleapis.com/css2?family=${encoded}`;
+  const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}`;
   const cssRes = await fetch(cssUrl, {
-    headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
   });
-  if (!cssRes.ok) throw new Error(`Font not found: ${fontName}`);
+  if (!cssRes.ok) throw new Error(`Font "${fontName}" not found on Google Fonts. Use the exact name from fonts.google.com, or paste the URL directly.`);
   const css = await cssRes.text();
   const urlMatch = css.match(/src:\s*url\(([^)]+)\)\s*format\(['"]woff2['"]\)/);
   if (!urlMatch) throw new Error(`No woff2 URL found for: ${fontName}`);
-  const fontUrl = urlMatch[1];
-  const fontRes = await fetch(fontUrl);
-  if (!fontRes.ok) throw new Error(`Failed to download font file`);
-  const arrayBuffer = await fontRes.arrayBuffer();
-  return { data: Buffer.from(arrayBuffer), name: fontName };
+  const fontRes = await fetch(urlMatch[1]);
+  if (!fontRes.ok) throw new Error("Failed to download font file");
+  return { data: Buffer.from(await fontRes.arrayBuffer()), name: fontName };
 };
 
-const readRawBody = (req: http.IncomingMessage, maxSize = 10_000_000): Promise<Buffer> =>
-  new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > maxSize) { req.destroy(); reject(new Error("Body too large")); return; }
-      chunks.push(chunk);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
-
 const embedLocalImages = (svg: string, gameId: string): string => {
-  const imageUrlPattern = /href="(\/api\/games\/[^/]+\/images\/([^"]+))"/g;
-  return svg.replace(imageUrlPattern, (_match, _url, fileName) => {
+  return svg.replace(/href="(\/api\/games\/[^/]+\/images\/([^"]+))"/g, (_match, _url, fileName) => {
     const filePath = path.join(imagesDir(gameId), fileName);
     if (!fs.existsSync(filePath)) return _match;
     const data = fs.readFileSync(filePath);
     const ext = path.extname(fileName).toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      ".png": "image/png",
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".webp": "image/webp",
-      ".gif": "image/gif",
-      ".svg": "image/svg+xml",
-    };
-    const mime = mimeTypes[ext] ?? "application/octet-stream";
-    const b64 = data.toString("base64");
-    return `href="data:${mime};base64,${b64}"`;
+    const mimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".svg": "image/svg+xml" };
+    return `href="data:${mimeTypes[ext] ?? "application/octet-stream"};base64,${data.toString("base64")}"`;
   });
 };
 
-type GameMeta = {
-  id: string;
-  name: string;
-  createdAt: string;
-  updatedAt: string;
+const loadFontData = (gameId: string, template: CardTemplate): Record<string, { name: string; data: Buffer }> => {
+  const fontData: Record<string, { name: string; data: Buffer }> = {};
+  if (template.fonts) {
+    for (const [slot, fontSlot] of Object.entries(template.fonts as Record<string, { name: string; file: string }>)) {
+      if (fontSlot.file) {
+        const fp = path.join(fontsDir(gameId), fontSlot.file);
+        if (fs.existsSync(fp)) fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
+      }
+    }
+  }
+  return fontData;
 };
+
+type GameMeta = { id: string; name: string; createdAt: string; updatedAt: string };
 
 const listGames = (): GameMeta[] => {
   if (!fs.existsSync(dataRoot)) return [];
-  return fs
-    .readdirSync(dataRoot, { withFileTypes: true })
-    .filter((dir) => dir.isDirectory())
-    .map((dir) => readJson<GameMeta | null>(gamePath(dir.name), null))
+  return fs.readdirSync(dataRoot, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => readJson<GameMeta | null>(gamePath(d.name), null))
     .filter(Boolean) as GameMeta[];
 };
 
 const listCards = (gameId: string): CardData[] => {
   const dir = cardsDir(gameId);
   if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((file) => file.endsWith(".json"))
-    .map((file) => readJson<Partial<CardData> | null>(path.join(dir, file), null))
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => readJson<Partial<CardData> | null>(path.join(dir, f), null))
     .filter(Boolean)
-    .map((card) => normalizeCard(card));
+    .map((c) => normalizeCard(c));
 };
 
 const loadTemplate = (gameId: string): CardTemplate => {
@@ -175,438 +116,312 @@ const loadTemplate = (gameId: string): CardTemplate => {
   return normalizeTemplate(raw);
 };
 
-const serveStatic = (req: http.IncomingMessage, res: http.ServerResponse) => {
-  const parsed = url.parse(req.url ?? "/");
-  const requestPath = decodeURIComponent(parsed.pathname ?? "/");
-  const safePath = path.normalize(requestPath).replace(/^\.\.(?:\\|\/|$)/, "");
-  const filePath = path.join(webRoot, safePath === "/" ? "index.html" : safePath);
-
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.statusCode = err.code === "ENOENT" ? 404 : 500;
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.end(err.code === "ENOENT" ? "Not found" : "Server error");
-      return;
-    }
-
-    const ext = path.extname(filePath);
-    const contentType = contentTypes.get(ext) ?? "application/octet-stream";
-    res.statusCode = 200;
-    res.setHeader("Content-Type", contentType);
-    res.end(data);
-  });
+const injectDebugLabel = (svg: string, debugAttach: Record<string, unknown>) => {
+  const label = `ATTACH ${JSON.stringify(debugAttach)}`.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return svg.replace("</svg>", `<text x="24" y="70" font-size="12" fill="#d64545" font-family="Space Grotesk, sans-serif">${label}</text></svg>`);
 };
 
-const server = http.createServer(async (req, res) => {
-  const parsed = new URL(req.url ?? "/", `http://${req.headers.host}`);
-  const segments = parsed.pathname.split("/").filter(Boolean);
+// --- App ---
 
-  if (segments[0] !== "api" && segments[0] !== "print") {
-    serveStatic(req, res);
-    return;
-  }
+const app = new Hono();
 
-  if (segments[0] === "print") {
-    const gameId = segments[1];
-    if (!gameId) return send(res, 400, "Missing game", "text/plain; charset=utf-8");
-    const cards = listCards(gameId);
-    const html = buildPrintHtml(gameId, cards);
-    send(res, 200, html, "text/html; charset=utf-8");
-    return;
-  }
+// Games
+app.get("/api/games", (c) => c.json(listGames()));
 
-  try {
-    if (segments.length === 2 && segments[1] === "games") {
-      if (req.method === "GET") {
-        return send(res, 200, JSON.stringify(listGames()));
-      }
-      if (req.method === "POST") {
-        const body = (await parseBody(req)) as { name?: string } | null;
-        const name = body?.name?.trim();
-        if (!name) return send(res, 400, JSON.stringify({ error: "Name required" }));
-        const idBase = slugify(name) || `game-${Date.now()}`;
-        let id = idBase;
-        let suffix = 1;
-        while (fs.existsSync(path.join(dataRoot, id))) {
-          id = `${idBase}-${suffix++}`;
-        }
-        const now = new Date().toISOString();
-        const game: GameMeta = { id, name, createdAt: now, updatedAt: now };
-        writeJson(gamePath(id), game);
-        writeJson(templatePath(id), defaultTemplate());
-        // Download default fonts in background (don't block game creation)
-        (async () => {
-          try {
-            const dir = fontsDir(id);
-            fs.mkdirSync(dir, { recursive: true });
-            const defaults = [
-              { slot: "title", fontName: "Fraunces" },
-              { slot: "body", fontName: "Space Grotesk" },
-            ];
-            const template = readJson<any>(templatePath(id), null);
-            if (!template?.fonts) return;
-            for (const { slot, fontName } of defaults) {
-              try {
-                const { data } = await fetchGoogleFont(fontName);
-                const hash = hashBuffer(data);
-                const fileName = `${hash}.woff2`;
-                fs.writeFileSync(path.join(dir, fileName), data);
-                if (template.fonts[slot]) {
-                  template.fonts[slot].file = fileName;
-                }
-              } catch {
-                // Font download failed, leave file empty
-              }
-            }
-            writeJson(templatePath(id), template);
-          } catch {
-            // Non-critical, ignore
-          }
-        })();
-        return send(res, 201, JSON.stringify(game));
-      }
-    }
-
-    if (segments.length >= 3 && segments[1] === "games") {
-      const gameId = segments[2];
-
-      if (segments.length === 3) {
-        if (req.method === "GET") {
-          const game = readJson<GameMeta | null>(gamePath(gameId), null);
-          if (!game) return send(res, 404, JSON.stringify({ error: "Not found" }));
-          return send(res, 200, JSON.stringify(game));
-        }
-        if (req.method === "PUT") {
-          const body = (await parseBody(req)) as { name?: string } | null;
-          const name = body?.name?.trim();
-          if (!name) return send(res, 400, JSON.stringify({ error: "Name required" }));
-          const game = readJson<GameMeta | null>(gamePath(gameId), null);
-          if (!game) return send(res, 404, JSON.stringify({ error: "Not found" }));
-          const updated = { ...game, name, updatedAt: new Date().toISOString() };
-          writeJson(gamePath(gameId), updated);
-          return send(res, 200, JSON.stringify(updated));
-        }
-        if (req.method === "DELETE") {
-          fs.rmSync(path.join(dataRoot, gameId), { recursive: true, force: true });
-          return send(res, 204, "", "text/plain; charset=utf-8");
-        }
-      }
-
-      if (segments.length === 4 && segments[3] === "template") {
-        if (req.method === "GET") {
-          const template = loadTemplate(gameId);
-          return send(res, 200, JSON.stringify(template));
-        }
-        if (req.method === "PUT") {
-          const body = (await parseBody(req)) as CardTemplate | null;
-          if (!body) return send(res, 400, JSON.stringify({ error: "Template required" }));
-          writeJson(templatePath(gameId), body);
-          touchGame(gameId);
-          return send(res, 200, JSON.stringify(body));
-        }
-      }
-
-      if (segments.length === 5 && segments[3] === "template" && segments[4] === "preview" && req.method === "POST") {
-        const body = (await parseBody(req)) as CardTemplate | null;
-        if (!body) return send(res, 400, JSON.stringify({ error: "Template required" }));
-        return send(res, 200, renderTemplateSvg(body), "image/svg+xml");
-      }
-
-      if (segments.length === 4 && segments[3] === "template.svg" && req.method === "GET") {
-        const template = loadTemplate(gameId);
-        return send(res, 200, renderTemplateSvg(template), "image/svg+xml");
-      }
-
-      if (segments.length === 4 && segments[3] === "render" && req.method === "POST") {
-        const body = (await parseBody(req)) as
-          | { card?: Partial<CardData>; template?: CardTemplate; debug?: boolean; debugAttach?: Record<string, unknown> }
-          | Partial<CardData>
-          | null;
-        const candidate = (body && "card" in body ? body.card : body) ?? {};
-        const card = normalizeCard(candidate);
-        const template = body && "template" in body && body.template ? body.template : loadTemplate(gameId);
-        const debug = Boolean(body && "debug" in body && body.debug);
-        const fontData: Record<string, { name: string; data: Buffer }> = {};
-        if (template.fonts) {
-          for (const [slot, fontSlot] of Object.entries(template.fonts as Record<string, { name: string; file: string }>)) {
-            if (fontSlot.file) {
-              const fp = path.join(fontsDir(gameId), fontSlot.file);
-              if (fs.existsSync(fp)) {
-                fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
-              }
-            }
-          }
-        }
-        let svg = renderCardSvg(card, template, { debug, fonts: fontData });
-        // Embed local images as base64 data URIs
-        svg = embedLocalImages(svg, gameId);
-        const debugAttach = body && "debugAttach" in body ? body.debugAttach : null;
-        const withDebug = debugAttach ? injectDebugLabel(svg, debugAttach) : svg;
-        return send(res, 200, withDebug, "image/svg+xml");
-      }
-
-      if (segments.length === 4 && segments[3] === "cards") {
-        if (req.method === "GET") {
-          return send(res, 200, JSON.stringify(listCards(gameId)));
-        }
-        if (req.method === "POST") {
-          const body = (await parseBody(req)) as Partial<CardData> | null;
-          const name = body?.name?.trim();
-          if (!name) return send(res, 400, JSON.stringify({ error: "Name required" }));
-          const idBase = slugify(name) || `card-${Date.now()}`;
-          let id = idBase;
-          let suffix = 1;
-          while (fs.existsSync(cardPath(gameId, id))) {
-            id = `${idBase}-${suffix++}`;
-          }
-          const card = normalizeCard({ ...body, id });
-          writeJson(cardPath(gameId, id), card);
-          touchGame(gameId);
-          return send(res, 201, JSON.stringify(card));
-        }
-      }
-
-      if (segments.length >= 5 && segments[3] === "cards") {
-        const isSvg = segments[4].endsWith(".svg");
-        const cardId = segments[4].replace(/\.svg$/, "");
-
-        if (segments.length === 5 && isSvg) {
-          const raw = readJson<Partial<CardData> | null>(cardPath(gameId, cardId), null);
-          if (!raw) return send(res, 404, JSON.stringify({ error: "Not found" }));
-          const card = normalizeCard(raw);
-          const template = loadTemplate(gameId);
-          const fontData: Record<string, { name: string; data: Buffer }> = {};
-          if (template.fonts) {
-            for (const [slot, fontSlot] of Object.entries(template.fonts as Record<string, { name: string; file: string }>)) {
-              if (fontSlot.file) {
-                const fp = path.join(fontsDir(gameId), fontSlot.file);
-                if (fs.existsSync(fp)) {
-                  fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
-                }
-              }
-            }
-          }
-          let svg = renderCardSvg(card, template, { fonts: fontData });
-          svg = embedLocalImages(svg, gameId);
-          return send(res, 200, svg, "image/svg+xml");
-        }
-
-        if (segments.length === 5 && req.method === "GET") {
-          const raw = readJson<Partial<CardData> | null>(cardPath(gameId, cardId), null);
-          if (!raw) return send(res, 404, JSON.stringify({ error: "Not found" }));
-          return send(res, 200, JSON.stringify(normalizeCard(raw)));
-        }
-
-        if (segments.length === 5 && req.method === "PUT") {
-          const body = (await parseBody(req)) as Partial<CardData> | null;
-          const raw = readJson<Partial<CardData> | null>(cardPath(gameId, cardId), null);
-          const updated = normalizeCard({ ...raw, ...body, id: cardId });
-          writeJson(cardPath(gameId, cardId), updated);
-          touchGame(gameId);
-          const status = raw ? 200 : 201;
-          return send(res, status, JSON.stringify(updated));
-        }
-
-        if (segments.length === 5 && req.method === "DELETE") {
-          fs.rmSync(cardPath(gameId, cardId), { force: true });
-          touchGame(gameId);
-          return send(res, 204, "", "text/plain; charset=utf-8");
-        }
-      }
-
-      // Font routes: /api/games/:id/fonts/...
-      if (segments.length >= 5 && segments[3] === "fonts") {
-        // POST /api/games/:id/fonts/google
-        if (segments[4] === "google" && req.method === "POST") {
-          const body = (await parseBody(req)) as { name?: string } | null;
-          const fontName = body?.name?.trim();
-          if (!fontName) return send(res, 400, JSON.stringify({ error: "Font name required" }));
-          try {
-            const { data, name } = await fetchGoogleFont(fontName);
-            const hash = hashBuffer(data);
-            const file = `${hash}.woff2`;
-            const dir = fontsDir(gameId);
-            fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(path.join(dir, file), data);
-            return send(res, 200, JSON.stringify({ file, name }));
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : "Failed to fetch font";
-            return send(res, 400, JSON.stringify({ error: msg }));
-          }
-        }
-
-        // POST /api/games/:id/fonts/upload
-        if (segments[4] === "upload" && req.method === "POST") {
-          const disposition = req.headers["content-disposition"] ?? "";
-          const filenameMatch = disposition.match(/filename="?([^";\s]+)"?/);
-          const originalName = filenameMatch ? filenameMatch[1] : "font.woff2";
-          const ext = path.extname(originalName).toLowerCase();
-          const allowed = [".woff2", ".woff", ".ttf", ".otf"];
-          if (!allowed.includes(ext)) {
-            return send(res, 400, JSON.stringify({ error: `Unsupported font format: ${ext}` }));
-          }
-          const data = await readRawBody(req);
+app.post("/api/games", async (c) => {
+  const body = await c.req.json<{ name?: string }>();
+  const name = body?.name?.trim();
+  if (!name) return c.json({ error: "Name required" }, 400);
+  const idBase = slugify(name) || `game-${Date.now()}`;
+  let id = idBase;
+  let suffix = 1;
+  while (fs.existsSync(path.join(dataRoot, id))) id = `${idBase}-${suffix++}`;
+  const now = new Date().toISOString();
+  const game: GameMeta = { id, name, createdAt: now, updatedAt: now };
+  writeJson(gamePath(id), game);
+  writeJson(templatePath(id), defaultTemplate());
+  // Download default fonts in background
+  (async () => {
+    try {
+      const dir = fontsDir(id);
+      fs.mkdirSync(dir, { recursive: true });
+      const defaults = [{ slot: "title", fontName: "Fraunces" }, { slot: "body", fontName: "Space Grotesk" }];
+      const template = readJson<any>(templatePath(id), null);
+      if (!template?.fonts) return;
+      for (const { slot, fontName } of defaults) {
+        try {
+          const { data } = await fetchGoogleFont(fontName);
           const hash = hashBuffer(data);
-          const file = `${hash}${ext}`;
-          const dir = fontsDir(gameId);
-          fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(path.join(dir, file), data);
-          return send(res, 200, JSON.stringify({ file, name: originalName }));
-        }
-
-        // GET /api/games/:id/fonts/:file
-        if (segments.length === 5 && req.method === "GET") {
-          const fontFile = segments[4];
-          const fp = path.join(fontsDir(gameId), fontFile);
-          if (!fs.existsSync(fp)) return send(res, 404, JSON.stringify({ error: "Not found" }));
-          const ext = path.extname(fontFile);
-          const ct = contentTypes.get(ext) ?? "application/octet-stream";
-          const data = fs.readFileSync(fp);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", ct);
-          res.end(data);
-          return;
-        }
-
-        // DELETE /api/games/:id/fonts/:file
-        if (segments.length === 5 && req.method === "DELETE") {
-          const fontFile = segments[4];
-          const fp = path.join(fontsDir(gameId), fontFile);
-          fs.rmSync(fp, { force: true });
-          return send(res, 204, "", "text/plain; charset=utf-8");
-        }
-      }
-
-      // Image routes: /api/games/:id/images/...
-      if (segments.length >= 5 && segments[3] === "images") {
-        // POST /api/games/:id/images/upload
-        if (segments[4] === "upload" && req.method === "POST") {
-          const data = await readRawBody(req);
-          const disposition = req.headers["content-disposition"] ?? "";
-          const nameMatch = disposition.match(/filename="?([^";\s]+)"?/);
-          const originalName = nameMatch ? nameMatch[1] : `image-${Date.now()}.png`;
-          const ext = path.extname(originalName) || ".png";
-          const allowedExts = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"];
-          if (!allowedExts.includes(ext.toLowerCase())) {
-            return send(res, 400, JSON.stringify({ error: "Unsupported image format" }));
-          }
-          const hash = hashBuffer(data);
-          const fileName = `${hash}${ext.toLowerCase()}`;
-          const dir = imagesDir(gameId);
-          fs.mkdirSync(dir, { recursive: true });
+          const fileName = `${hash}.woff2`;
           fs.writeFileSync(path.join(dir, fileName), data);
-          const url = `/api/games/${gameId}/images/${fileName}`;
-          return send(res, 201, JSON.stringify({ file: fileName, url }));
-        }
-
-        // GET /api/games/:id/images/:file
-        if (segments.length === 5 && req.method === "GET") {
-          const fileName = segments[4];
-          const filePath = path.join(imagesDir(gameId), fileName);
-          if (!fs.existsSync(filePath)) return send(res, 404, JSON.stringify({ error: "Not found" }));
-          const ext = path.extname(fileName);
-          const ct = contentTypes.get(ext) ?? "application/octet-stream";
-          const data = fs.readFileSync(filePath);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", ct);
-          res.end(data);
-          return;
-        }
-
-        // DELETE /api/games/:id/images/:file
-        if (segments.length === 5 && req.method === "DELETE") {
-          const fileName = segments[4];
-          fs.rmSync(path.join(imagesDir(gameId), fileName), { force: true });
-          return send(res, 204, "", "text/plain; charset=utf-8");
-        }
+          if (template.fonts[slot]) template.fonts[slot].file = fileName;
+        } catch { /* non-critical */ }
       }
-    }
+      writeJson(templatePath(id), template);
+    } catch { /* non-critical */ }
+  })();
+  return c.json(game, 201);
+});
 
-    if (segments.length === 2 && segments[1] === "render" && req.method === "POST") {
-      const body = (await parseBody(req)) as { card?: Partial<CardData> } | Partial<CardData> | null;
-      const candidate = (body && "card" in body ? body.card : body) ?? {};
-      const card = normalizeCard(candidate);
-      return send(res, 200, renderCardSvg(card, defaultTemplate()), "image/svg+xml");
-    }
+// Single game
+app.get("/api/games/:gameId", (c) => {
+  const game = readJson<GameMeta | null>(gamePath(c.req.param("gameId")), null);
+  if (!game) return c.json({ error: "Not found" }, 404);
+  return c.json(game);
+});
 
-    return send(res, 404, JSON.stringify({ error: "Not found" }));
+app.put("/api/games/:gameId", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json<{ name?: string }>();
+  const name = body?.name?.trim();
+  if (!name) return c.json({ error: "Name required" }, 400);
+  const game = readJson<GameMeta | null>(gamePath(gameId), null);
+  if (!game) return c.json({ error: "Not found" }, 404);
+  const updated = { ...game, name, updatedAt: new Date().toISOString() };
+  writeJson(gamePath(gameId), updated);
+  return c.json(updated);
+});
+
+app.delete("/api/games/:gameId", (c) => {
+  fs.rmSync(path.join(dataRoot, c.req.param("gameId")), { recursive: true, force: true });
+  return c.body(null, 204);
+});
+
+// Template
+app.get("/api/games/:gameId/template", (c) => c.json(loadTemplate(c.req.param("gameId"))));
+
+app.put("/api/games/:gameId/template", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json<CardTemplate>();
+  if (!body) return c.json({ error: "Template required" }, 400);
+  writeJson(templatePath(gameId), body);
+  touchGame(gameId);
+  return c.json(body);
+});
+
+app.get("/api/games/:gameId/template.svg", (c) => {
+  const template = loadTemplate(c.req.param("gameId"));
+  return c.body(renderTemplateSvg(template), { headers: { "Content-Type": "image/svg+xml" } });
+});
+
+app.post("/api/games/:gameId/template/preview", async (c) => {
+  const body = await c.req.json<CardTemplate>();
+  if (!body) return c.json({ error: "Template required" }, 400);
+  return c.body(renderTemplateSvg(body), { headers: { "Content-Type": "image/svg+xml" } });
+});
+
+// Render
+app.post("/api/games/:gameId/render", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json<any>();
+  const candidate = (body && "card" in body ? body.card : body) ?? {};
+  const card = normalizeCard(candidate);
+  const template = body?.template ?? loadTemplate(gameId);
+  const debug = Boolean(body?.debug);
+  const fontData = loadFontData(gameId, template);
+  let svg = renderCardSvg(card, template, { debug, fonts: fontData });
+  svg = embedLocalImages(svg, gameId);
+  if (body?.debugAttach) svg = injectDebugLabel(svg, body.debugAttach);
+  return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });
+});
+
+app.post("/api/render", async (c) => {
+  const body = await c.req.json<any>();
+  const candidate = (body && "card" in body ? body.card : body) ?? {};
+  const card = normalizeCard(candidate);
+  return c.body(renderCardSvg(card, defaultTemplate()), { headers: { "Content-Type": "image/svg+xml" } });
+});
+
+// Cards
+app.get("/api/games/:gameId/cards", (c) => c.json(listCards(c.req.param("gameId"))));
+
+app.post("/api/games/:gameId/cards", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json<Partial<CardData>>();
+  const name = body?.name?.trim();
+  if (!name) return c.json({ error: "Name required" }, 400);
+  const idBase = slugify(name) || `card-${Date.now()}`;
+  let id = idBase;
+  let suffix = 1;
+  while (fs.existsSync(cardPath(gameId, id))) id = `${idBase}-${suffix++}`;
+  const card = normalizeCard({ ...body, id });
+  writeJson(cardPath(gameId, id), card);
+  touchGame(gameId);
+  return c.json(card, 201);
+});
+
+app.get("/api/games/:gameId/cards/:cardId", (c) => {
+  const gameId = c.req.param("gameId");
+  let cardId = c.req.param("cardId");
+  const isSvg = cardId.endsWith(".svg");
+  if (isSvg) cardId = cardId.slice(0, -4);
+  const raw = readJson<Partial<CardData> | null>(cardPath(gameId, cardId), null);
+  if (!raw) return c.json({ error: "Not found" }, 404);
+  const card = normalizeCard(raw);
+  if (isSvg) {
+    const template = loadTemplate(gameId);
+    const fontData = loadFontData(gameId, template);
+    let svg = renderCardSvg(card, template, { fonts: fontData });
+    svg = embedLocalImages(svg, gameId);
+    return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });
+  }
+  return c.json(card);
+});
+
+app.put("/api/games/:gameId/cards/:cardId", async (c) => {
+  const gameId = c.req.param("gameId");
+  const cardId = c.req.param("cardId");
+  const body = await c.req.json<Partial<CardData>>();
+  const raw = readJson<Partial<CardData> | null>(cardPath(gameId, cardId), null);
+  const updated = normalizeCard({ ...raw, ...body, id: cardId });
+  writeJson(cardPath(gameId, cardId), updated);
+  touchGame(gameId);
+  return c.json(updated, raw ? 200 : 201);
+});
+
+app.delete("/api/games/:gameId/cards/:cardId", (c) => {
+  fs.rmSync(cardPath(c.req.param("gameId"), c.req.param("cardId")), { force: true });
+  touchGame(c.req.param("gameId"));
+  return c.body(null, 204);
+});
+
+// Fonts
+app.post("/api/games/:gameId/fonts/google", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json<{ name?: string; slotName?: string }>();
+  const fontName = body?.name?.trim();
+  const slotName = body?.slotName?.trim();
+  if (!fontName) return c.json({ error: "Font name required" }, 400);
+  if (!slotName) return c.json({ error: "Slot name required" }, 400);
+  try {
+    const { data, name } = await fetchGoogleFont(fontName);
+    const hash = hashBuffer(data);
+    const file = `${hash}.woff2`;
+    const dir = fontsDir(gameId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, file), data);
+    const template = loadTemplate(gameId);
+    if (!template.fonts) template.fonts = {};
+    template.fonts[slotName] = { name, file, source: "google" };
+    fs.writeFileSync(templatePath(gameId), JSON.stringify(template, null, 2));
+    return c.json({ fonts: template.fonts });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Server error";
-    return send(res, 500, JSON.stringify({ error: message }));
+    return c.json({ error: err instanceof Error ? err.message : "Failed to fetch font" }, 400);
   }
 });
 
-const touchGame = (gameId: string) => {
-  const game = readJson<GameMeta | null>(gamePath(gameId), null);
-  if (!game) return;
-  writeJson(gamePath(gameId), { ...game, updatedAt: new Date().toISOString() });
-};
+app.post("/api/games/:gameId/fonts/upload", async (c) => {
+  const gameId = c.req.param("gameId");
+  const disposition = c.req.header("content-disposition") ?? "";
+  const filenameMatch = disposition.match(/filename="?([^";\s]+)"?/);
+  const originalName = filenameMatch ? filenameMatch[1] : "font.woff2";
+  const slotName = c.req.header("x-slot-name");
+  if (!slotName?.trim()) return c.json({ error: "Slot name required" }, 400);
+  const ext = path.extname(originalName).toLowerCase();
+  if (![".woff2", ".woff", ".ttf", ".otf"].includes(ext)) {
+    return c.json({ error: `Unsupported font format: ${ext}` }, 400);
+  }
+  const data = Buffer.from(await c.req.arrayBuffer());
+  const hash = hashBuffer(data);
+  const file = `${hash}${ext}`;
+  const dir = fontsDir(gameId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, file), data);
+  const template = loadTemplate(gameId);
+  if (!template.fonts) template.fonts = {};
+  template.fonts[slotName.trim()] = { name: path.basename(originalName, ext), file, source: "upload" };
+  fs.writeFileSync(templatePath(gameId), JSON.stringify(template, null, 2));
+  return c.json({ fonts: template.fonts });
+});
 
-const injectDebugLabel = (svg: string, debugAttach: Record<string, unknown>) => {
-  const label = `ATTACH ${JSON.stringify(debugAttach)}`.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  const insert = `<text x=\"24\" y=\"70\" font-size=\"12\" fill=\"#d64545\" font-family=\"Space Grotesk, sans-serif\">${label}</text>`;
-  return svg.replace("</svg>", `${insert}</svg>`);
-};
+app.get("/api/games/:gameId/fonts/:file", (c) => {
+  const fp = path.join(fontsDir(c.req.param("gameId")), c.req.param("file"));
+  if (!fs.existsSync(fp)) return c.json({ error: "Not found" }, 404);
+  const ext = path.extname(c.req.param("file"));
+  const mimeTypes: Record<string, string> = { ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".otf": "font/otf" };
+  return c.body(fs.readFileSync(fp), { headers: { "Content-Type": mimeTypes[ext] ?? "application/octet-stream" } });
+});
 
-const buildPrintHtml = (gameId: string, cards: CardData[]) => {
-  const items = cards
-    .map(
-      (card) =>
-        `<div class="sheet-card"><img src="/api/games/${gameId}/cards/${card.id}.svg" alt="${card.name}" /></div>`
-    )
-    .join("\n");
+app.delete("/api/games/:gameId/fonts/:file", (c) => {
+  const gameId = c.req.param("gameId");
+  const fontFile = c.req.param("file");
+  fs.rmSync(path.join(fontsDir(gameId), fontFile), { force: true });
+  const template = loadTemplate(gameId);
+  if (template.fonts) {
+    for (const [key, slot] of Object.entries(template.fonts as Record<string, any>)) {
+      if (slot.file === fontFile) delete template.fonts[key];
+    }
+    fs.writeFileSync(templatePath(gameId), JSON.stringify(template, null, 2));
+  }
+  return c.json({ fonts: template.fonts ?? {} });
+});
 
-  return `<!doctype html>
+// Images
+app.post("/api/games/:gameId/images/upload", async (c) => {
+  const gameId = c.req.param("gameId");
+  const disposition = c.req.header("content-disposition") ?? "";
+  const nameMatch = disposition.match(/filename="?([^";\s]+)"?/);
+  const originalName = nameMatch ? nameMatch[1] : `image-${Date.now()}.png`;
+  const ext = (path.extname(originalName) || ".png").toLowerCase();
+  if (![".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"].includes(ext)) {
+    return c.json({ error: "Unsupported image format" }, 400);
+  }
+  const data = Buffer.from(await c.req.arrayBuffer());
+  const hash = hashBuffer(data);
+  const fileName = `${hash}${ext}`;
+  const dir = imagesDir(gameId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, fileName), data);
+  return c.json({ file: fileName, url: `/api/games/${gameId}/images/${fileName}` }, 201);
+});
+
+app.get("/api/games/:gameId/images/:file", (c) => {
+  const fp = path.join(imagesDir(c.req.param("gameId")), c.req.param("file"));
+  if (!fs.existsSync(fp)) return c.json({ error: "Not found" }, 404);
+  const ext = path.extname(c.req.param("file"));
+  const mimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".svg": "image/svg+xml" };
+  return c.body(fs.readFileSync(fp), { headers: { "Content-Type": mimeTypes[ext] ?? "application/octet-stream" } });
+});
+
+app.delete("/api/games/:gameId/images/:file", (c) => {
+  fs.rmSync(path.join(imagesDir(c.req.param("gameId")), c.req.param("file")), { force: true });
+  return c.body(null, 204);
+});
+
+// Print
+app.get("/print/:gameId", (c) => {
+  const gameId = c.req.param("gameId");
+  const cards = listCards(gameId);
+  const items = cards.map((card) =>
+    `<div class="sheet-card"><img src="/api/games/${gameId}/cards/${card.id}.svg" alt="${card.name}" /></div>`
+  ).join("\n");
+  const html = `<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Print Sheet - ${gameId}</title>
-    <style>
-      @page { margin: 10mm; }
-      body {
-        margin: 0;
-        font-family: "Space Grotesk", sans-serif;
-        background: #f4efe6;
-        color: #1b1a17;
-      }
-      header {
-        padding: 16px 18px 6px;
-      }
-      h1 { margin: 0; font-size: 20px; }
-      .sheet {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 12px;
-        padding: 12px;
-      }
-      .sheet-card {
-        background: #fffaf2;
-        border: 1px solid #d7cdbd;
-        border-radius: 12px;
-        padding: 6px;
-        break-inside: avoid;
-      }
-      .sheet-card img {
-        width: 100%;
-        display: block;
-      }
-      @media print {
-        header { display: none; }
-        body { background: white; }
-      }
-    </style>
-  </head>
-  <body>
-    <header>
-      <h1>Print Sheet — ${gameId}</h1>
-      <p>Use your browser print dialog.</p>
-    </header>
-    <section class="sheet">${items}</section>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Print Sheet - ${gameId}</title>
+  <style>
+    @page { margin: 10mm; }
+    body { margin: 0; font-family: "Space Grotesk", sans-serif; background: #f4efe6; color: #1b1a17; }
+    header { padding: 16px 18px 6px; }
+    h1 { margin: 0; font-size: 20px; }
+    .sheet { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px; }
+    .sheet-card { background: #fffaf2; border: 1px solid #d7cdbd; border-radius: 12px; padding: 6px; break-inside: avoid; }
+    .sheet-card img { width: 100%; display: block; }
+    @media print { header { display: none; } body { background: white; } }
+  </style>
+</head>
+<body>
+  <header><h1>Print Sheet — ${gameId}</h1><p>Use your browser print dialog.</p></header>
+  <section class="sheet">${items}</section>
+</body>
 </html>`;
-};
+  return c.html(html);
+});
 
-server.listen(port, "0.0.0.0", () => {
+// --- Start ---
+
+serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, () => {
   console.log(`Editor running at http://localhost:${port}/`);
 });

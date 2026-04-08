@@ -1,13 +1,14 @@
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import AnchorGrid from './AnchorGrid'
-import { flattenNodes } from './templateHelpers'
+import { flattenNodes, findParentSection, getNodeKind } from './templateHelpers'
 import type { CardTemplate } from '../../types'
 
 type ControlPanelProps = {
   property: string
   value: unknown
   template: CardTemplate
+  selectedNodeId?: string
   onChange: (value: unknown) => void
 }
 
@@ -19,7 +20,7 @@ type FieldMeta = {
   options?: { value: string; label: string }[]
 }
 
-const getFieldMeta = (property: string, template: CardTemplate): FieldMeta => {
+const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?: string): FieldMeta => {
   switch (property) {
     case 'sizePct': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'gap': return { type: 'number', min: 0, max: 100, step: 1 }
@@ -48,8 +49,14 @@ const getFieldMeta = (property: string, template: CardTemplate): FieldMeta => {
       { value: 'fill', label: 'Fill' },
     ]}
     case 'attachTargetId': {
-      const nodes = flattenNodes(template.root)
-      return { type: 'select', options: nodes.map((n) => ({
+      if (!selectedNodeId) return { type: 'select', options: [] }
+      const kind = getNodeKind(template.root, selectedNodeId)
+      const parent = kind ? findParentSection(template.root, selectedNodeId, kind) : null
+      const siblings = parent
+        ? [...parent.items.filter((i) => i.id !== selectedNodeId).map((i) => ({ id: i.id, name: i.name, kind: 'item' as const })),
+           { id: parent.id, name: parent.name, kind: 'section' as const }]
+        : []
+      return { type: 'select', options: siblings.map((n) => ({
         value: n.id,
         label: `${n.kind === 'section' ? '▸' : '·'} ${n.name}`,
       }))}
@@ -60,8 +67,8 @@ const getFieldMeta = (property: string, template: CardTemplate): FieldMeta => {
   }
 }
 
-export default function ControlPanel({ property, value, template, onChange }: ControlPanelProps) {
-  const meta = getFieldMeta(property, template)
+export default function ControlPanel({ property, value, template, selectedNodeId, onChange }: ControlPanelProps) {
+  const meta = getFieldMeta(property, template, selectedNodeId)
 
   if (meta.type === 'number') {
     const numVal = Number(value ?? 0)
@@ -86,7 +93,7 @@ export default function ControlPanel({ property, value, template, onChange }: Co
             step={meta.step}
             value={numVal}
             onChange={(e) => onChange(Number(e.target.value))}
-            className="w-24 text-center"
+            className="flex-1 text-center"
           />
           <Button size="sm" variant="outline" onClick={() => onChange(Math.min(meta.max ?? 100, numVal + step))}>+</Button>
         </div>

@@ -12,6 +12,53 @@ const escape = (value: string) =>
 
 type Rect = { x: number; y: number; width: number; height: number };
 
+type StyledRun = { text: string; bold?: boolean; italic?: boolean };
+type StyledLine = StyledRun[];
+
+const parseRichText = (html: string): StyledLine[] => {
+  // If it doesn't contain HTML tags, treat as plain text
+  if (!html.includes('<')) {
+    return html.split('\n').map(line => [{ text: line }]);
+  }
+  const lines: StyledLine[] = [];
+  // Split by <p> blocks, fall back to single line
+  const blocks = html.match(/<p>([\s\S]*?)<\/p>/g);
+  const parts = blocks ? blocks.map(b => b.replace(/<\/?p>/g, '')) : [html];
+  for (const part of parts) {
+    const runs: StyledRun[] = [];
+    // Parse inline tags: <strong>, <em>, <strong><em>, etc.
+    const regex = /(<(?:strong|em|\/strong|\/em)>)|([^<]+)/g;
+    let bold = false;
+    let italic = false;
+    let match;
+    while ((match = regex.exec(part)) !== null) {
+      if (match[1]) {
+        const tag = match[1];
+        if (tag === '<strong>') bold = true;
+        else if (tag === '</strong>') bold = false;
+        else if (tag === '<em>') italic = true;
+        else if (tag === '</em>') italic = false;
+      } else if (match[2]) {
+        const text = match[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+        runs.push({ text, bold, italic });
+      }
+    }
+    lines.push(runs.length ? runs : [{ text: '' }]);
+  }
+  return lines.length ? lines : [[{ text: '' }]];
+};
+
+const renderStyledLine = (runs: StyledRun[]): string => {
+  return runs.map(run => {
+    const text = escape(run.text);
+    if (!text && runs.length === 1) return '&#160;';
+    let result = text;
+    if (run.bold) result = `<tspan font-weight="bold">${result}</tspan>`;
+    if (run.italic) result = `<tspan font-style="italic">${result}</tspan>`;
+    return result;
+  }).join('');
+};
+
 type LayoutResult = {
   sections: Map<string, Rect>;
   items: Map<string, Rect>;
@@ -24,7 +71,7 @@ type RenderOptions = {
   fonts?: Record<string, FontData>;
 };
 
-const anchorPoints: AnchorPoint[] = [
+const _anchorPoints: AnchorPoint[] = [
   { x: 0, y: 0 },
   { x: 0.5, y: 0 },
   { x: 1, y: 0 },
@@ -224,7 +271,18 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       const slotName = textItem.font && template.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
       const fontSlot = template.fonts?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
-      itemElements.push(`<text x="${anchor.x}" y="${anchor.y}" text-anchor="${textAnchorFor(textItem.align)}" dominant-baseline="${baselineFor(textItem.anchor)}" font-family="${fontFamily}" font-size="${textItem.fontSize}" fill="${textItem.color ?? palette.ink}">${escape(value)}</text>`);
+      const align = textItem.align ?? "center";
+      const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : anchor.x;
+      const styledLines = parseRichText(value);
+      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(textItem.anchor)}" font-family="${fontFamily}" font-size="${textItem.fontSize}" fill="${textItem.color ?? palette.ink}"`;
+      if (styledLines.length === 1) {
+        itemElements.push(`<text x="${textX}" y="${anchor.y}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`);
+      } else {
+        const tspans = styledLines.map((line, i) =>
+          `<tspan x="${textX}" ${i === 0 ? `y="${anchor.y}"` : `dy="${textItem.fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
+        ).join('');
+        itemElements.push(`<text ${baseAttrs}>${tspans}</text>`);
+      }
     }
     
     if (itemType === "frame") {
@@ -287,59 +345,10 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
 
   const defs = (clipPaths.length > 0 || fontStyles) ? `<defs>${fontStyles}${clipPaths.join("")}</defs>` : "";
 
-  const debugRects = options.debug
-    ? items
-        .map((item) => {
-          const rect = layout.items.get(item.id);
-          if (!rect) return "";
-          const anchors = anchorPoints
-            .map((anchor) => {
-              const point = anchorPosition(rect, anchor);
-              return `<circle cx="${point.x}" cy="${point.y}" r="3" fill="${palette.muted}" />`;
-            })
-            .join("");
-          return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="none" stroke="${palette.muted}" stroke-width="1" />
-  ${anchors}`;
-        })
-        .join("")
-    : "";
-
-  const debugAnchors = options.debug
-    ? items
-        .map((item) => {
-          const rect = layout.items.get(item.id);
-          if (!rect) return "";
-          const targetRect =
-            item.attach.targetType === "item"
-              ? layout.items.get(item.attach.targetId)
-              : layout.sections.get(item.attach.targetId);
-          const targetPoint = targetRect
-            ? anchorPosition(targetRect, item.attach.anchor)
-            : { x: 16, y: 16 };
-          const itemPoint = anchorPosition(rect, item.anchor);
-          const missingLabel = targetRect
-            ? ""
-            : `<text x="${targetPoint.x + 8}" y="${targetPoint.y + 4}" font-size="12" fill="#d64545" font-family="${DEBUG_FONT}">missing ${escape(item.attach.targetType)}:${escape(item.attach.targetId)}</text>`;
-          return `
-  <circle cx="${targetPoint.x}" cy="${targetPoint.y}" r="8" fill="none" stroke="#d64545" stroke-width="3" />
-  <circle cx="${itemPoint.x}" cy="${itemPoint.y}" r="6" fill="#2f6f4e" stroke="#ffffff" stroke-width="1" />
-  ${missingLabel}`;
-        })
-        .join("")
-    : "";
-
-  const debugLabel = options.debug
-    ? `<text x="24" y="36" font-size="20" fill="#d64545" font-family="${DEBUG_FONT}">DEBUG RENDER</text>`
-    : "";
-
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">
   ${defs}
   <rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" fill="${palette.paper}" />
-  ${debugLabel}
-  ${debugRects}
-  ${debugAnchors}
   ${itemTexts}
 </svg>`;
 };
@@ -365,17 +374,9 @@ export const renderTemplateSvg = (template: CardTemplate, options: TemplateSvgOp
       const label = section ? section.name || section.id : id;
       const stroke = isSelected ? selectedColor : palette.muted;
       const strokeWidth = isSelected ? 2.5 : 1;
-      const anchors = !isSelected ? "" : anchorPoints
-        .map((anchor) => {
-          const point = anchorPosition(rect, anchor);
-          return `<circle cx="${point.x}" cy="${point.y}" r="3" fill="${stroke}" />`;
-        })
-        .join("");
-
       return `
   <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-dasharray="6 6" />
-  <text x="${rect.x + 8}" y="${rect.y + 18}" font-size="12" fill="${stroke}" font-family="${DEBUG_FONT}">${escape(label)}</text>
-  ${anchors}`;
+  <text x="${rect.x + 8}" y="${rect.y + 18}" font-size="12" fill="${stroke}" font-family="${DEBUG_FONT}">${escape(label)}</text>`;
     })
     .join("");
 
@@ -386,17 +387,9 @@ export const renderTemplateSvg = (template: CardTemplate, options: TemplateSvgOp
       const item = findItem(template.root, id);
       const stroke = isSelected ? selectedColor : palette.ink;
       const strokeWidth = isSelected ? 2.5 : 1;
-      const anchors = !isSelected ? "" : anchorPoints
-        .map((anchor) => {
-          const point = anchorPosition(rect, anchor);
-          return `<circle cx="${point.x}" cy="${point.y}" r="2.5" fill="${stroke}" />`;
-        })
-        .join("");
-
       return `
   <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="${isSelected ? selectedColor + "08" : "none"}" stroke="${stroke}" stroke-width="${strokeWidth}" />
-  ${item ? `<text x="${rect.x + 6}" y="${rect.y + 16}" font-size="11" fill="${stroke}" font-family="${DEBUG_FONT}">${escape(item.name || item.id)}</text>` : ""}
-  ${anchors}`;
+  ${item ? `<text x="${rect.x + 6}" y="${rect.y + 16}" font-size="11" fill="${stroke}" font-family="${DEBUG_FONT}">${escape(item.name || item.id)}</text>` : ""}`;
     })
     .join("");
 
