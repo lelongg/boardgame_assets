@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it, before, after, mock } from "node:test";
+import "fake-indexeddb/auto";
 import { defaultTemplate } from "../src/template.js";
 import { createLocalFileStorage } from "../src/storage/localFile.js";
+import { createIndexedDBStorage } from "../src/storage/indexedDB.js";
 import { exportGameZip, importGameZip } from "../src/gameZip.js";
 
 /**
@@ -410,7 +412,27 @@ describe("localFile backend", () => {
   });
 });
 
-// ── Round-trip test: export from one backend, import to another ───────────
+// ── IndexedDB backend ─────────────────────────────────────────────────────
+
+describe("indexedDB backend", () => {
+  let originalFetch;
+
+  before(() => {
+    originalFetch = globalThis.fetch;
+    // IndexedDB backend still needs fetch for Google Fonts downloads — mock it
+    globalThis.fetch = createMockFetchForLocalFile();
+  });
+
+  after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  backendCompatSuite("indexedDB", async () => {
+    return createIndexedDBStorage({ defaultTemplate });
+  });
+});
+
+// ── Round-trip tests ──────────────────────────────────────────────────────
 
 describe("round-trip export/import", () => {
   let originalFetch;
@@ -678,5 +700,125 @@ describe("round-trip export/import", () => {
     assert.equal(card.fields.emoji, "⚔️🛡️");
     assert.equal(card.fields.text, "Line 1\nLine 2");
     assert.equal(card.fields.html, "<b>Bold</b>");
+  });
+});
+
+// ── Helper: create a test game with all data types ────────────────────────
+
+async function createFullTestGame(storage) {
+  const game = await storage.createGame("Cross Backend Test");
+  const gameId = game.id;
+  const templates = await storage.listTemplates(gameId);
+  const tpl = templates[0];
+  tpl.name = "Test Template";
+  tpl.width = 900;
+  tpl.height = 1300;
+  tpl.root.items = [
+    { id: "emoji-1", name: "Badge", type: "emoji", fieldId: "badge", emoji: "🛡️",
+      values: ["🛡️", "⚔️", "🔮"], fontSize: 40,
+      anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: tpl.root.id, anchor: { x: 0.5, y: 0.5 } },
+      widthPct: 20, heightPct: 10 },
+  ];
+  await storage.saveTemplate(gameId, tpl.id, tpl);
+
+  const cols = await storage.listCollections(gameId);
+  await storage.saveCard(gameId, cols[0].id, "c1", {
+    id: "c1", name: "Card One", fields: { badge: "⚔️", cost: "3", description: "<i>Test</i>" },
+  });
+  await storage.saveCard(gameId, cols[0].id, "c2", {
+    id: "c2", name: "Card Two", fields: { badge: "🔮", cost: "7" },
+  });
+
+  return { gameId, templateId: tpl.id, collectionId: cols[0].id };
+}
+
+async function verifyFullTestGame(storage, gameId) {
+  const game = await storage.getGame(gameId);
+  assert.equal(game.name, "Cross Backend Test");
+
+  const templates = await storage.listTemplates(gameId);
+  assert.equal(templates.length, 1);
+  assert.equal(templates[0].name, "Test Template");
+  assert.equal(templates[0].width, 900);
+  assert.equal(templates[0].height, 1300);
+
+  const emojiItem = templates[0].root.items?.find((i) => i.id === "emoji-1");
+  assert.ok(emojiItem, "emoji item should exist in template");
+  assert.equal(emojiItem.type, "emoji");
+  assert.equal(emojiItem.emoji, "🛡️");
+  assert.deepEqual(emojiItem.values, ["🛡️", "⚔️", "🔮"]);
+  assert.equal(emojiItem.fieldId, "badge");
+
+  const cols = await storage.listCollections(gameId);
+  assert.equal(cols.length, 1);
+
+  const cards = await storage.listCards(gameId, cols[0].id);
+  assert.equal(cards.length, 2);
+  const c1 = cards.find((c) => c.name === "Card One");
+  assert.ok(c1);
+  assert.equal(c1.fields.badge, "⚔️");
+  assert.equal(c1.fields.cost, "3");
+  assert.equal(c1.fields.description, "<i>Test</i>");
+  const c2 = cards.find((c) => c.name === "Card Two");
+  assert.ok(c2);
+  assert.equal(c2.fields.badge, "🔮");
+
+  const fonts = await storage.listFonts(gameId);
+  assert.ok(typeof fonts === "object" && !Array.isArray(fonts));
+}
+
+// ── Cross-backend round-trips ─────────────────────────────────────────────
+
+describe("cross-backend round-trip via zip", () => {
+  let originalFetch;
+
+  before(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = createMockFetchForLocalFile();
+  });
+
+  after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("localFile → zip → indexedDB preserves all data", async () => {
+    const src = createLocalFileStorage({ defaultTemplate });
+    const { gameId } = await createFullTestGame(src);
+
+    const zipBlob = await exportGameZip(src, gameId);
+    const zipBuffer = await zipBlob.arrayBuffer();
+
+    const dst = createIndexedDBStorage({ defaultTemplate });
+    const newId = await importGameZip(dst, zipBuffer);
+    await verifyFullTestGame(dst, newId);
+  });
+
+  it("indexedDB → zip → localFile preserves all data", async () => {
+    const src = createIndexedDBStorage({ defaultTemplate });
+    const { gameId } = await createFullTestGame(src);
+
+    const zipBlob = await exportGameZip(src, gameId);
+    const zipBuffer = await zipBlob.arrayBuffer();
+
+    const dst = createLocalFileStorage({ defaultTemplate });
+    const newId = await importGameZip(dst, zipBuffer);
+    await verifyFullTestGame(dst, newId);
+  });
+
+  it("localFile → zip → localFile → zip → indexedDB survives double transfer", async () => {
+    const src = createLocalFileStorage({ defaultTemplate });
+    const { gameId } = await createFullTestGame(src);
+
+    // First hop: localFile → zip → localFile
+    const zip1 = await (await exportGameZip(src, gameId)).arrayBuffer();
+    const mid = createLocalFileStorage({ defaultTemplate });
+    const midId = await importGameZip(mid, zip1);
+
+    // Second hop: localFile → zip → indexedDB
+    const zip2 = await (await exportGameZip(mid, midId)).arrayBuffer();
+    const dst = createIndexedDBStorage({ defaultTemplate });
+    const finalId = await importGameZip(dst, zip2);
+
+    await verifyFullTestGame(dst, finalId);
   });
 });
