@@ -1,5 +1,5 @@
 const DB_NAME = "boardgame-assets";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "assets";
 
 interface AssetRecord {
