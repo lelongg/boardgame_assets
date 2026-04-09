@@ -121,7 +121,9 @@ export const importGameZip = async (
       const fontFile = zip.file(`fonts/${entry.file}`)
       if (!fontFile) continue
       const blob = await fontFile.async('blob')
-      const file = new File([blob], entry.file, { type: 'application/octet-stream' })
+      // Use original filename so uploadFont hashes to same name, but set display name from manifest
+      const ext = entry.file.match(/\.[^.]+$/)?.[0] ?? ''
+      const file = new File([blob], `${entry.name}${ext}`, { type: 'application/octet-stream' })
       await storage.uploadFont(newGameId, file, slot)
     }
   }
