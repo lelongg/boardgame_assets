@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Eye, Upload, ArrowLeft, Copy, Save, Plus, LayoutGrid, Layers } from 'lucide-react'
+import { Eye, Upload, ArrowLeft, Copy, Save, Plus, LayoutGrid, Layers, Type, Image, Smile } from 'lucide-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -427,7 +427,7 @@ export default function GameEditorPage() {
                             <div className="space-y-3">
                               {fields.map(({ fieldId, itemType }) => (
                                 <div key={fieldId} className="space-y-1">
-                                  <Label className="text-sm">{fieldId} <span className="text-muted-foreground font-normal">({itemType})</span></Label>
+                                  <Label className="text-sm flex items-center gap-1.5">{{ text: <Type className="h-3.5 w-3.5 text-muted-foreground" />, image: <Image className="h-3.5 w-3.5 text-muted-foreground" />, emoji: <Smile className="h-3.5 w-3.5 text-muted-foreground" /> }[itemType]} {fieldId}</Label>
                                   {itemType === 'image' ? (
                                     <div className="space-y-2">
                                       <div className="relative">
