@@ -129,6 +129,8 @@ export default function CollectionsPage() {
       const name = `Collection ${collections.length + 1}`
       const created = await storage.createCollection(gameId, name, templates[0].id)
       setCollections([...collections, created])
+      setExpandedCollection(created.id)
+      if (gameId) localStorage.setItem(`game:${gameId}:selectedCollection`, created.id)
     } catch {
       setStatus('Error creating collection.')
     }
@@ -140,6 +142,8 @@ export default function CollectionsPage() {
       const name = `Template ${templates.length + 1}`
       const created = await storage.createTemplate(gameId, name)
       setTemplates([...templates, created])
+      setSelectedTemplateId(created.id)
+      if (gameId) localStorage.setItem(`game:${gameId}:selectedTemplate`, created.id)
     } catch {
       setStatus('Error creating template.')
     }
@@ -480,110 +484,60 @@ export default function CollectionsPage() {
                     ))}
                   </div>
                 </div>
-              ) : (
+              ) : expandedCollection && collectionCards.length > 0 ? (
                 <div className="rounded-lg border bg-card overflow-y-auto max-h-[70vh]">
-                  {expandedCollection && collectionCards.length > 0 ? (
-                    <div>
-                      <div className="flex items-center gap-1 p-2 border-b sticky top-0 bg-card z-10">
-                        <button
-                          className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                          title="View"
-                          onClick={() => {
-                            if (!selectedCardId && collectionCards.length > 0) setSelectedCardId(collectionCards[0].id)
-                            setShowBigPreview(true)
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
+                  <div className="flex items-center gap-1 p-2 border-b sticky top-0 bg-card z-10">
+                    <button
+                      className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+                      title="View"
+                      onClick={() => {
+                        if (!selectedCardId && collectionCards.length > 0) setSelectedCardId(collectionCards[0].id)
+                        setShowBigPreview(true)
+                      }}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                    {selectedCardId && (
+                      <>
+                        <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy"
+                          onClick={async () => { try { await storage.copyCard(gameId, expandedCollection, selectedCardId); storage.listCards(gameId, expandedCollection).then(setCollectionCards); setStatus('Card copied.') } catch { setStatus('Error copying card.') } }}>
+                          <Copy className="h-4 w-4" />
                         </button>
-                        {selectedCardId && (
-                          <>
-                            <button
-                              className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                              title="Copy"
-                              onClick={async () => {
-                                try {
-                                  await storage.copyCard(gameId, expandedCollection, selectedCardId)
-                                  storage.listCards(gameId, expandedCollection).then(setCollectionCards)
-                                  setStatus('Card copied.')
-                                } catch { setStatus('Error copying card.') }
-                              }}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </button>
-                            <button
-                              className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                              title="Edit"
-                              onClick={() => {
-                                if (selectedCardId && gameId && expandedCollection) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId)
-                                navigate(`/game/${gameId}/collection/${expandedCollection}`)
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <ConfirmButton
-                              iconOnly
-                              onConfirm={async () => {
-                                try {
-                                  await storage.deleteCard(gameId, expandedCollection, selectedCardId)
-                                  const updated = collectionCards.filter(c => c.id !== selectedCardId)
-                                  setCollectionCards(updated)
-                                  setSelectedCardId(null)
-                                  setStatus('Card deleted.')
-                                } catch { setStatus('Error deleting card.') }
-                              }}
-                            />
-                          </>
-                        )}
-                        <div className="ml-auto flex items-center gap-1">
-                          <button
-                            className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                            disabled={galleryCols <= 1}
-                            onClick={() => setGalleryCols(c => { const v = Math.max(1, c - 1); localStorage.setItem('galleryCols', String(v)); return v })}
-                            title="Larger cards"
-                          >
-                            <Minus className="h-4 w-4" />
-                          </button>
-                          <span className="text-xs text-muted-foreground w-6 text-center">{galleryCols}</span>
-                          <button
-                            className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                            disabled={galleryCols >= 8}
-                            onClick={() => setGalleryCols(c => { const v = Math.min(8, c + 1); localStorage.setItem('galleryCols', String(v)); return v })}
-                            title="Smaller cards"
-                          >
-                            <Plus className="h-4 w-4" />
-                          </button>
+                        <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
+                          onClick={() => { if (selectedCardId && gameId && expandedCollection) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <ConfirmButton iconOnly onConfirm={async () => { try { await storage.deleteCard(gameId, expandedCollection, selectedCardId); setCollectionCards(collectionCards.filter(c => c.id !== selectedCardId)); setSelectedCardId(null); setStatus('Card deleted.') } catch { setStatus('Error deleting card.') } }} />
+                      </>
+                    )}
+                    <div className="ml-auto flex items-center gap-1">
+                      <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30" disabled={galleryCols <= 1}
+                        onClick={() => setGalleryCols(c => { const v = Math.max(1, c - 1); localStorage.setItem('galleryCols', String(v)); return v })} title="Larger cards">
+                        <Minus className="h-4 w-4" />
+                      </button>
+                      <span className="text-xs text-muted-foreground w-6 text-center">{galleryCols}</span>
+                      <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30" disabled={galleryCols >= 8}
+                        onClick={() => setGalleryCols(c => { const v = Math.min(8, c + 1); localStorage.setItem('galleryCols', String(v)); return v })} title="Smaller cards">
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 p-4" style={{ gridTemplateColumns: `repeat(${galleryCols}, minmax(0, 1fr))` }}>
+                    {collectionCards.map((card) => (
+                      <div key={card.id}
+                        className={`relative rounded-md cursor-pointer transition-all ${selectedCardId === card.id ? 'outline outline-2 outline-primary' : 'outline outline-1 outline-border'}`}
+                        onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}>
+                        <div className="rounded-t-md overflow-hidden" style={{ aspectRatio: '5 / 7' }}>
+                          <img src={`/api/games/${gameId}/collections/${expandedCollection}/cards/${card.id}.svg?v=${cacheBuster}`} alt={card.name} className="w-full h-full" />
                         </div>
+                        <p className="px-2 py-1 text-xs text-center text-muted-foreground truncate">{card.name}</p>
                       </div>
-                    <div className="grid gap-3 p-4" style={{ gridTemplateColumns: `repeat(${galleryCols}, minmax(0, 1fr))` }}>
-                      {collectionCards.map((card) => (
-                        <div
-                          key={card.id}
-                          className={`relative rounded-md cursor-pointer transition-all ${
-                            selectedCardId === card.id ? 'outline outline-2 outline-primary' : 'outline outline-1 outline-border'
-                          }`}
-                          onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}
-                        >
-                          <div className="rounded-t-md overflow-hidden" style={{ aspectRatio: '5 / 7' }}>
-                            <img
-                              src={`/api/games/${gameId}/collections/${expandedCollection}/cards/${card.id}.svg?v=${cacheBuster}`}
-                              alt={card.name}
-                              className="w-full h-full"
-                            />
-                          </div>
-                          <p className="px-2 py-1 text-xs text-center text-muted-foreground truncate">{card.name}</p>
-                        </div>
-                      ))}
-                    </div>
-                    </div>
-                  ) : expandedCollection ? (
-                    <div className="flex items-center justify-center p-8">
-                      <p className="text-sm text-muted-foreground">No cards in this collection.</p>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center p-8">
-                      <p className="text-sm text-muted-foreground">Select a collection to preview cards.</p>
-                    </div>
-                  )}
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center rounded-lg border bg-card p-8">
+                  <p className="text-sm text-muted-foreground">{expandedCollection ? 'No cards in this collection.' : 'Select a collection to preview cards.'}</p>
                 </div>
               )}
             </div>

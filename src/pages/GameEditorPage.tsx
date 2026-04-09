@@ -540,11 +540,9 @@ export default function GameEditorPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <Card>
-                  <CardContent className="text-center text-muted-foreground py-8">
-                    Select a card or create a new one to start editing
-                  </CardContent>
-                </Card>
+                <div className="flex items-center justify-center rounded-lg border bg-card p-8">
+                  <p className="text-sm text-muted-foreground">Select a card or create a new one to start editing</p>
+                </div>
               )}
 
               <div className="flex items-start justify-center">
