@@ -117,6 +117,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
             type: "image" as const,
             fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
             defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
+            values: Array.isArray(obj.values) ? obj.values.filter((v: unknown) => typeof v === 'string') : undefined,
             fit: obj.fit !== undefined && obj.fit !== null ? safeEnum(obj.fit, ["cover", "contain", "fill"] as const, "cover" as const) : undefined,
             cornerRadius: obj.cornerRadius !== undefined && obj.cornerRadius !== null ? safeNumber(obj.cornerRadius, 0) : undefined
         };
@@ -126,7 +127,9 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         const emojiItem: CardTemplateEmojiItem = {
             ...base,
             type: "emoji" as const,
+            fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
             emoji: typeof obj.emoji === 'string' ? obj.emoji : '⭐',
+            values: Array.isArray(obj.values) ? obj.values.filter((v: unknown) => typeof v === 'string') : undefined,
             fontSize: safeNumber(obj.fontSize, 32)
         };
         return emojiItem;
@@ -137,6 +140,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         type: type === "text" ? ("text" as const) : undefined,
         fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
         defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
+        values: Array.isArray(obj.values) ? obj.values.filter((v: unknown) => typeof v === 'string') : undefined,
         fontSize: safeNumber(obj.fontSize, 16),
         align: safeEnum(obj.align, ["left", "center", "right"] as const, "center" as const),
         verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
