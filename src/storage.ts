@@ -18,8 +18,7 @@ export const getProvider = (): string =>
 export const setProvider = (provider: string) =>
   localStorage.setItem(PROVIDER_KEY, provider);
 
-export const createStorage = async () => {
-  const providerKey = getProvider();
+export const createStorageFor = async (providerKey: string) => {
   const factory = providers[providerKey];
   if (!factory) {
     throw new Error(`Unknown storage provider: ${providerKey}`);
@@ -37,3 +36,5 @@ export const createStorage = async () => {
 
   return storage;
 };
+
+export const createStorage = async () => createStorageFor(getProvider());

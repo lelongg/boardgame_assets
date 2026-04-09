@@ -4,7 +4,7 @@ import { ArrowLeft, Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import PageLayout from '@/components/PageLayout'
-import { getProvider, setProvider, createStorage } from '../storage'
+import { getProvider, setProvider, createStorageFor } from '../storage'
 
 const BACKENDS = [
   { key: 'localFile', name: 'Local Disk', description: 'Requires the dev server running' },
@@ -36,14 +36,11 @@ export default function SettingsPage() {
   useEffect(() => {
     if (currentProvider !== 'googleDrive') return
     const initDrive = async () => {
-      const prev = getProvider()
       try {
-        setProvider('googleDrive')
-        const s = await createStorage()
+        const s = await createStorageFor('googleDrive')
         setDriveStorage(s)
         setDriveAuthorized(s.isAuthorized())
       } catch { /* skip */ }
-      finally { setProvider(prev) }
     }
     initDrive()
   }, [currentProvider])
@@ -69,17 +66,14 @@ export default function SettingsPage() {
     setFromGames([])
     setSelectedGames(new Set())
     setMigrationStatus(null)
-    const prev = getProvider()
     try {
-      setProvider(backendKey)
-      const storage = await createStorage()
+      const storage = await createStorageFor(backendKey)
       const games = await storage.listGames()
       setFromGames(games)
     } catch (err) {
       console.error('Failed to load games from backend:', err)
       setMigrationStatus('Failed to load games from source backend.')
     } finally {
-      setProvider(prev)
       setLoadingFromGames(false)
     }
   }
@@ -103,13 +97,9 @@ export default function SettingsPage() {
     setMigrating(true)
     setMigrationStatus(`Copying ${selectedGames.size} game(s)...`)
 
-    const prev = getProvider()
     try {
-      setProvider(migrateFrom)
-      const srcStorage = await createStorage()
-
-      setProvider(migrateTo)
-      const dstStorage = await createStorage()
+      const srcStorage = await createStorageFor(migrateFrom)
+      const dstStorage = await createStorageFor(migrateTo)
 
       let copied = 0
       for (const gameId of selectedGames) {
@@ -145,7 +135,6 @@ export default function SettingsPage() {
       console.error('Migration failed:', err)
       setMigrationStatus('Migration failed. Check console for details.')
     } finally {
-      setProvider(prev)
       setMigrating(false)
     }
   }
