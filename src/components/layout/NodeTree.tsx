@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react'
-import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import React, { useState, useRef, useCallback } from 'react'
+import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Type, Frame, Image } from 'lucide-react'
 import { flattenNodes } from './templateHelpers'
 import type { CardTemplateSection } from '../../types'
 
@@ -156,9 +156,12 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
         const isCollapsed = collapsed.has(node.id)
         const hasChildren = isSection && ((node.obj as CardTemplateSection).children.length > 0 || (node.obj as CardTemplateSection).items.length > 0)
         const prefix = isSection ? (hasChildren ? (isCollapsed ? '▸' : '▾') : '▾') : '·'
-        const typeLabel = node.kind === 'section'
-          ? `(${(node.obj as CardTemplateSection).layout})`
-          : `[${(node.obj as any).type ?? 'text'}]`
+        const iconClass = "h-3.5 w-3.5 inline-block opacity-60"
+        const sectionIcons: Record<string, React.ReactNode> = { column: <Columns3 className={iconClass} />, row: <Rows3 className={iconClass} />, stack: <Layers className={iconClass} /> }
+        const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} /> }
+        const typeIcon = node.kind === 'section'
+          ? sectionIcons[(node.obj as CardTemplateSection).layout] ?? null
+          : itemIcons[(node.obj as any).type ?? 'text'] ?? null
 
         const isDropTarget = dropIndicator?.targetId === node.id
         const dropPos = isDropTarget ? dropIndicator!.position : null
@@ -215,12 +218,14 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
                 onSelectNode(node.id)
               }
             }}
-            className={`w-full rounded px-2 py-1.5 text-left text-sm transition-colors cursor-grab ${
+            className={`w-full rounded px-2 text-left transition-colors cursor-grab ${
+              isSection ? 'py-1.5 text-sm font-medium' : 'py-1 text-xs text-muted-foreground'
+            } ${
               isDragging ? 'opacity-40' : ''
             } ${
               isSelected
                 ? 'bg-primary text-primary-foreground'
-                : nodes.indexOf(node) % 2 === 0
+                : isSection
                   ? 'bg-muted/30 hover:bg-accent/50'
                   : 'hover:bg-accent/50'
             } ${dropClass}`}
@@ -238,8 +243,8 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
                 })
               }}
             >{prefix}</span>
+            {typeIcon && <span className="mr-1.5">{typeIcon}</span>}
             <span className="font-medium">{node.name}</span>
-            <span className="ml-1.5 opacity-60">{typeLabel}</span>
           </div>
         )
       })}
