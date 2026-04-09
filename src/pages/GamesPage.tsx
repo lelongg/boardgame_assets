@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pencil, Plus, X, Printer } from 'lucide-react'
+import { Pencil, Plus, X, Printer, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -145,6 +145,9 @@ export default function GamesPage() {
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/print`)} title="Print all">
                         <Printer className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/export/tts`)} title="Export for Tabletop Simulator">
+                        <Download className="h-4 w-4" />
                       </Button>
                       <ConfirmButton onConfirm={async () => {
                         const prev = games
