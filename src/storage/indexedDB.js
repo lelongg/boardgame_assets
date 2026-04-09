@@ -142,7 +142,7 @@ function idbDeleteByPrefix(db, storeName, prefix) {
 const fontsKey = (gameId) => `${gameId}:fonts`;
 
 async function getFontManifest(db, gameId) {
-  return (await idbGet(db, "games", fontsKey(gameId))) ?? [];
+  return (await idbGet(db, "games", fontsKey(gameId))) ?? {};
 }
 
 async function saveFontManifest(db, gameId, manifest) {
@@ -512,23 +512,11 @@ export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
 
       const db = await openDB();
       try {
-        const manifest = await getFontManifest(db, gameId);
-        const entry = {
-          name,
-          slotName: slotName || slugify(name),
-          file: fileName,
-          source: "google",
-          url: assetPath,
-        };
-        // Replace existing entry for this slot or append
-        const idx = manifest.findIndex((f) => f.slotName === entry.slotName);
-        if (idx >= 0) {
-          manifest[idx] = entry;
-        } else {
-          manifest.push(entry);
-        }
-        await saveFontManifest(db, gameId, manifest);
-        return manifest;
+        const fonts = await getFontManifest(db, gameId);
+        const slot = slotName || slugify(name);
+        fonts[slot] = { name, file: fileName, source: "google" };
+        await saveFontManifest(db, gameId, fonts);
+        return { fonts };
       } finally {
         db.close();
       }
@@ -546,23 +534,11 @@ export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
 
       const db = await openDB();
       try {
-        const manifest = await getFontManifest(db, gameId);
-        const resolvedSlot = slotName || slugify(file.name.replace(/\.[^.]+$/, ""));
-        const entry = {
-          name: file.name.replace(/\.[^.]+$/, ""),
-          slotName: resolvedSlot,
-          file: fileName,
-          source: "upload",
-          url: assetPath,
-        };
-        const idx = manifest.findIndex((f) => f.slotName === resolvedSlot);
-        if (idx >= 0) {
-          manifest[idx] = entry;
-        } else {
-          manifest.push(entry);
-        }
-        await saveFontManifest(db, gameId, manifest);
-        return manifest;
+        const fonts = await getFontManifest(db, gameId);
+        const slot = slotName || slugify(file.name.replace(/\.[^.]+$/, ""));
+        fonts[slot] = { name: file.name.replace(/\.[^.]+$/, ""), file: fileName, source: "upload" };
+        await saveFontManifest(db, gameId, fonts);
+        return { fonts };
       } finally {
         db.close();
       }
@@ -574,10 +550,12 @@ export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
 
       const db = await openDB();
       try {
-        const manifest = await getFontManifest(db, gameId);
-        const updated = manifest.filter((f) => f.file !== file);
-        await saveFontManifest(db, gameId, updated);
-        return updated;
+        const fonts = await getFontManifest(db, gameId);
+        for (const [key, entry] of Object.entries(fonts)) {
+          if (entry.file === file) delete fonts[key];
+        }
+        await saveFontManifest(db, gameId, fonts);
+        return { fonts };
       } finally {
         db.close();
       }
