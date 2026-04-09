@@ -66,8 +66,9 @@ export default function GameEditorPage() {
     if (!selectedCard || !game?.template || !gameId) return
     const timer = setTimeout(async () => {
       try {
-        const { renderCardSvg } = await import('../render')
+        const { renderCardSvg, embedFontsInSvg } = await import('../render')
         let svg = renderCardSvg(selectedCard, game.template)
+        svg = await embedFontsInSvg(svg, game.template)
         // Embed images as base64 for blob SVGs
         const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
         for (const match of imgMatches) {
@@ -206,8 +207,9 @@ export default function GameEditorPage() {
   useEffect(() => {
     if (!game?.template) { setTemplatePreview(''); return }
     const updatePreview = async () => {
-      const { renderTemplateSvg, computeLayout } = await import('../render')
+      const { renderTemplateSvg, computeLayout, embedFontsInSvg } = await import('../render')
       let svg = renderTemplateSvg(game.template, { showSections, showItems: showItemWires, selectedNodeId })
+      svg = await embedFontsInSvg(svg, game.template)
       // Embed images as base64 data URIs since blob SVGs can't fetch external URLs
       const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
       for (const match of imgMatches) {

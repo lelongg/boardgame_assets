@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { createStorage } from '../storage'
-import { renderCardSvg } from '../render'
+import { renderCardSvg, embedFontsInSvg } from '../render'
 import type { CardData, CardTemplate } from '../types'
 
 type DeckEntry = { card: CardData; template: CardTemplate; collectionName: string }
@@ -104,6 +104,7 @@ export default function ExportTTSPage() {
         setStatus(`Rendering card ${i + 1}/${cardCount}...`)
         const { card, template } = entries[i]
         let svg = renderCardSvg(card, template)
+        svg = await embedFontsInSvg(svg, template)
         svg = await embedImages(svg)
 
         const img = await svgToImage(svg)

@@ -242,8 +242,8 @@ const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | 
 
 export const renderCardSvg = (card: CardData, template: CardTemplate, options: RenderOptions = {}): string => {
   const { palette } = theme;
-  const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
   const { width, height, radius } = template;
+  const fontSlots = Object.keys(template.fonts ?? {});
   const layout = computeLayout(template);
   const items: CardTemplateItem[] = [];
   collectItems(template.root, items);
@@ -252,7 +252,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     .map((item) => {
       const rect = layout.items.get(item.id);
       if (!rect) return "";
-      
+
       const itemType = item.type ?? "text"; // Default to text for legacy items
       
       if (itemType === "frame") {
@@ -290,7 +290,9 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       if (item.type === "frame" || item.type === "image") return "";
       const value = item.fieldId === "name" ? card.name : (item.fieldId ? card.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
       if (!value) return "";
-      const fontFamily = item.font === "title" ? typography.title : typography.body;
+      const slotName = item.font && template.fonts?.[item.font] ? item.font : fontSlots[0];
+      const fontSlot = template.fonts?.[slotName];
+      const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
       const fontSize = item.fontSize ?? 20;
       const align = item.align ?? "center";
       const vAlign = (item as any).verticalAlign ?? "middle";
@@ -373,13 +375,13 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
   const { showSections = true, showItems = true, selectedNodeId = null } = options;
   const { palette } = theme;
   const { width, height, radius } = template;
+  const fontSlots = Object.keys(template.fonts ?? {});
   const layout = computeLayout(template);
 
   // Render card content using empty card (defaults will show)
   const emptyCard: CardData = { id: '', name: 'Card Name', fields: {} };
   const items: CardTemplateItem[] = [];
   collectItems(template.root, items);
-  const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
 
   const renderedContent = items.map((item) => {
     const rect = layout.items.get(item.id);
@@ -408,7 +410,9 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
     if (item.type === "frame" || item.type === "image") return "";
     const value = item.fieldId === "name" ? emptyCard.name : (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
     if (!value) return "";
-    const fontFamily = item.font === "title" ? typography.title : typography.body;
+    const slotName = item.font && template.fonts?.[item.font] ? item.font : fontSlots[0];
+    const fontSlot = template.fonts?.[slotName];
+    const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
     const fontSize = item.fontSize ?? 20;
     const align = item.align ?? "left";
     const vAlign = (item as any).verticalAlign ?? "top";
@@ -458,6 +462,32 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
   ${sectionRects}
   ${itemRects}
 </svg>`;
+};
+
+/** Fetch template fonts and embed them as base64 @font-face rules into the SVG.
+ *  Blob SVGs displayed via <img> can't access the page's @font-face rules. */
+export const embedFontsInSvg = async (svg: string, template: CardTemplate): Promise<string> => {
+  const fonts = template.fonts;
+  if (!fonts) return svg;
+  const rules: string[] = [];
+  for (const slot of Object.values(fonts)) {
+    if (!slot.file) continue;
+    try {
+      const resp = await fetch(`/api/fonts/${slot.file}`);
+      if (!resp.ok) continue;
+      const blob = await resp.blob();
+      const b64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+      rules.push(`@font-face { font-family: '${slot.name}'; src: url('${b64}'); }`);
+    } catch { /* skip */ }
+  }
+  if (!rules.length) return svg;
+  const styleBlock = `<defs><style>${rules.join('\n')}</style></defs>`;
+  // Insert after the opening <svg ...> tag
+  return svg.replace(/(<svg[^>]*>)/, `$1${styleBlock}`);
 };
 
 export const injectDebugLabel = (svg: string, debugAttach: unknown): string => {
