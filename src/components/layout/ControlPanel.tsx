@@ -189,24 +189,32 @@ function ColorControl({ value, onChange }: { value: string; onChange: (v: unknow
 
 function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown) => void }) {
   const pickerRef = useRef<HTMLDivElement>(null)
+  const pickerInstanceRef = useRef<any>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
   useEffect(() => {
-    let picker: any
+    let cancelled = false
     const container = pickerRef.current
     const init = async () => {
       const mod = await import('emoji-picker-element')
+      if (cancelled) return
       const Picker = 'default' in mod ? (mod as any).default : mod.Picker ?? (mod as any)
-      picker = new Picker()
+      const picker = new Picker()
       picker.style.width = '100%'
       picker.addEventListener('emoji-click', (e: any) => {
         onChangeRef.current(e.detail.unicode)
       })
+      pickerInstanceRef.current = picker
       container?.appendChild(picker)
     }
     init()
-    return () => { if (picker && container?.contains(picker)) container.removeChild(picker) }
+    return () => {
+      cancelled = true
+      const picker = pickerInstanceRef.current
+      if (picker && container?.contains(picker)) container.removeChild(picker)
+      pickerInstanceRef.current = null
+    }
   }, [])
 
   return (
