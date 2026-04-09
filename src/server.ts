@@ -48,12 +48,18 @@ const collectionCardPath = (gameId: string, collectionId: string, cardId: string
 const globalFontsDir = path.resolve("fonts");
 const globalFontsManifest = path.join(globalFontsDir, "fonts.json");
 
-fs.mkdirSync(globalFontsDir, { recursive: true });
-
 type FontEntry = { name: string; file: string; source: "upload" | "google" };
 
 const loadFonts = (): Record<string, FontEntry> => readJson<Record<string, FontEntry>>(globalFontsManifest, {});
-const saveFonts = (fonts: Record<string, FontEntry>) => writeJson(globalFontsManifest, fonts);
+const gameFontsDir = (gameId: string) => path.join(dataRoot, gameId, "fonts");
+const gameFontsManifest = (gameId: string) => path.join(gameFontsDir(gameId), "fonts.json");
+
+const loadGameFonts = (gameId: string): Record<string, FontEntry> =>
+  readJson<Record<string, FontEntry>>(gameFontsManifest(gameId), {});
+const saveGameFonts = (gameId: string, fonts: Record<string, FontEntry>) => {
+  fs.mkdirSync(gameFontsDir(gameId), { recursive: true });
+  writeJson(gameFontsManifest(gameId), fonts);
+};
 const imagesDir = (gameId: string) => path.join(dataRoot, gameId, "images");
 
 const hashBuffer = (data: Buffer): string =>
@@ -92,12 +98,12 @@ const embedLocalImages = (svg: string, gameId: string): string => {
   });
 };
 
-const loadFontData = (template: CardTemplate): Record<string, { name: string; data: Buffer }> => {
+const loadFontData = (gameId: string, template: CardTemplate): Record<string, { name: string; data: Buffer }> => {
   const fontData: Record<string, { name: string; data: Buffer }> = {};
   if (template.fonts) {
     for (const [slot, fontSlot] of Object.entries(template.fonts as Record<string, { name: string; file: string }>)) {
       if (fontSlot.file) {
-        const fp = path.join(globalFontsDir, fontSlot.file);
+        const fp = path.join(gameFontsDir(gameId), fontSlot.file);
         if (fs.existsSync(fp)) fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
       }
     }
@@ -216,6 +222,52 @@ const migrateGameIfNeeded = (gameId: string) => {
   }
 };
 
+const migrateGlobalFontsToGames = () => {
+  if (!fs.existsSync(globalFontsDir)) return;
+  const globalFonts = loadFonts();
+  if (Object.keys(globalFonts).length === 0) return;
+  if (!fs.existsSync(dataRoot)) return;
+  const games = fs.readdirSync(dataRoot, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
+  for (const gameId of games) {
+    const templates = (() => {
+      const dir = templatesDir(gameId);
+      if (!fs.existsSync(dir)) return [];
+      return fs.readdirSync(dir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => readJson<any>(path.join(dir, f), null))
+        .filter(Boolean);
+    })();
+    const referencedFiles = new Set<string>();
+    for (const t of templates) {
+      if (t?.fonts) {
+        for (const slot of Object.values(t.fonts as Record<string, FontEntry>)) {
+          if (slot.file) referencedFiles.add(slot.file);
+        }
+      }
+    }
+    if (referencedFiles.size === 0) continue;
+    const gameDir = gameFontsDir(gameId);
+    fs.mkdirSync(gameDir, { recursive: true });
+    const gameFonts = loadGameFonts(gameId);
+    let changed = false;
+    for (const [key, entry] of Object.entries(globalFonts)) {
+      if (!referencedFiles.has(entry.file)) continue;
+      const src = path.join(globalFontsDir, entry.file);
+      const dest = path.join(gameDir, entry.file);
+      if (fs.existsSync(src) && !fs.existsSync(dest)) fs.copyFileSync(src, dest);
+      if (!gameFonts[key]) {
+        gameFonts[key] = entry;
+        changed = true;
+      }
+    }
+    if (changed) saveGameFonts(gameId, gameFonts);
+  }
+};
+
+migrateGlobalFontsToGames();
+
 // --- App ---
 
 const app = new Hono();
@@ -242,16 +294,16 @@ app.post("/api/games", async (c) => {
   fs.mkdirSync(collectionCardsDir(id, "default"), { recursive: true });
   writeJson(collectionPath(id, "default"), collection);
 
-  // Download default fonts globally in background (if not already present)
+  // Download default fonts per-game in background (if not already present)
   (async () => {
     try {
       const defaults = [{ slot: "title", fontName: "Fraunces" }, { slot: "body", fontName: "Space Grotesk" }];
-      const fonts = loadFonts();
+      const fonts = loadGameFonts(id);
       const t = readJson<any>(templateFilePath(id, template.id), null);
       if (!t?.fonts) return;
       for (const { slot, fontName } of defaults) {
         if (fonts[slot]?.file) {
-          // Already have this font globally, just update template reference
+          // Already have this font for this game, just update template reference
           if (t.fonts[slot]) t.fonts[slot].file = fonts[slot].file;
           continue;
         }
@@ -259,12 +311,13 @@ app.post("/api/games", async (c) => {
           const { data } = await fetchGoogleFont(fontName);
           const hash = hashBuffer(data);
           const fileName = `${hash}.woff2`;
-          fs.writeFileSync(path.join(globalFontsDir, fileName), data);
+          fs.mkdirSync(gameFontsDir(id), { recursive: true });
+          fs.writeFileSync(path.join(gameFontsDir(id), fileName), data);
           fonts[slot] = { name: fontName, file: fileName, source: "google" };
           if (t.fonts[slot]) t.fonts[slot].file = fileName;
         } catch { /* non-critical */ }
       }
-      saveFonts(fonts);
+      saveGameFonts(id, fonts);
       writeJson(templateFilePath(id, template.id), t);
     } catch { /* non-critical */ }
   })();
@@ -438,7 +491,7 @@ app.get("/api/games/:gameId/collections/:collectionId/cards/:cardId", (c) => {
     const col = readJson<Collection | null>(collectionPath(gameId, collectionId), null);
     const template = col ? loadTemplate(gameId, col.templateId) : null;
     if (!template) return c.json({ error: "Template not found" }, 404);
-    const fontData = loadFontData(template);
+    const fontData = loadFontData(gameId, template);
     let svg = renderCardSvg(card, template, { fonts: fontData });
     svg = embedLocalImages(svg, gameId);
     return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });
@@ -489,16 +542,17 @@ app.post("/api/games/:gameId/render", async (c) => {
   const card = normalizeCard(candidate);
   const template = body?.template ?? (body?.templateId ? loadTemplate(gameId, body.templateId) : null);
   if (!template) return c.json({ error: "Template required (pass template or templateId)" }, 400);
-  const fontData = loadFontData(template);
+  const fontData = loadFontData(gameId, template);
   let svg = renderCardSvg(card, template, { fonts: fontData });
   svg = embedLocalImages(svg, gameId);
   return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });
 });
 
-// Fonts (global)
-app.get("/api/fonts", (c) => c.json(loadFonts()));
+// Fonts (per-game)
+app.get("/api/games/:gameId/fonts", (c) => c.json(loadGameFonts(c.req.param("gameId"))));
 
-app.post("/api/fonts/google", async (c) => {
+app.post("/api/games/:gameId/fonts/google", async (c) => {
+  const gameId = c.req.param("gameId");
   const body = await c.req.json<{ name?: string; slotName?: string }>();
   const fontName = body?.name?.trim();
   const slotName = body?.slotName?.trim();
@@ -507,18 +561,21 @@ app.post("/api/fonts/google", async (c) => {
     const { data, name } = await fetchGoogleFont(fontName);
     const hash = hashBuffer(data);
     const file = `${hash}.woff2`;
-    fs.writeFileSync(path.join(globalFontsDir, file), data);
-    const fonts = loadFonts();
+    fs.mkdirSync(gameFontsDir(gameId), { recursive: true });
+    fs.writeFileSync(path.join(gameFontsDir(gameId), file), data);
+    const fonts = loadGameFonts(gameId);
     const slot = slotName || name.toLowerCase().replace(/\s+/g, '-');
     fonts[slot] = { name, file, source: "google" };
-    saveFonts(fonts);
+    saveGameFonts(gameId, fonts);
+    touchGame(gameId);
     return c.json({ fonts });
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Failed to fetch font" }, 400);
   }
 });
 
-app.post("/api/fonts/upload", async (c) => {
+app.post("/api/games/:gameId/fonts/upload", async (c) => {
+  const gameId = c.req.param("gameId");
   const disposition = c.req.header("content-disposition") ?? "";
   const filenameMatch = disposition.match(/filename="?([^";\s]+)"?/);
   const originalName = filenameMatch ? filenameMatch[1] : "font.woff2";
@@ -530,30 +587,34 @@ app.post("/api/fonts/upload", async (c) => {
   const data = Buffer.from(await c.req.arrayBuffer());
   const hash = hashBuffer(data);
   const file = `${hash}${ext}`;
-  fs.writeFileSync(path.join(globalFontsDir, file), data);
-  const fonts = loadFonts();
+  fs.mkdirSync(gameFontsDir(gameId), { recursive: true });
+  fs.writeFileSync(path.join(gameFontsDir(gameId), file), data);
+  const fonts = loadGameFonts(gameId);
   const slot = slotName?.trim() || path.basename(originalName, ext).replace(/[-_]+/g, ' ');
   fonts[slot] = { name: path.basename(originalName, ext), file, source: "upload" };
-  saveFonts(fonts);
+  saveGameFonts(gameId, fonts);
+  touchGame(gameId);
   return c.json({ fonts });
 });
 
-app.get("/api/fonts/:file", (c) => {
-  const fp = path.join(globalFontsDir, c.req.param("file"));
+app.get("/api/games/:gameId/fonts/:file", (c) => {
+  const fp = path.join(gameFontsDir(c.req.param("gameId")), c.req.param("file"));
   if (!fs.existsSync(fp)) return c.json({ error: "Not found" }, 404);
   const ext = path.extname(c.req.param("file"));
   const mimeTypes: Record<string, string> = { ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".otf": "font/otf" };
   return c.body(fs.readFileSync(fp), { headers: { "Content-Type": mimeTypes[ext] ?? "application/octet-stream" } });
 });
 
-app.delete("/api/fonts/:file", (c) => {
+app.delete("/api/games/:gameId/fonts/:file", (c) => {
+  const gameId = c.req.param("gameId");
   const fontFile = c.req.param("file");
-  fs.rmSync(path.join(globalFontsDir, fontFile), { force: true });
-  const fonts = loadFonts();
+  fs.rmSync(path.join(gameFontsDir(gameId), fontFile), { force: true });
+  const fonts = loadGameFonts(gameId);
   for (const [key, entry] of Object.entries(fonts)) {
     if (entry.file === fontFile) delete fonts[key];
   }
-  saveFonts(fonts);
+  saveGameFonts(gameId, fonts);
+  touchGame(gameId);
   return c.json({ fonts });
 });
 
