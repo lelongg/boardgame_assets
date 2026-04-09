@@ -414,7 +414,7 @@ export default function GameEditorPage() {
                           const collectFields = (section: any) => {
                             section.items?.forEach((item: any) => {
                               const type = item.type ?? 'text'
-                              if ((type === 'text' || type === 'image') && item.fieldId && item.fieldId !== 'name' && !seen.has(item.fieldId)) {
+                              if ((type === 'text' || type === 'image' || type === 'emoji') && item.fieldId && item.fieldId !== 'name' && !seen.has(item.fieldId)) {
                                 seen.add(item.fieldId)
                                 fields.push({ fieldId: item.fieldId, itemName: item.name, itemType: type })
                               }
