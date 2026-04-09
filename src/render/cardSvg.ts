@@ -89,10 +89,10 @@ const textAnchorFor = (align: "left" | "center" | "right") => {
   return "start";
 };
 
-const baselineFor = (anchor: AnchorPoint) => {
-  if (anchor.y === 0) return "hanging";
-  if (anchor.y === 0.5) return "middle";
-  return "baseline";
+const baselineFor = (vAlign?: string) => {
+  if (vAlign === "middle") return "middle";
+  if (vAlign === "bottom") return "auto";
+  return "hanging";
 };
 
 const anchorPosition = (rect: Rect, anchor: AnchorPoint) => ({
@@ -265,21 +265,22 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     
     if (itemType === "text") {
       const textItem = item as CardTemplateTextItem;
-      const value = textItem.fieldId === "name" ? card.name : card.fields[textItem.fieldId] ?? "";
+      const value = textItem.fieldId === "name" ? card.name : (textItem.fieldId ? card.fields[textItem.fieldId] : null) ?? textItem.defaultValue ?? "";
       if (!value) return;
-      const anchor = anchorPosition(rect, textItem.anchor);
       const slotName = textItem.font && template.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
       const fontSlot = template.fonts?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
       const align = textItem.align ?? "center";
-      const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : anchor.x;
+      const vAlign = textItem.verticalAlign ?? "middle";
+      const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
+      const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
       const styledLines = parseRichText(value);
-      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(textItem.anchor)}" font-family="${fontFamily}" font-size="${textItem.fontSize}" fill="${textItem.color ?? palette.ink}"`;
+      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${textItem.fontSize}" fill="${textItem.color ?? palette.ink}"`;
       if (styledLines.length === 1) {
-        itemElements.push(`<text x="${textX}" y="${anchor.y}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`);
+        itemElements.push(`<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`);
       } else {
         const tspans = styledLines.map((line, i) =>
-          `<tspan x="${textX}" ${i === 0 ? `y="${anchor.y}"` : `dy="${textItem.fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
+          `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${textItem.fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
         ).join('');
         itemElements.push(`<text ${baseAttrs}>${tspans}</text>`);
       }
@@ -296,7 +297,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     
     if (itemType === "image") {
       const imageItem = item as CardTemplateImageItem;
-      const imageUrl = card.fields[imageItem.fieldId] ?? "";
+      const imageUrl = (imageItem.fieldId ? card.fields[imageItem.fieldId] : null) ?? imageItem.defaultValue ?? "";
       if (!imageUrl) return;
       const cornerRadius = imageItem.cornerRadius ?? 0;
       const clipId = `clip-${imageItem.id}`;

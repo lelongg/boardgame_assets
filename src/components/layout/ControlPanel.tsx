@@ -1,7 +1,9 @@
+import { useState, useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { RgbaColorPicker } from 'react-colorful'
 import AnchorGrid from './AnchorGrid'
-import { flattenNodes, findParentSection, getNodeKind } from './templateHelpers'
+import { findParentSection, findItemById, getNodeKind } from './templateHelpers'
 import type { CardTemplate } from '../../types'
 
 type ControlPanelProps = {
@@ -9,11 +11,12 @@ type ControlPanelProps = {
   value: unknown
   template: CardTemplate
   selectedNodeId?: string
+  gameId?: string
   onChange: (value: unknown) => void
 }
 
 type FieldMeta = {
-  type: 'number' | 'select' | 'anchor' | 'text'
+  type: 'number' | 'select' | 'anchor' | 'text' | 'color' | 'image-upload'
   min?: number
   max?: number
   step?: number
@@ -39,6 +42,11 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
       { value: 'center', label: 'Center' },
       { value: 'right', label: 'Right' },
     ]}
+    case 'verticalAlign': return { type: 'select', options: [
+      { value: 'top', label: 'Top' },
+      { value: 'middle', label: 'Middle' },
+      { value: 'bottom', label: 'Bottom' },
+    ]}
     case 'font': return { type: 'select', options: Object.entries(template.fonts ?? {}).map(([key, slot]) => ({
       value: key,
       label: `${key} (${slot.name})`,
@@ -61,13 +69,119 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
         label: `${n.kind === 'section' ? '▸' : '·'} ${n.name}`,
       }))}
     }
+    case 'color':
+    case 'strokeColor':
+    case 'fillColor': return { type: 'color' }
+    case 'defaultValue': {
+      if (selectedNodeId) {
+        const item = findItemById(template.root, selectedNodeId)
+        if (item && (item as any).type === 'image') return { type: 'image-upload' }
+      }
+      return { type: 'text' }
+    }
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
     default: return { type: 'text' }
   }
 }
 
-export default function ControlPanel({ property, value, template, selectedNodeId, onChange }: ControlPanelProps) {
+const hexToRgba = (hex: string) => {
+  if (!hex || hex === 'none') return { r: 0, g: 0, b: 0, a: 0 }
+  const h = hex.replace('#', '')
+  return {
+    r: parseInt(h.slice(0, 2), 16) || 0,
+    g: parseInt(h.slice(2, 4), 16) || 0,
+    b: parseInt(h.slice(4, 6), 16) || 0,
+    a: h.length >= 8 ? Math.round(parseInt(h.slice(6, 8), 16) / 255 * 100) / 100 : 1,
+  }
+}
+
+const rgbaToHex = ({ r, g, b, a }: { r: number; g: number; b: number; a: number }) => {
+  if (a === 0) return 'none'
+  const hex = `#${[r, g, b].map(c => c.toString(16).padStart(2, '0')).join('')}`
+  if (a >= 1) return hex
+  return `${hex}${Math.round(a * 255).toString(16).padStart(2, '0')}`
+}
+
+function ColorControl({ value, onChange }: { value: string; onChange: (v: unknown) => void }) {
+  const [localColor, setLocalColor] = useState(() => hexToRgba(value))
+  const [inputValue, setInputValue] = useState(value)
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const localColorRef = useRef(localColor)
+
+  // Sync from parent only when the hex value actually changes externally
+  const prevValue = useRef(value)
+  useEffect(() => {
+    if (value !== prevValue.current) {
+      prevValue.current = value
+      const parsed = hexToRgba(value)
+      setLocalColor(parsed)
+      localColorRef.current = parsed
+      setInputValue(value)
+    }
+  }, [value])
+
+  // Commit on pointer up anywhere (covers releasing outside the picker)
+  useEffect(() => {
+    const commit = () => {
+      const hex = rgbaToHex(localColorRef.current)
+      if (hex !== prevValue.current) {
+        prevValue.current = hex
+        setInputValue(hex)
+        onChange(hex)
+      }
+    }
+    window.addEventListener('pointerup', commit)
+    return () => window.removeEventListener('pointerup', commit)
+  }, [onChange])
+
+  const handlePickerChange = (c: { r: number; g: number; b: number; a: number }) => {
+    setLocalColor(c)
+    localColorRef.current = c
+  }
+
+  const localHex = rgbaToHex(localColor)
+  const checkerBg = 'repeating-conic-gradient(#808080 0% 25%, transparent 0% 50%) 50% / 12px 12px'
+
+  return (
+    <div className="space-y-2">
+      <div className="rounded-md border overflow-hidden h-7" style={{ background: checkerBg }}>
+        <div className="w-full h-full" style={{ background: localHex === 'none' ? 'transparent' : localHex }} />
+      </div>
+      <div ref={pickerRef}>
+        <RgbaColorPicker
+          color={localColor}
+          onChange={handlePickerChange}
+          style={{ width: '100%' }}
+        />
+      </div>
+      <Input
+        value={inputValue}
+        onChange={(e) => {
+          setInputValue(e.target.value)
+          const parsed = hexToRgba(e.target.value)
+          setLocalColor(parsed)
+          localColorRef.current = parsed
+        }}
+        onBlur={() => {
+          const hex = rgbaToHex(localColorRef.current)
+          prevValue.current = hex
+          onChange(hex)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            const hex = rgbaToHex(localColorRef.current)
+            prevValue.current = hex
+            onChange(hex)
+          }
+        }}
+        placeholder="#000000 or none"
+      />
+    </div>
+  )
+}
+
+export default function ControlPanel({ property, value, template, selectedNodeId, gameId, onChange }: ControlPanelProps) {
   const meta = getFieldMeta(property, template, selectedNodeId)
 
   if (meta.type === 'number') {
@@ -112,6 +226,52 @@ export default function ControlPanel({ property, value, template, selectedNodeId
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
+    )
+  }
+
+  if (meta.type === 'color') {
+    return <ColorControl value={String(value ?? '')} onChange={onChange} />
+  }
+
+  if (meta.type === 'image-upload') {
+    const imgUrl = String(value ?? '')
+    return (
+      <div className="space-y-2">
+        {imgUrl && (
+          <img src={imgUrl} alt="Default" className="max-h-24 rounded border object-contain" />
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const input = document.createElement('input')
+            input.type = 'file'
+            input.accept = 'image/*'
+            input.onchange = async () => {
+              const file = input.files?.[0]
+              if (!file || !gameId) return
+              try {
+                const res = await fetch(`/api/games/${gameId}/images/upload`, {
+                  method: 'POST',
+                  headers: { 'Content-Disposition': `attachment; filename="${file.name}"` },
+                  body: await file.arrayBuffer(),
+                })
+                if (!res.ok) return
+                const { url } = await res.json()
+                onChange(url)
+              } catch { /* ignore */ }
+            }
+            input.click()
+          }}
+        >
+          {imgUrl ? 'Change Image' : 'Upload Image'}
+        </Button>
+        {imgUrl && (
+          <Button size="sm" variant="ghost" onClick={() => onChange('')}>
+            Remove
+          </Button>
+        )}
+      </div>
     )
   }
 

@@ -1,33 +1,54 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import type { FontSlot } from '../types'
+import ConfirmButton from './ConfirmButton'
+
+type FontEntry = { name: string; file: string; source: 'upload' | 'google' }
 
 type FontManagerProps = {
-  gameId: string
-  fonts: Record<string, FontSlot>
-  onFontsChange: (fonts: Record<string, FontSlot>) => void
+  fonts: Record<string, FontEntry>
+  onFontsChange: (fonts: Record<string, FontEntry>) => void
   onStatus: (status: string) => void
+  showAdd?: boolean
+  onToggleAdd?: () => void
+  selectedFont: string | null
+  onSelectFont: (key: string | null) => void
 }
 
-export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: FontManagerProps) {
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [slotName, setSlotName] = useState('')
+export default function FontManager({ fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont }: FontManagerProps) {
+  const [showAddFormInternal, setShowAddFormInternal] = useState(false)
+  const showAddForm = showAdd ?? showAddFormInternal
+  const setShowAddForm = onToggleAdd ? () => onToggleAdd() : setShowAddFormInternal
   const [source, setSource] = useState<'google' | 'upload'>('google')
   const [googleFontName, setGoogleFontName] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Load font CSS for previews
+  useEffect(() => {
+    const styleId = 'font-manager-preview-styles'
+    let style = document.getElementById(styleId) as HTMLStyleElement | null
+    if (!style) {
+      style = document.createElement('style')
+      style.id = styleId
+      document.head.appendChild(style)
+    }
+    const rules = Object.values(fonts)
+      .filter((f) => f.file)
+      .map((f) => `@font-face { font-family: '${f.name}'; src: url('/api/fonts/${f.file}'); }`)
+      .join('\n')
+    style.textContent = rules
+    return () => { if (style) style.textContent = '' }
+  }, [fonts])
+
   const handleAddGoogle = async () => {
     if (!googleFontName.trim()) return
-    const slot = slotName.trim() || googleFontName.trim().toLowerCase().replace(/\s+/g, '-')
     setLoading(true)
     onStatus('Adding font...')
     try {
-      const res = await fetch(`/api/games/${gameId}/fonts/google`, {
+      const res = await fetch('/api/fonts/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slotName: slot, name: googleFontName.trim() }),
+        body: JSON.stringify({ name: googleFontName.trim() }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
@@ -35,7 +56,6 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: 
       }
       const data = await res.json()
       onFontsChange(data.fonts)
-      setSlotName('')
       setGoogleFontName('')
       setShowAddForm(false)
       onStatus('Font added.')
@@ -46,18 +66,13 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: 
     }
   }
 
-  const handleUpload = async (file: File, overrideSlotName?: string) => {
-    const slot = (overrideSlotName ?? slotName).trim()
-    if (!slot) return
+  const handleUpload = async (file: File) => {
     setLoading(true)
     onStatus('Uploading font...')
     try {
-      const res = await fetch(`/api/games/${gameId}/fonts/upload`, {
+      const res = await fetch('/api/fonts/upload', {
         method: 'POST',
-        headers: {
-          'Content-Disposition': `attachment; filename="${file.name}"`,
-          'X-Slot-Name': slot,
-        },
+        headers: { 'Content-Disposition': `attachment; filename="${file.name}"` },
         body: await file.arrayBuffer(),
       })
       if (!res.ok) {
@@ -66,7 +81,6 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: 
       }
       const data = await res.json()
       onFontsChange(data.fonts)
-      setSlotName('')
       setShowAddForm(false)
       onStatus('Font uploaded.')
     } catch (err: any) {
@@ -83,26 +97,16 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: 
     onStatus('Deleting font...')
     try {
       if (font.file) {
-        const res = await fetch(`/api/games/${gameId}/fonts/${font.file}`, {
-          method: 'DELETE',
-        })
-        if (!res.ok) {
-          const body = await res.json().catch(() => null)
-          throw new Error(body?.error || 'Failed to delete font')
-        }
+        const res = await fetch(`/api/fonts/${font.file}`, { method: 'DELETE' })
+        if (!res.ok) throw new Error('Failed to delete font')
         const data = await res.json()
         onFontsChange(data.fonts)
       } else {
-        // Font has no file, remove the slot and save template
         const updated = { ...fonts }
         delete updated[slotKey]
-        await fetch(`/api/games/${gameId}/template`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...await (await fetch(`/api/games/${gameId}/template`)).json(), fonts: updated }),
-        })
         onFontsChange(updated)
       }
+      if (selectedFont === slotKey) onSelectFont(null)
       onStatus('Font deleted.')
     } catch (err: any) {
       onStatus(`Error: ${err.message}`)
@@ -114,48 +118,36 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: 
   const fontEntries = Object.entries(fonts)
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Label className="text-base font-semibold">Fonts</Label>
-        <Button size="sm" variant="outline" onClick={() => setShowAddForm(!showAddForm)}>
-          {showAddForm ? 'Cancel' : 'Add Font'}
-        </Button>
-      </div>
-
+    <div className="space-y-2 overflow-y-auto max-h-[60vh]">
       {fontEntries.length === 0 && !showAddForm && (
-        <p className="text-sm text-muted-foreground">No fonts added yet.</p>
+        <p className="text-sm text-muted-foreground">No fonts yet.</p>
       )}
 
       {fontEntries.map(([key, font]) => (
-        <div key={key} className="flex items-center gap-3 rounded-md border px-3 py-2">
-          <span className="text-sm font-medium">{font.name}</span>
-          <span className="ml-auto text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={loading}
-            onClick={() => handleDelete(key)}
-          >
-            Delete
-          </Button>
+        <div
+          key={key}
+          className={`rounded-lg border bg-card cursor-pointer ${selectedFont === key ? 'ring-2 ring-inset ring-primary' : ''}`}
+          onClick={() => onSelectFont(selectedFont === key ? null : key)}
+        >
+          <div className="px-3 py-2.5">
+            <span className="font-medium">{font.name}</span>
+            <span className="ml-2 text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
+          </div>
+          {selectedFont === key && (
+            <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
+              <ConfirmButton onConfirm={() => handleDelete(key)} disabled={loading} />
+            </div>
+          )}
         </div>
       ))}
 
       {showAddForm && (
         <div className="space-y-3 rounded-md border p-4">
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={source === 'google' ? 'default' : 'outline'}
-              onClick={() => setSource('google')}
-            >
+            <Button size="sm" variant={source === 'google' ? 'default' : 'outline'} onClick={() => setSource('google')}>
               Google Fonts
             </Button>
-            <Button
-              size="sm"
-              variant={source === 'upload' ? 'default' : 'outline'}
-              onClick={() => setSource('upload')}
-            >
+            <Button size="sm" variant={source === 'upload' ? 'default' : 'outline'} onClick={() => setSource('upload')}>
               File
             </Button>
           </div>
@@ -166,16 +158,9 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: 
                 value={googleFontName}
                 onChange={(e) => {
                   const val = e.target.value
-                  // Accept Google Fonts URLs: extract font name from specimen or family URL
                   const urlMatch = val.match(/fonts\.google\.com\/(?:specimen|share)\/([\w+]+)/)
                     || val.match(/fonts\.googleapis\.com\/css2?\?family=([\w+]+)/)
-                  if (urlMatch) {
-                    const name = urlMatch[1].replace(/\+/g, ' ')
-                    setGoogleFontName(name)
-                    if (!slotName.trim()) setSlotName(name.toLowerCase().replace(/\s+/g, '-'))
-                  } else {
-                    setGoogleFontName(val)
-                  }
+                  setGoogleFontName(urlMatch ? urlMatch[1].replace(/\+/g, ' ') : val)
                 }}
                 placeholder="Name or Google Fonts URL"
                 className="flex-1"
@@ -187,32 +172,57 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus }: 
           )}
 
           {source === 'upload' && (
-            <div>
-              <Button
-                disabled={loading}
-                onClick={() => {
-                  const input = document.createElement('input')
-                  input.type = 'file'
-                  input.accept = '.woff2,.woff,.ttf,.otf'
-                  input.onchange = () => {
-                    const file = input.files?.[0]
-                    if (!file) return
-                    let slot = slotName.trim()
-                    if (!slot) {
-                      slot = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ')
-                      setSlotName(slot)
-                    }
-                    handleUpload(file, slot)
-                  }
-                  input.click()
-                }}
-              >
-                Choose File
-              </Button>
-            </div>
+            <Button
+              disabled={loading}
+              onClick={() => {
+                const input = document.createElement('input')
+                input.type = 'file'
+                input.accept = '.woff2,.woff,.ttf,.otf'
+                input.onchange = () => {
+                  const file = input.files?.[0]
+                  if (file) handleUpload(file)
+                }
+                input.click()
+              }}
+            >
+              Choose File
+            </Button>
           )}
         </div>
       )}
     </div>
   )
 }
+
+const defaultPreviewText = "The quick brown fox\njumps over the lazy dog\nABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789 !@#$%&*"
+
+export function FontPreviewEditor({ previewText, onChangePreviewText }: { previewText: string; onChangePreviewText: (text: string) => void }) {
+  return (
+    <textarea
+      value={previewText}
+      onChange={(e) => onChangePreviewText(e.target.value)}
+      className="w-full h-full min-h-[200px] rounded-lg border bg-background px-3 py-2 text-sm resize-none"
+      placeholder="Type preview text..."
+    />
+  )
+}
+
+export function FontPreview({ fonts, selectedFont, previewText }: { fonts: Record<string, FontEntry>; selectedFont: string | null; previewText: string }) {
+  const entry = selectedFont ? fonts[selectedFont] : null
+
+  return (
+    <div className="rounded-lg border bg-card p-4 overflow-hidden">
+      {entry ? (
+        <div className="space-y-2 break-words" style={{ fontFamily: `'${entry.name}', sans-serif` }}>
+          {previewText.split('\n').map((line, i) => (
+            <p key={i} className="text-2xl break-all">{line || '\u00A0'}</p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">Select a font to preview</p>
+      )}
+    </div>
+  )
+}
+
+export { defaultPreviewText }

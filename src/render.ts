@@ -58,10 +58,10 @@ const textAnchorFor = (align: string): string => {
   return "start";
 };
 
-const baselineFor = (anchor: AnchorPoint): string => {
-  if (anchor.y === 0) return "hanging";
-  if (anchor.y === 0.5) return "middle";
-  return "baseline";
+const baselineFor = (vAlign?: string): string => {
+  if (vAlign === "middle") return "middle";
+  if (vAlign === "bottom") return "auto";
+  return "hanging";
 };
 
 const anchorPosition = (rect: Rect, anchor: AnchorPoint): { x: number; y: number } => ({
@@ -237,7 +237,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       if (itemType === "image") {
         // Render image item - type guard
         if (item.type !== "image") return "";
-        const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
+        const value = item.fieldId === "name" ? card.name : (item.fieldId ? card.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
         if (!value) return "";
         const cornerRadius = item.cornerRadius ?? 0;
         const fit = item.fit ?? "cover";
@@ -257,14 +257,16 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       
       // Render text item (default) - type guard
       if (item.type === "frame" || item.type === "image") return "";
-      const value = item.fieldId === "name" ? card.name : card.fields[item.fieldId] ?? "";
+      const value = item.fieldId === "name" ? card.name : (item.fieldId ? card.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
       if (!value) return "";
-      const anchor = anchorPosition(rect, item.anchor);
       const fontFamily = item.font === "title" ? typography.title : typography.body;
       const fontSize = item.fontSize ?? 20;
-      const align = item.align ?? "left";
+      const align = item.align ?? "center";
+      const vAlign = (item as any).verticalAlign ?? "middle";
       const color = escape(item.color ?? palette.ink);
-      return `<text x="${anchor.x}" y="${anchor.y}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(item.anchor)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`;
+      const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
+      const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
+      return `<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`;
     })
     .join("");
 
@@ -324,44 +326,88 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
 </svg>`;
 };
 
-export const renderTemplateSvg = (template: CardTemplate, options: { showWireframes?: boolean; selectedNodeId?: string | null } = {}): string => {
-  const { showWireframes = true, selectedNodeId = null } = options;
+export const renderTemplateSvg = (template: CardTemplate, options: {
+  showSections?: boolean;
+  showItems?: boolean;
+  selectedNodeId?: string | null;
+} = {}): string => {
+  const { showSections = true, showItems = true, selectedNodeId = null } = options;
   const { palette } = theme;
   const { width, height, radius } = template;
   const layout = computeLayout(template);
 
-  const sectionRects = Array.from(layout.sections.entries())
+  // Render card content using empty card (defaults will show)
+  const emptyCard: CardData = { id: '', name: 'Card Name', fields: {} };
+  const items: CardTemplateItem[] = [];
+  collectItems(template.root, items);
+  const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
+
+  const renderedContent = items.map((item) => {
+    const rect = layout.items.get(item.id);
+    if (!rect) return "";
+    const itemType = item.type ?? "text";
+    if (itemType === "frame") {
+      if (item.type !== "frame") return "";
+      const sw = item.strokeWidth ?? 2;
+      const sc = escape(item.strokeColor ?? palette.ink);
+      const fc = escape(item.fillColor ?? "none");
+      const cr = item.cornerRadius ?? 0;
+      return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`;
+    }
+    if (itemType === "image") {
+      if (item.type !== "image") return "";
+      const value = (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
+      if (!value) return "";
+      const cr = item.cornerRadius ?? 0;
+      const fit = item.fit ?? "cover";
+      const clipId = `clip-${String(item.id).replace(/[^a-zA-Z0-9-_]/g, '')}`;
+      const clipPath = cr > 0 ? `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cr}" /></clipPath>` : "";
+      const par = fit === "contain" ? "xMidYMid meet" : fit === "fill" ? "none" : "xMidYMid slice";
+      const ca = cr > 0 ? ` clip-path="url(#${clipId})"` : "";
+      return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${par}"${ca} />`;
+    }
+    if (item.type === "frame" || item.type === "image") return "";
+    const value = item.fieldId === "name" ? emptyCard.name : (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
+    if (!value) return "";
+    const fontFamily = item.font === "title" ? typography.title : typography.body;
+    const fontSize = item.fontSize ?? 20;
+    const align = item.align ?? "left";
+    const vAlign = (item as any).verticalAlign ?? "top";
+    const color = escape(item.color ?? palette.ink);
+    const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
+    const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
+    return `<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`;
+  }).join("");
+
+  // Section wireframes
+  const sectionRects = showSections ? Array.from(layout.sections.entries())
     .map(([id, rect]) => {
       const isSelected = id === selectedNodeId;
-      if (!showWireframes && !isSelected) return "";
-      const section = findSection(template.root, id);
-      const label = section ? section.name || section.id : id;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.muted;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
       const fillColor = isSelected ? `rgba(198, 90, 50, ${SECTION_SELECTION_OPACITY})` : "none";
+      return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="6 6" />`;
+    }).join("") : "";
 
-      return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="12" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="6 6" />`;
-    })
-    .join("");
-
-  const itemRects = Array.from(layout.items.entries())
+  // Item wireframes
+  const itemRects = showItems ? Array.from(layout.items.entries())
     .map(([id, rect]) => {
       const isSelected = id === selectedNodeId;
-      if (!showWireframes && !isSelected) return "";
-      const item = findItem(template.root, id);
       const strokeColor = isSelected ? SELECTION_COLOR : palette.ink;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
       const fillColor = isSelected ? `rgba(198, 90, 50, ${ITEM_SELECTION_OPACITY})` : "none";
+      return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
+    }).join("") : "";
 
-      return `
-  <rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
-    })
-    .join("");
+  const clipPaths = renderedContent.match(/<clipPath[^]*?<\/clipPath>/g) ?? [];
+  const defs = clipPaths.length > 0 ? `<defs>${clipPaths.join("")}</defs>` : "";
+  const contentWithoutClipPaths = renderedContent.replace(/<clipPath[^]*?<\/clipPath>/g, "");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">
+  ${defs}
   <rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" fill="${palette.paper}" />
+  ${contentWithoutClipPaths}
   ${sectionRects}
   ${itemRects}
 </svg>`;

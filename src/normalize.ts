@@ -115,7 +115,8 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         const imageItem: CardTemplateImageItem = {
             ...base,
             type: "image" as const,
-            fieldId: safeString(obj.fieldId, "image"),
+            fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
+            defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
             fit: obj.fit !== undefined && obj.fit !== null ? safeEnum(obj.fit, ["cover", "contain", "fill"] as const, "cover" as const) : undefined,
             cornerRadius: obj.cornerRadius !== undefined && obj.cornerRadius !== null ? safeNumber(obj.cornerRadius, 0) : undefined
         };
@@ -125,9 +126,11 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
     const textItem: CardTemplateTextItem = {
         ...base,
         type: type === "text" ? ("text" as const) : undefined,
-        fieldId: safeString(obj.fieldId, "name"),
+        fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
+        defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
         fontSize: safeNumber(obj.fontSize, 16),
-        align: safeEnum(obj.align, ["left", "center", "right"] as const, "left" as const),
+        align: safeEnum(obj.align, ["left", "center", "right"] as const, "center" as const),
+        verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
         font: obj.font !== undefined && obj.font !== null && obj.font !== "" ? safeString(obj.font, "body") : undefined,
         color: obj.color !== undefined && obj.color !== null ? safeString(obj.color, "#000000") : undefined
     };

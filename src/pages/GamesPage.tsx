@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ConfirmButton from '@/components/ConfirmButton'
+import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from '@/components/FontManager'
 
 import { createStorage } from '../storage'
 
@@ -12,6 +14,10 @@ export default function GamesPage() {
   const [storage, setStorage] = useState<any>(null)
   const [isAuthorized, setIsAuthorized] = useState(false)
   const [expandedGame, setExpandedGame] = useState<string | null>(null)
+  const [fonts, setFonts] = useState<Record<string, any>>({})
+  const [showAddFont, setShowAddFont] = useState(false)
+  const [selectedFont, setSelectedFont] = useState<string | null>(null)
+  const [previewText, setPreviewText] = useState(defaultPreviewText)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -21,6 +27,7 @@ export default function GamesPage() {
         setStorage(s)
         setIsAuthorized(s.isAuthorized())
         loadGames(s)
+        fetch('/api/fonts').then(r => r.json()).then(setFonts).catch(() => {})
       } catch (error) {
         setStatus('Error initializing storage.')
         console.error('Storage initialization failed:', error)
@@ -114,6 +121,13 @@ export default function GamesPage() {
       </header>
 
       <main className="mx-auto max-w-4xl px-7 py-6">
+        <Tabs defaultValue={localStorage.getItem('gamesPage:tab') || 'games'} onValueChange={(v) => localStorage.setItem('gamesPage:tab', v)} className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="games">Games</TabsTrigger>
+            <TabsTrigger value="fonts">Fonts</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="games">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Games</CardTitle>
@@ -121,12 +135,12 @@ export default function GamesPage() {
               New
             </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 overflow-y-auto max-h-[60vh]">
             <div className="space-y-2">
               {games.map((game) => (
                 <div
                   key={game.id}
-                  className={`rounded-lg border bg-card cursor-pointer ${expandedGame === game.id ? 'ring-1 ring-primary' : ''}`}
+                  className={`rounded-lg border bg-card cursor-pointer ${expandedGame === game.id ? 'ring-2 ring-inset ring-primary' : ''}`}
                   onClick={() => setExpandedGame(expandedGame === game.id ? null : game.id)}
                 >
                   <div className="px-3 py-2.5 font-medium">
@@ -163,6 +177,34 @@ export default function GamesPage() {
             </div>
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="fonts">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <CardTitle>Fonts</CardTitle>
+                  <Button size="sm" onClick={() => setShowAddFont(!showAddFont)}>
+                    {showAddFont ? 'Cancel' : 'New'}
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <FontManager
+                    fonts={fonts}
+                    onFontsChange={setFonts}
+                    onStatus={setStatus}
+                    showAdd={showAddFont}
+                    onToggleAdd={() => setShowAddFont(!showAddFont)}
+                    selectedFont={selectedFont}
+                    onSelectFont={setSelectedFont}
+                  />
+                </CardContent>
+              </Card>
+              <FontPreviewEditor previewText={previewText} onChangePreviewText={setPreviewText} />
+              <FontPreview fonts={fonts} selectedFont={selectedFont} previewText={previewText} />
+            </div>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   )

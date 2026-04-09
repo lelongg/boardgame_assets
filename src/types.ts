@@ -26,9 +26,11 @@ type CardTemplateItemBase = {
 // Text item - displays text from a field
 export type CardTemplateTextItem = CardTemplateItemBase & {
   type?: "text";  // Optional to support legacy items
-  fieldId: string;
+  fieldId?: string;
+  defaultValue?: string;
   fontSize: number;
   align: "left" | "center" | "right";
+  verticalAlign?: "top" | "middle" | "bottom";
   font?: string;
   color?: string;
 };
@@ -45,7 +47,8 @@ export type CardTemplateFrameItem = CardTemplateItemBase & {
 // Image item - displays an image from a URL field
 export type CardTemplateImageItem = CardTemplateItemBase & {
   type: "image";
-  fieldId: string;
+  fieldId?: string;
+  defaultValue?: string;
   fit?: "cover" | "contain" | "fill";
   cornerRadius?: number;
 };
@@ -82,4 +85,10 @@ export type CardTemplate = {
   bleed: number;
   fonts: Record<string, FontSlot>;
   root: CardTemplateSection;
+};
+
+export type Collection = {
+  id: string;
+  name: string;
+  templateId: string;
 };

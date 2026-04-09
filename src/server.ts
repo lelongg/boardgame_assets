@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { renderCardSvg, renderTemplateSvg } from "./render/cardSvg.js";
 import { defaultTemplate } from "./template.js";
 import { normalizeCard, normalizeTemplate } from "./normalize.js";
-import type { CardData, CardTemplate } from "./types.js";
+import type { CardData, CardTemplate, Collection } from "./types.js";
 
 const port = Number(process.argv[2] ?? 5173);
 const dataRoot = path.resolve("games");
@@ -28,15 +28,38 @@ const writeJson = (filePath: string, value: unknown) => {
 const slugify = (value: string) =>
   value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
+const uniqueId = (base: string, existsFn: (id: string) => boolean): string => {
+  let id = base;
+  let suffix = 1;
+  while (existsFn(id)) id = `${base}-${suffix++}`;
+  return id;
+};
+
+// --- Paths ---
+
 const gamePath = (gameId: string) => path.join(dataRoot, gameId, "game.json");
-const templatePath = (gameId: string) => path.join(dataRoot, gameId, "template.json");
-const cardsDir = (gameId: string) => path.join(dataRoot, gameId, "cards");
-const cardPath = (gameId: string, cardId: string) => path.join(cardsDir(gameId), `${cardId}.json`);
-const fontsDir = (gameId: string) => path.join(dataRoot, gameId, "fonts");
+const templatesDir = (gameId: string) => path.join(dataRoot, gameId, "templates");
+const templateFilePath = (gameId: string, templateId: string) => path.join(templatesDir(gameId), `${templateId}.json`);
+const collectionsDir = (gameId: string) => path.join(dataRoot, gameId, "collections");
+const collectionDir = (gameId: string, collectionId: string) => path.join(collectionsDir(gameId), collectionId);
+const collectionPath = (gameId: string, collectionId: string) => path.join(collectionDir(gameId, collectionId), "collection.json");
+const collectionCardsDir = (gameId: string, collectionId: string) => path.join(collectionDir(gameId, collectionId), "cards");
+const collectionCardPath = (gameId: string, collectionId: string, cardId: string) => path.join(collectionCardsDir(gameId, collectionId), `${cardId}.json`);
+const globalFontsDir = path.resolve("fonts");
+const globalFontsManifest = path.join(globalFontsDir, "fonts.json");
+
+fs.mkdirSync(globalFontsDir, { recursive: true });
+
+type FontEntry = { name: string; file: string; source: "upload" | "google" };
+
+const loadFonts = (): Record<string, FontEntry> => readJson<Record<string, FontEntry>>(globalFontsManifest, {});
+const saveFonts = (fonts: Record<string, FontEntry>) => writeJson(globalFontsManifest, fonts);
 const imagesDir = (gameId: string) => path.join(dataRoot, gameId, "images");
 
 const hashBuffer = (data: Buffer): string =>
   crypto.createHash("sha256").update(data).digest("hex").slice(0, 12);
+
+type GameMeta = { id: string; name: string; createdAt: string; updatedAt: string };
 
 const touchGame = (gameId: string) => {
   const game = readJson<GameMeta | null>(gamePath(gameId), null);
@@ -69,12 +92,12 @@ const embedLocalImages = (svg: string, gameId: string): string => {
   });
 };
 
-const loadFontData = (gameId: string, template: CardTemplate): Record<string, { name: string; data: Buffer }> => {
+const loadFontData = (template: CardTemplate): Record<string, { name: string; data: Buffer }> => {
   const fontData: Record<string, { name: string; data: Buffer }> = {};
   if (template.fonts) {
     for (const [slot, fontSlot] of Object.entries(template.fonts as Record<string, { name: string; file: string }>)) {
       if (fontSlot.file) {
-        const fp = path.join(fontsDir(gameId), fontSlot.file);
+        const fp = path.join(globalFontsDir, fontSlot.file);
         if (fs.existsSync(fp)) fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
       }
     }
@@ -82,7 +105,7 @@ const loadFontData = (gameId: string, template: CardTemplate): Record<string, { 
   return fontData;
 };
 
-type GameMeta = { id: string; name: string; createdAt: string; updatedAt: string };
+// --- Data access ---
 
 const listGames = (): GameMeta[] => {
   if (!fs.existsSync(dataRoot)) return [];
@@ -92,8 +115,35 @@ const listGames = (): GameMeta[] => {
     .filter(Boolean) as GameMeta[];
 };
 
-const listCards = (gameId: string): CardData[] => {
-  const dir = cardsDir(gameId);
+const listTemplates = (gameId: string): CardTemplate[] => {
+  const dir = templatesDir(gameId);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => readJson<any>(path.join(dir, f), null))
+    .filter(Boolean)
+    .map((t) => normalizeTemplate(t));
+};
+
+const loadTemplate = (gameId: string, templateId: string): CardTemplate | null => {
+  const fp = templateFilePath(gameId, templateId);
+  if (!fs.existsSync(fp)) return null;
+  const raw = readJson<unknown>(fp, null);
+  if (!raw) return null;
+  return normalizeTemplate(raw);
+};
+
+const listCollections = (gameId: string): Collection[] => {
+  const dir = collectionsDir(gameId);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => readJson<Collection | null>(collectionPath(gameId, d.name), null))
+    .filter(Boolean) as Collection[];
+};
+
+const listCollectionCards = (gameId: string, collectionId: string): CardData[] => {
+  const dir = collectionCardsDir(gameId, collectionId);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
     .filter((f) => f.endsWith(".json"))
@@ -102,23 +152,68 @@ const listCards = (gameId: string): CardData[] => {
     .map((c) => normalizeCard(c));
 };
 
-const loadTemplate = (gameId: string): CardTemplate => {
-  const fallback = defaultTemplate();
-  if (!fs.existsSync(templatePath(gameId))) {
-    writeJson(templatePath(gameId), fallback);
-    return fallback;
-  }
-  const raw = readJson<unknown>(templatePath(gameId), null);
-  if (!raw || (typeof raw === "object" && (raw as any).version !== 2)) {
-    writeJson(templatePath(gameId), fallback);
-    return fallback;
-  }
-  return normalizeTemplate(raw);
-};
+// --- Migration from old structure ---
 
-const injectDebugLabel = (svg: string, debugAttach: Record<string, unknown>) => {
-  const label = `ATTACH ${JSON.stringify(debugAttach)}`.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  return svg.replace("</svg>", `<text x="24" y="70" font-size="12" fill="#d64545" font-family="Space Grotesk, sans-serif">${label}</text></svg>`);
+const migrateGameIfNeeded = (gameId: string) => {
+  const oldTemplatePath = path.join(dataRoot, gameId, "template.json");
+  const oldCardsDir = path.join(dataRoot, gameId, "cards");
+  const newTemplatesDir = templatesDir(gameId);
+  const newCollectionsDir = collectionsDir(gameId);
+
+  // Already migrated
+  if (fs.existsSync(newTemplatesDir) || fs.existsSync(newCollectionsDir)) return;
+
+  // Migrate template
+  let templateId = "default";
+  if (fs.existsSync(oldTemplatePath)) {
+    const template = readJson<any>(oldTemplatePath, null);
+    if (template) {
+      templateId = template.id || "default";
+      fs.mkdirSync(newTemplatesDir, { recursive: true });
+      writeJson(templateFilePath(gameId, templateId), template);
+    }
+    fs.rmSync(oldTemplatePath);
+  } else {
+    fs.mkdirSync(newTemplatesDir, { recursive: true });
+    writeJson(templateFilePath(gameId, templateId), defaultTemplate());
+  }
+
+  // Migrate cards into a default collection
+  const collId = "default";
+  const collection: Collection = { id: collId, name: "Default", templateId };
+  fs.mkdirSync(collectionCardsDir(gameId, collId), { recursive: true });
+  writeJson(collectionPath(gameId, collId), collection);
+
+  if (fs.existsSync(oldCardsDir)) {
+    const files = fs.readdirSync(oldCardsDir).filter((f) => f.endsWith(".json"));
+    for (const file of files) {
+      const src = path.join(oldCardsDir, file);
+      const dest = path.join(collectionCardsDir(gameId, collId), file);
+      fs.renameSync(src, dest);
+    }
+    fs.rmSync(oldCardsDir, { recursive: true, force: true });
+  }
+
+  // Migrate game-level fonts to global
+  const oldFontsDir = path.join(dataRoot, gameId, "fonts");
+  if (fs.existsSync(oldFontsDir)) {
+    const fontFiles = fs.readdirSync(oldFontsDir);
+    for (const file of fontFiles) {
+      const src = path.join(oldFontsDir, file);
+      const dest = path.join(globalFontsDir, file);
+      if (!fs.existsSync(dest)) fs.copyFileSync(src, dest);
+    }
+    fs.rmSync(oldFontsDir, { recursive: true, force: true });
+    // Merge font entries from template into global manifest
+    const template = readJson<any>(templateFilePath(gameId, templateId), null);
+    if (template?.fonts) {
+      const fonts = loadFonts();
+      for (const [key, slot] of Object.entries(template.fonts as Record<string, FontEntry>)) {
+        if (slot.file && !fonts[key]) fonts[key] = slot;
+      }
+      saveFonts(fonts);
+    }
+  }
 };
 
 // --- App ---
@@ -132,32 +227,45 @@ app.post("/api/games", async (c) => {
   const body = await c.req.json<{ name?: string }>();
   const name = body?.name?.trim();
   if (!name) return c.json({ error: "Name required" }, 400);
-  const idBase = slugify(name) || `game-${Date.now()}`;
-  let id = idBase;
-  let suffix = 1;
-  while (fs.existsSync(path.join(dataRoot, id))) id = `${idBase}-${suffix++}`;
+  const id = uniqueId(slugify(name) || `game-${Date.now()}`, (id) => fs.existsSync(path.join(dataRoot, id)));
   const now = new Date().toISOString();
   const game: GameMeta = { id, name, createdAt: now, updatedAt: now };
   writeJson(gamePath(id), game);
-  writeJson(templatePath(id), defaultTemplate());
-  // Download default fonts in background
+
+  // Create default template
+  const template = defaultTemplate();
+  fs.mkdirSync(templatesDir(id), { recursive: true });
+  writeJson(templateFilePath(id, template.id), template);
+
+  // Create default collection
+  const collection: Collection = { id: "default", name: "Default", templateId: template.id };
+  fs.mkdirSync(collectionCardsDir(id, "default"), { recursive: true });
+  writeJson(collectionPath(id, "default"), collection);
+
+  // Download default fonts globally in background (if not already present)
   (async () => {
     try {
-      const dir = fontsDir(id);
-      fs.mkdirSync(dir, { recursive: true });
       const defaults = [{ slot: "title", fontName: "Fraunces" }, { slot: "body", fontName: "Space Grotesk" }];
-      const template = readJson<any>(templatePath(id), null);
-      if (!template?.fonts) return;
+      const fonts = loadFonts();
+      const t = readJson<any>(templateFilePath(id, template.id), null);
+      if (!t?.fonts) return;
       for (const { slot, fontName } of defaults) {
+        if (fonts[slot]?.file) {
+          // Already have this font globally, just update template reference
+          if (t.fonts[slot]) t.fonts[slot].file = fonts[slot].file;
+          continue;
+        }
         try {
           const { data } = await fetchGoogleFont(fontName);
           const hash = hashBuffer(data);
           const fileName = `${hash}.woff2`;
-          fs.writeFileSync(path.join(dir, fileName), data);
-          if (template.fonts[slot]) template.fonts[slot].file = fileName;
+          fs.writeFileSync(path.join(globalFontsDir, fileName), data);
+          fonts[slot] = { name: fontName, file: fileName, source: "google" };
+          if (t.fonts[slot]) t.fonts[slot].file = fileName;
         } catch { /* non-critical */ }
       }
-      writeJson(templatePath(id), template);
+      saveFonts(fonts);
+      writeJson(templateFilePath(id, template.id), t);
     } catch { /* non-critical */ }
   })();
   return c.json(game, 201);
@@ -165,7 +273,9 @@ app.post("/api/games", async (c) => {
 
 // Single game
 app.get("/api/games/:gameId", (c) => {
-  const game = readJson<GameMeta | null>(gamePath(c.req.param("gameId")), null);
+  const gameId = c.req.param("gameId");
+  migrateGameIfNeeded(gameId);
+  const game = readJson<GameMeta | null>(gamePath(gameId), null);
   if (!game) return c.json({ error: "Not found" }, 404);
   return c.json(game);
 });
@@ -187,80 +297,148 @@ app.delete("/api/games/:gameId", (c) => {
   return c.body(null, 204);
 });
 
-// Template
-app.get("/api/games/:gameId/template", (c) => c.json(loadTemplate(c.req.param("gameId"))));
-
-app.put("/api/games/:gameId/template", async (c) => {
+// Templates
+app.get("/api/games/:gameId/templates", (c) => {
   const gameId = c.req.param("gameId");
+  migrateGameIfNeeded(gameId);
+  return c.json(listTemplates(gameId));
+});
+
+app.post("/api/games/:gameId/templates", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json<{ name?: string }>();
+  const name = body?.name?.trim() || "New Template";
+  const template = defaultTemplate();
+  template.id = uniqueId(slugify(name) || "template", (id) => fs.existsSync(templateFilePath(gameId, id)));
+  template.name = name;
+  writeJson(templateFilePath(gameId, template.id), template);
+  touchGame(gameId);
+  return c.json(template, 201);
+});
+
+app.get("/api/games/:gameId/templates/:templateId", (c) => {
+  const template = loadTemplate(c.req.param("gameId"), c.req.param("templateId"));
+  if (!template) return c.json({ error: "Not found" }, 404);
+  return c.json(template);
+});
+
+app.put("/api/games/:gameId/templates/:templateId", async (c) => {
+  const gameId = c.req.param("gameId");
+  const templateId = c.req.param("templateId");
   const body = await c.req.json<CardTemplate>();
   if (!body) return c.json({ error: "Template required" }, 400);
-  writeJson(templatePath(gameId), body);
+  writeJson(templateFilePath(gameId, templateId), body);
   touchGame(gameId);
   return c.json(body);
 });
 
-app.get("/api/games/:gameId/template.svg", (c) => {
-  const template = loadTemplate(c.req.param("gameId"));
-  return c.body(renderTemplateSvg(template), { headers: { "Content-Type": "image/svg+xml" } });
-});
-
-app.post("/api/games/:gameId/template/preview", async (c) => {
-  const body = await c.req.json<CardTemplate>();
-  if (!body) return c.json({ error: "Template required" }, 400);
-  return c.body(renderTemplateSvg(body), { headers: { "Content-Type": "image/svg+xml" } });
-});
-
-// Render
-app.post("/api/games/:gameId/render", async (c) => {
+app.delete("/api/games/:gameId/templates/:templateId", (c) => {
   const gameId = c.req.param("gameId");
-  const body = await c.req.json<any>();
-  const candidate = (body && "card" in body ? body.card : body) ?? {};
-  const card = normalizeCard(candidate);
-  const template = body?.template ?? loadTemplate(gameId);
-  const debug = Boolean(body?.debug);
-  const fontData = loadFontData(gameId, template);
-  let svg = renderCardSvg(card, template, { debug, fonts: fontData });
-  svg = embedLocalImages(svg, gameId);
-  if (body?.debugAttach) svg = injectDebugLabel(svg, body.debugAttach);
-  return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });
+  const templateId = c.req.param("templateId");
+  // Don't allow deleting if any collection references it
+  const collections = listCollections(gameId);
+  const inUse = collections.some((col) => col.templateId === templateId);
+  if (inUse) return c.json({ error: "Template is in use by a collection" }, 400);
+  fs.rmSync(templateFilePath(gameId, templateId), { force: true });
+  touchGame(gameId);
+  return c.body(null, 204);
 });
 
-app.post("/api/render", async (c) => {
-  const body = await c.req.json<any>();
-  const candidate = (body && "card" in body ? body.card : body) ?? {};
-  const card = normalizeCard(candidate);
-  return c.body(renderCardSvg(card, defaultTemplate()), { headers: { "Content-Type": "image/svg+xml" } });
-});
-
-// Cards
-app.get("/api/games/:gameId/cards", (c) => c.json(listCards(c.req.param("gameId"))));
-
-app.post("/api/games/:gameId/cards", async (c) => {
+app.post("/api/games/:gameId/templates/:templateId/copy", (c) => {
   const gameId = c.req.param("gameId");
+  const templateId = c.req.param("templateId");
+  const template = loadTemplate(gameId, templateId);
+  if (!template) return c.json({ error: "Not found" }, 404);
+  const existing = listTemplates(gameId);
+  const newName = `Template ${existing.length + 1}`;
+  const newId = uniqueId(slugify(newName) || "template", (id) => fs.existsSync(templateFilePath(gameId, id)));
+  const copy = { ...template, id: newId, name: newName };
+  writeJson(templateFilePath(gameId, newId), copy);
+  touchGame(gameId);
+  return c.json(copy, 201);
+});
+
+// Collections
+app.get("/api/games/:gameId/collections", (c) => {
+  const gameId = c.req.param("gameId");
+  migrateGameIfNeeded(gameId);
+  return c.json(listCollections(gameId));
+});
+
+app.post("/api/games/:gameId/collections", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json<{ name?: string; templateId?: string }>();
+  const name = body?.name?.trim() || "New Collection";
+  const templateId = body?.templateId;
+  if (!templateId) return c.json({ error: "templateId required" }, 400);
+  // Verify template exists
+  if (!loadTemplate(gameId, templateId)) return c.json({ error: "Template not found" }, 404);
+  const id = uniqueId(slugify(name) || "collection", (id) => fs.existsSync(collectionDir(gameId, id)));
+  const collection: Collection = { id, name, templateId };
+  fs.mkdirSync(collectionCardsDir(gameId, id), { recursive: true });
+  writeJson(collectionPath(gameId, id), collection);
+  touchGame(gameId);
+  return c.json(collection, 201);
+});
+
+app.get("/api/games/:gameId/collections/:collectionId", (c) => {
+  const col = readJson<Collection | null>(collectionPath(c.req.param("gameId"), c.req.param("collectionId")), null);
+  if (!col) return c.json({ error: "Not found" }, 404);
+  return c.json(col);
+});
+
+app.put("/api/games/:gameId/collections/:collectionId", async (c) => {
+  const gameId = c.req.param("gameId");
+  const collectionId = c.req.param("collectionId");
+  const body = await c.req.json<Partial<Collection>>();
+  const col = readJson<Collection | null>(collectionPath(gameId, collectionId), null);
+  if (!col) return c.json({ error: "Not found" }, 404);
+  if (body.templateId && !loadTemplate(gameId, body.templateId)) return c.json({ error: "Template not found" }, 404);
+  const updated = { ...col, ...body, id: collectionId };
+  writeJson(collectionPath(gameId, collectionId), updated);
+  touchGame(gameId);
+  return c.json(updated);
+});
+
+app.delete("/api/games/:gameId/collections/:collectionId", (c) => {
+  const gameId = c.req.param("gameId");
+  fs.rmSync(collectionDir(gameId, c.req.param("collectionId")), { recursive: true, force: true });
+  touchGame(gameId);
+  return c.body(null, 204);
+});
+
+// Cards (within collections)
+app.get("/api/games/:gameId/collections/:collectionId/cards", (c) => {
+  return c.json(listCollectionCards(c.req.param("gameId"), c.req.param("collectionId")));
+});
+
+app.post("/api/games/:gameId/collections/:collectionId/cards", async (c) => {
+  const gameId = c.req.param("gameId");
+  const collectionId = c.req.param("collectionId");
   const body = await c.req.json<Partial<CardData>>();
   const name = body?.name?.trim();
   if (!name) return c.json({ error: "Name required" }, 400);
-  const idBase = slugify(name) || `card-${Date.now()}`;
-  let id = idBase;
-  let suffix = 1;
-  while (fs.existsSync(cardPath(gameId, id))) id = `${idBase}-${suffix++}`;
+  const id = uniqueId(slugify(name) || `card-${Date.now()}`, (id) => fs.existsSync(collectionCardPath(gameId, collectionId, id)));
   const card = normalizeCard({ ...body, id });
-  writeJson(cardPath(gameId, id), card);
+  writeJson(collectionCardPath(gameId, collectionId, id), card);
   touchGame(gameId);
   return c.json(card, 201);
 });
 
-app.get("/api/games/:gameId/cards/:cardId", (c) => {
+app.get("/api/games/:gameId/collections/:collectionId/cards/:cardId", (c) => {
   const gameId = c.req.param("gameId");
+  const collectionId = c.req.param("collectionId");
   let cardId = c.req.param("cardId");
   const isSvg = cardId.endsWith(".svg");
   if (isSvg) cardId = cardId.slice(0, -4);
-  const raw = readJson<Partial<CardData> | null>(cardPath(gameId, cardId), null);
+  const raw = readJson<Partial<CardData> | null>(collectionCardPath(gameId, collectionId, cardId), null);
   if (!raw) return c.json({ error: "Not found" }, 404);
   const card = normalizeCard(raw);
   if (isSvg) {
-    const template = loadTemplate(gameId);
-    const fontData = loadFontData(gameId, template);
+    const col = readJson<Collection | null>(collectionPath(gameId, collectionId), null);
+    const template = col ? loadTemplate(gameId, col.templateId) : null;
+    if (!template) return c.json({ error: "Template not found" }, 404);
+    const fontData = loadFontData(template);
     let svg = renderCardSvg(card, template, { fonts: fontData });
     svg = embedLocalImages(svg, gameId);
     return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });
@@ -268,55 +446,83 @@ app.get("/api/games/:gameId/cards/:cardId", (c) => {
   return c.json(card);
 });
 
-app.put("/api/games/:gameId/cards/:cardId", async (c) => {
+app.put("/api/games/:gameId/collections/:collectionId/cards/:cardId", async (c) => {
   const gameId = c.req.param("gameId");
+  const collectionId = c.req.param("collectionId");
   const cardId = c.req.param("cardId");
   const body = await c.req.json<Partial<CardData>>();
-  const raw = readJson<Partial<CardData> | null>(cardPath(gameId, cardId), null);
+  const raw = readJson<Partial<CardData> | null>(collectionCardPath(gameId, collectionId, cardId), null);
   const updated = normalizeCard({ ...raw, ...body, id: cardId });
-  writeJson(cardPath(gameId, cardId), updated);
+  writeJson(collectionCardPath(gameId, collectionId, cardId), updated);
   touchGame(gameId);
   return c.json(updated, raw ? 200 : 201);
 });
 
-app.delete("/api/games/:gameId/cards/:cardId", (c) => {
-  fs.rmSync(cardPath(c.req.param("gameId"), c.req.param("cardId")), { force: true });
-  touchGame(c.req.param("gameId"));
+app.delete("/api/games/:gameId/collections/:collectionId/cards/:cardId", (c) => {
+  const gameId = c.req.param("gameId");
+  fs.rmSync(collectionCardPath(gameId, c.req.param("collectionId"), c.req.param("cardId")), { force: true });
+  touchGame(gameId);
   return c.body(null, 204);
 });
 
-// Fonts
-app.post("/api/games/:gameId/fonts/google", async (c) => {
+app.post("/api/games/:gameId/collections/:collectionId/cards/:cardId/copy", (c) => {
   const gameId = c.req.param("gameId");
+  const collectionId = c.req.param("collectionId");
+  const cardId = c.req.param("cardId");
+  const raw = readJson<Partial<CardData> | null>(collectionCardPath(gameId, collectionId, cardId), null);
+  if (!raw) return c.json({ error: "Not found" }, 404);
+  const card = normalizeCard(raw);
+  const existing = listCollectionCards(gameId, collectionId);
+  const newName = `New Card ${existing.length + 1}`;
+  const newId = uniqueId(slugify(newName) || `card-${Date.now()}`, (id) => fs.existsSync(collectionCardPath(gameId, collectionId, id)));
+  const copy = { ...card, id: newId, name: newName };
+  writeJson(collectionCardPath(gameId, collectionId, newId), copy);
+  touchGame(gameId);
+  return c.json(copy, 201);
+});
+
+// Render (with template)
+app.post("/api/games/:gameId/render", async (c) => {
+  const gameId = c.req.param("gameId");
+  const body = await c.req.json<any>();
+  const candidate = (body && "card" in body ? body.card : body) ?? {};
+  const card = normalizeCard(candidate);
+  const template = body?.template ?? (body?.templateId ? loadTemplate(gameId, body.templateId) : null);
+  if (!template) return c.json({ error: "Template required (pass template or templateId)" }, 400);
+  const fontData = loadFontData(template);
+  let svg = renderCardSvg(card, template, { fonts: fontData });
+  svg = embedLocalImages(svg, gameId);
+  return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });
+});
+
+// Fonts (global)
+app.get("/api/fonts", (c) => c.json(loadFonts()));
+
+app.post("/api/fonts/google", async (c) => {
   const body = await c.req.json<{ name?: string; slotName?: string }>();
   const fontName = body?.name?.trim();
   const slotName = body?.slotName?.trim();
   if (!fontName) return c.json({ error: "Font name required" }, 400);
-  if (!slotName) return c.json({ error: "Slot name required" }, 400);
   try {
     const { data, name } = await fetchGoogleFont(fontName);
     const hash = hashBuffer(data);
     const file = `${hash}.woff2`;
-    const dir = fontsDir(gameId);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, file), data);
-    const template = loadTemplate(gameId);
-    if (!template.fonts) template.fonts = {};
-    template.fonts[slotName] = { name, file, source: "google" };
-    fs.writeFileSync(templatePath(gameId), JSON.stringify(template, null, 2));
-    return c.json({ fonts: template.fonts });
+    fs.writeFileSync(path.join(globalFontsDir, file), data);
+    const fonts = loadFonts();
+    const slot = slotName || name.toLowerCase().replace(/\s+/g, '-');
+    fonts[slot] = { name, file, source: "google" };
+    saveFonts(fonts);
+    return c.json({ fonts });
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Failed to fetch font" }, 400);
   }
 });
 
-app.post("/api/games/:gameId/fonts/upload", async (c) => {
-  const gameId = c.req.param("gameId");
+app.post("/api/fonts/upload", async (c) => {
   const disposition = c.req.header("content-disposition") ?? "";
   const filenameMatch = disposition.match(/filename="?([^";\s]+)"?/);
   const originalName = filenameMatch ? filenameMatch[1] : "font.woff2";
   const slotName = c.req.header("x-slot-name");
-  if (!slotName?.trim()) return c.json({ error: "Slot name required" }, 400);
   const ext = path.extname(originalName).toLowerCase();
   if (![".woff2", ".woff", ".ttf", ".otf"].includes(ext)) {
     return c.json({ error: `Unsupported font format: ${ext}` }, 400);
@@ -324,36 +530,31 @@ app.post("/api/games/:gameId/fonts/upload", async (c) => {
   const data = Buffer.from(await c.req.arrayBuffer());
   const hash = hashBuffer(data);
   const file = `${hash}${ext}`;
-  const dir = fontsDir(gameId);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, file), data);
-  const template = loadTemplate(gameId);
-  if (!template.fonts) template.fonts = {};
-  template.fonts[slotName.trim()] = { name: path.basename(originalName, ext), file, source: "upload" };
-  fs.writeFileSync(templatePath(gameId), JSON.stringify(template, null, 2));
-  return c.json({ fonts: template.fonts });
+  fs.writeFileSync(path.join(globalFontsDir, file), data);
+  const fonts = loadFonts();
+  const slot = slotName?.trim() || path.basename(originalName, ext).replace(/[-_]+/g, ' ');
+  fonts[slot] = { name: path.basename(originalName, ext), file, source: "upload" };
+  saveFonts(fonts);
+  return c.json({ fonts });
 });
 
-app.get("/api/games/:gameId/fonts/:file", (c) => {
-  const fp = path.join(fontsDir(c.req.param("gameId")), c.req.param("file"));
+app.get("/api/fonts/:file", (c) => {
+  const fp = path.join(globalFontsDir, c.req.param("file"));
   if (!fs.existsSync(fp)) return c.json({ error: "Not found" }, 404);
   const ext = path.extname(c.req.param("file"));
   const mimeTypes: Record<string, string> = { ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".otf": "font/otf" };
   return c.body(fs.readFileSync(fp), { headers: { "Content-Type": mimeTypes[ext] ?? "application/octet-stream" } });
 });
 
-app.delete("/api/games/:gameId/fonts/:file", (c) => {
-  const gameId = c.req.param("gameId");
+app.delete("/api/fonts/:file", (c) => {
   const fontFile = c.req.param("file");
-  fs.rmSync(path.join(fontsDir(gameId), fontFile), { force: true });
-  const template = loadTemplate(gameId);
-  if (template.fonts) {
-    for (const [key, slot] of Object.entries(template.fonts as Record<string, any>)) {
-      if (slot.file === fontFile) delete template.fonts[key];
-    }
-    fs.writeFileSync(templatePath(gameId), JSON.stringify(template, null, 2));
+  fs.rmSync(path.join(globalFontsDir, fontFile), { force: true });
+  const fonts = loadFonts();
+  for (const [key, entry] of Object.entries(fonts)) {
+    if (entry.file === fontFile) delete fonts[key];
   }
-  return c.json({ fonts: template.fonts ?? {} });
+  saveFonts(fonts);
+  return c.json({ fonts });
 });
 
 // Images
@@ -391,9 +592,16 @@ app.delete("/api/games/:gameId/images/:file", (c) => {
 // Print
 app.get("/print/:gameId", (c) => {
   const gameId = c.req.param("gameId");
-  const cards = listCards(gameId);
-  const items = cards.map((card) =>
-    `<div class="sheet-card"><img src="/api/games/${gameId}/cards/${card.id}.svg" alt="${card.name}" /></div>`
+  migrateGameIfNeeded(gameId);
+  const collections = listCollections(gameId);
+  const allCards: { card: CardData; collectionId: string }[] = [];
+  for (const col of collections) {
+    for (const card of listCollectionCards(gameId, col.id)) {
+      allCards.push({ card, collectionId: col.id });
+    }
+  }
+  const items = allCards.map(({ card, collectionId }) =>
+    `<div class="sheet-card"><img src="/api/games/${gameId}/collections/${collectionId}/cards/${card.id}.svg" alt="${card.name}" /></div>`
   ).join("\n");
   const html = `<!doctype html>
 <html lang="en">

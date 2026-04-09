@@ -9,7 +9,7 @@ type RichTextFieldProps = {
   placeholder?: string
 }
 
-export default function RichTextField({ value, onChange, placeholder }: RichTextFieldProps) {
+export default function RichTextField({ value, onChange }: RichTextFieldProps) {
   const [showToolbar, setShowToolbar] = useState(false)
 
   const editor = useEditor({
@@ -37,7 +37,7 @@ export default function RichTextField({ value, onChange, placeholder }: RichText
 
   useEffect(() => {
     if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value, false)
+      editor.commands.setContent(value)
     }
   }, [value, editor])
 

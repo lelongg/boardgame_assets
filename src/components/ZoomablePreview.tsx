@@ -11,11 +11,12 @@ type ZoomablePreviewProps = {
   hitAreas?: HitArea[]
   selectedHitAreaId?: string | null
   onHitAreaClick?: (id: string) => void
+  extraButtons?: React.ReactNode
 }
 
 type ViewState = { scale: number; x: number; y: number }
 
-export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitAreas, selectedHitAreaId, onHitAreaClick }: ZoomablePreviewProps) {
+export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitAreas, selectedHitAreaId, onHitAreaClick, extraButtons }: ZoomablePreviewProps) {
   const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 })
   const [unlocked, setUnlocked] = useState(false)
   const dragging = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
@@ -96,6 +97,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   return (
     <div className="relative">
       <div className="absolute top-2 right-2 z-10 flex gap-1">
+        {extraButtons}
         {isTransformed && (
           <button
             onClick={() => setView({ scale: 1, x: 0, y: 0 })}

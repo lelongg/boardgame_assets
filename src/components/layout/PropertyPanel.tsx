@@ -6,6 +6,7 @@ type PropertyPanelProps = {
   template: CardTemplate
   selectedNodeId: string
   selectedProperty: string | null
+  gameId?: string
   onSelectProperty: (property: string) => void
   onPropertyChange: (property: string, value: unknown) => void
 }
@@ -30,8 +31,10 @@ const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
 
 const TEXT_PROPERTIES: PropertyDef[] = [
   { key: 'fieldId', label: 'Field ID' },
+  { key: 'defaultValue', label: 'Default' },
   { key: 'fontSize', label: 'Font Size' },
-  { key: 'align', label: 'Align' },
+  { key: 'align', label: 'H Align' },
+  { key: 'verticalAlign', label: 'V Align' },
   { key: 'font', label: 'Font' },
   { key: 'color', label: 'Color' },
 ]
@@ -45,6 +48,7 @@ const FRAME_PROPERTIES: PropertyDef[] = [
 
 const IMAGE_PROPERTIES: PropertyDef[] = [
   { key: 'fieldId', label: 'Field ID' },
+  { key: 'defaultValue', label: 'Default Image' },
   { key: 'fit', label: 'Fit' },
   { key: 'cornerRadius', label: 'Corner Radius' },
 ]
@@ -72,6 +76,7 @@ export default function PropertyPanel({
   template,
   selectedNodeId,
   selectedProperty,
+  gameId,
   onSelectProperty,
   onPropertyChange,
 }: PropertyPanelProps) {
@@ -113,6 +118,7 @@ export default function PropertyPanel({
             value={currentValue}
             template={template}
             selectedNodeId={selectedNodeId}
+            gameId={gameId}
             onChange={(value) => onPropertyChange(selectedProperty, value)}
           />
         </div>

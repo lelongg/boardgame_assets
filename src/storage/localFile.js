@@ -7,27 +7,13 @@ const apiBase = "/api";
 
 export const createLocalFileStorage = ({ defaultTemplate }) => {
   return {
-    async init() {
-      // No initialization needed for local file storage
-    },
+    async init() {},
+    async tryRestoreSession() { return true; },
+    isAuthorized() { return true; },
+    async signIn() {},
+    async signOut() {},
 
-    async tryRestoreSession() {
-      // Always return true since local file storage doesn't require auth
-      return true;
-    },
-
-    isAuthorized() {
-      return true;
-    },
-
-    async signIn() {
-      // No sign-in needed for local file storage
-    },
-
-    async signOut() {
-      // No sign-out needed for local file storage
-    },
-
+    // Games
     async listGames() {
       const response = await fetch(`${apiBase}/games`);
       if (!response.ok) throw new Error("Failed to list games");
@@ -61,20 +47,25 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
     },
 
     async deleteGame(gameId) {
-      const response = await fetch(`${apiBase}/games/${gameId}`, {
-        method: "DELETE"
-      });
+      const response = await fetch(`${apiBase}/games/${gameId}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to delete game");
     },
 
-    async loadTemplate(gameId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/template`);
-      if (!response.ok) throw new Error("Failed to load template");
+    // Templates
+    async listTemplates(gameId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/templates`);
+      if (!response.ok) throw new Error("Failed to list templates");
       return await response.json();
     },
 
-    async saveTemplate(gameId, template) {
-      const response = await fetch(`${apiBase}/games/${gameId}/template`, {
+    async getTemplate(gameId, templateId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/templates/${templateId}`);
+      if (!response.ok) throw new Error("Failed to get template");
+      return await response.json();
+    },
+
+    async saveTemplate(gameId, templateId, template) {
+      const response = await fetch(`${apiBase}/games/${gameId}/templates/${templateId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(template)
@@ -83,21 +74,84 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       return await response.json();
     },
 
-    async listCards(gameId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/cards`);
+    async createTemplate(gameId, name) {
+      const response = await fetch(`${apiBase}/games/${gameId}/templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      if (!response.ok) throw new Error("Failed to create template");
+      return await response.json();
+    },
+
+    async copyTemplate(gameId, templateId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/templates/${templateId}/copy`, { method: "POST" });
+      if (!response.ok) throw new Error("Failed to copy template");
+      return await response.json();
+    },
+
+    async deleteTemplate(gameId, templateId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/templates/${templateId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || "Failed to delete template");
+      }
+    },
+
+    // Collections
+    async listCollections(gameId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections`);
+      if (!response.ok) throw new Error("Failed to list collections");
+      return await response.json();
+    },
+
+    async getCollection(gameId, collectionId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}`);
+      if (!response.ok) throw new Error("Failed to get collection");
+      return await response.json();
+    },
+
+    async createCollection(gameId, name, templateId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, templateId })
+      });
+      if (!response.ok) throw new Error("Failed to create collection");
+      return await response.json();
+    },
+
+    async updateCollection(gameId, collectionId, updates) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates)
+      });
+      if (!response.ok) throw new Error("Failed to update collection");
+      return await response.json();
+    },
+
+    async deleteCollection(gameId, collectionId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete collection");
+    },
+
+    // Cards (within collections)
+    async listCards(gameId, collectionId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/cards`);
       if (!response.ok) throw new Error("Failed to list cards");
       return await response.json();
     },
 
-    async getCard(gameId, cardId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/cards/${cardId}`);
+    async getCard(gameId, collectionId, cardId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/cards/${cardId}`);
       if (!response.ok) throw new Error("Failed to get card");
       return await response.json();
     },
 
-    async saveCard(gameId, cardId, card) {
+    async saveCard(gameId, collectionId, cardId, card) {
       if (cardId) {
-        const response = await fetch(`${apiBase}/games/${gameId}/cards/${cardId}`, {
+        const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/cards/${cardId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(card)
@@ -105,7 +159,7 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
         if (!response.ok) throw new Error("Failed to update card");
         return await response.json();
       } else {
-        const response = await fetch(`${apiBase}/games/${gameId}/cards`, {
+        const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/cards`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(card)
@@ -115,11 +169,59 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       }
     },
 
-    async deleteCard(gameId, cardId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/cards/${cardId}`, {
+    async copyCard(gameId, collectionId, cardId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/cards/${cardId}/copy`, { method: "POST" });
+      if (!response.ok) throw new Error("Failed to copy card");
+      return await response.json();
+    },
+
+    async deleteCard(gameId, collectionId, cardId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/cards/${cardId}`, {
         method: "DELETE"
       });
       if (!response.ok) throw new Error("Failed to delete card");
+    },
+
+    // Fonts (global)
+    async listFonts() {
+      const response = await fetch(`${apiBase}/fonts`);
+      if (!response.ok) throw new Error("Failed to list fonts");
+      return await response.json();
+    },
+
+    async addGoogleFont(name, slotName) {
+      const response = await fetch(`${apiBase}/fonts/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, slotName })
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || "Failed to add font");
+      }
+      return await response.json();
+    },
+
+    async uploadFont(file, slotName) {
+      const response = await fetch(`${apiBase}/fonts/upload`, {
+        method: "POST",
+        headers: {
+          "Content-Disposition": `attachment; filename="${file.name}"`,
+          "X-Slot-Name": slotName || "",
+        },
+        body: await file.arrayBuffer()
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || "Failed to upload font");
+      }
+      return await response.json();
+    },
+
+    async deleteFont(file) {
+      const response = await fetch(`${apiBase}/fonts/${file}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete font");
+      return await response.json();
     }
   };
 };

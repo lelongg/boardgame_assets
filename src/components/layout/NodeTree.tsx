@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import { Plus, Trash2, FolderPlus } from 'lucide-react'
+import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { flattenNodes } from './templateHelpers'
 import type { CardTemplateSection } from '../../types'
 
@@ -54,8 +54,23 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
     return !ancestors.some((id) => collapsed.has(id))
   })
 
-  const allSectionIds = allNodes.filter(n => n.kind === 'section').map(n => n.id)
-  const allCollapsed = allSectionIds.length > 0 && allSectionIds.every(id => collapsed.has(id))
+  // Get descendant section IDs for a given section
+  const getDescendantSectionIds = (sectionId: string): string[] => {
+    const idx = allNodes.findIndex(n => n.id === sectionId)
+    if (idx < 0) return []
+    const parentDepth = allNodes[idx].depth
+    const ids: string[] = []
+    for (let i = idx + 1; i < allNodes.length && allNodes[i].depth > parentDepth; i++) {
+      if (allNodes[i].kind === 'section') ids.push(allNodes[i].id)
+    }
+    return ids
+  }
+
+  const selectedNode = selectedNodeId ? allNodes.find(n => n.id === selectedNodeId) : null
+  const isSelectedSection = selectedNode?.kind === 'section'
+  const descendantIds = isSelectedSection ? getDescendantSectionIds(selectedNodeId!) : []
+  const canCollapse = descendantIds.length > 0
+  const allDescendantsCollapsed = canCollapse && descendantIds.every(id => collapsed.has(id))
 
   const getDropPosition = (e: React.DragEvent, nodeId: string): DropIndicator['position'] => {
     const el = nodeRefs.current.get(nodeId)
@@ -71,13 +86,24 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
   return (
     <div className="space-y-0.5">
       <div className="flex items-center gap-1 px-1 pb-1">
-        <button
-          onClick={() => updateCollapsed(() => allCollapsed ? new Set() : new Set(allSectionIds))}
-          className="rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {allCollapsed ? '▾ Expand' : '▸ Collapse'}
-        </button>
         <div className="ml-auto flex items-center gap-0.5">
+          {canCollapse && (
+            <button
+              onClick={() => updateCollapsed(prev => {
+                const next = new Set(prev)
+                if (allDescendantsCollapsed) {
+                  descendantIds.forEach(id => next.delete(id))
+                } else {
+                  descendantIds.forEach(id => next.add(id))
+                }
+                return next
+              })}
+              className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+              title={allDescendantsCollapsed ? 'Expand children' : 'Collapse children'}
+            >
+              {allDescendantsCollapsed ? <ChevronsUpDown className="h-4 w-4" /> : <ChevronsDownUp className="h-4 w-4" />}
+            </button>
+          )}
           {onAddSection && (
             <button
               onClick={onAddSection}
