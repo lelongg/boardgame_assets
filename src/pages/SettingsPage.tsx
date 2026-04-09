@@ -29,6 +29,25 @@ export default function SettingsPage() {
   const [migrationStatus, setMigrationStatus] = useState<string | null>(null)
   const [migrating, setMigrating] = useState(false)
 
+  // Google Drive auth state
+  const [driveAuthorized, setDriveAuthorized] = useState(false)
+  const [driveStorage, setDriveStorage] = useState<any>(null)
+
+  useEffect(() => {
+    if (currentProvider !== 'googleDrive') return
+    const initDrive = async () => {
+      const prev = getProvider()
+      try {
+        setProvider('googleDrive')
+        const s = await createStorage()
+        setDriveStorage(s)
+        setDriveAuthorized(s.isAuthorized())
+      } catch { /* skip */ }
+      finally { setProvider(prev) }
+    }
+    initDrive()
+  }, [currentProvider])
+
   useEffect(() => {
     fetch('/api/games', { method: 'HEAD' })
       .then(() => setServerReachable(true))
@@ -177,6 +196,39 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Google Drive Auth */}
+        {currentProvider === 'googleDrive' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Google Drive</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {driveAuthorized ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">Connected to Google Drive</span>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    if (!driveStorage) return
+                    await driveStorage.signOut()
+                    setDriveAuthorized(false)
+                  }}>
+                    Disconnect
+                  </Button>
+                </div>
+              ) : (
+                <Button size="sm" onClick={async () => {
+                  if (!driveStorage) return
+                  try {
+                    await driveStorage.signIn()
+                    setDriveAuthorized(driveStorage.isAuthorized())
+                  } catch { /* skip */ }
+                }}>
+                  Connect Google Drive
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Migration */}
         <Card>

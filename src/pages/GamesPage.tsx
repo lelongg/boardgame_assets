@@ -13,7 +13,7 @@ export default function GamesPage() {
   const [games, setGames] = useState<any[]>([])
   const [expandedGame, setExpandedGame] = useState<string | null>(null)
   const navigate = useNavigate()
-  const { storage, status, setStatus, isAuthorized, setIsAuthorized } = useStorage()
+  const { storage, status, setStatus } = useStorage()
 
   useEffect(() => {
     if (!storage) return
@@ -44,33 +44,6 @@ export default function GamesPage() {
       navigate(`/game/${created.id}`)
     } catch (error) {
       setStatus('Error creating game.')
-      console.error(error)
-    }
-  }
-
-  const handleConnectDrive = async () => {
-    if (!storage) {
-      setStatus('Storage not initialized.')
-      return
-    }
-    try {
-      await storage.signIn()
-      setIsAuthorized(storage.isAuthorized())
-      await loadGames(storage)
-    } catch (error) {
-      setStatus('Error connecting to Drive.')
-      console.error(error)
-    }
-  }
-
-  const handleDisconnect = async () => {
-    if (!storage) return
-    try {
-      await storage.signOut()
-      setIsAuthorized(false)
-      setGames([])
-      setStatus('Disconnected.')
-    } catch (error) {
       console.error(error)
     }
   }
@@ -121,15 +94,6 @@ export default function GamesPage() {
           <Button size="sm" variant="outline" onClick={() => navigate('/settings')}>
             Settings
           </Button>
-          {!isAuthorized ? (
-            <Button size="sm" variant="outline" onClick={handleConnectDrive}>
-              Connect Drive
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" onClick={handleDisconnect}>
-              Disconnect
-            </Button>
-          )}
         </div>
       </>}
       maxWidth="max-w-4xl"
