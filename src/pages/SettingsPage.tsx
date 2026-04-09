@@ -4,16 +4,8 @@ import { ArrowLeft, Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import PageLayout from '@/components/PageLayout'
-import { getProvider, setProvider, createStorageFor } from '../storage'
+import { getProvider, setProvider, createStorageFor, BACKENDS, type BackendKey } from '../storage'
 import { exportGameZip, importGameZip } from '../gameZip'
-
-const BACKENDS = [
-  { key: 'localFile', name: 'Local Disk', description: 'Requires the dev server running' },
-  { key: 'indexedDB', name: 'Browser Storage', description: 'Stored in this browser, works offline' },
-  { key: 'googleDrive', name: 'Google Drive', description: 'Stored in your Google Drive' },
-] as const
-
-type BackendKey = (typeof BACKENDS)[number]['key']
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -33,6 +25,16 @@ export default function SettingsPage() {
   // Google Drive auth state
   const [driveAuthorized, setDriveAuthorized] = useState(false)
   const [driveStorage, setDriveStorage] = useState<any>(null)
+
+  // S3 config state
+  const [s3Config, setS3Config] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('boardgame_assets_s3_config') ?? '{}') } catch { return {} }
+  })
+  const updateS3Field = (field: string, value: string) => {
+    const next = { ...s3Config, [field]: value }
+    setS3Config(next)
+    localStorage.setItem('boardgame_assets_s3_config', JSON.stringify(next))
+  }
 
   useEffect(() => {
     if (selectedProvider !== 'googleDrive') return
@@ -152,12 +154,13 @@ export default function SettingsPage() {
                   key={backend.key}
                   onClick={() => !disabled && handleSelectProvider(backend.key)}
                   className={[
-                    'flex items-center justify-between rounded-lg border px-4 py-3 transition-colors',
+                    'flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors',
                     disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50',
                     isSelected ? 'ring-2 ring-primary' : '',
                   ].join(' ')}
                 >
-                  <div>
+                  <backend.icon className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
                     <div className="font-medium">{backend.name}</div>
                     <div className="text-sm text-muted-foreground">{backend.description}</div>
                   </div>
@@ -202,6 +205,36 @@ export default function SettingsPage() {
                   Connect Google Drive
                 </Button>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* S3 Config */}
+        {selectedProvider === 's3' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>S3 Configuration</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[
+                { key: 'bucket', label: 'Bucket', placeholder: 'my-bucket' },
+                { key: 'region', label: 'Region', placeholder: 'us-east-1' },
+                { key: 'accessKeyId', label: 'Access Key ID', placeholder: 'AKIA...' },
+                { key: 'secretAccessKey', label: 'Secret Access Key', placeholder: '••••••••', type: 'password' },
+                { key: 'endpoint', label: 'Endpoint (optional)', placeholder: 'https://s3.example.com' },
+                { key: 'prefix', label: 'Prefix (optional)', placeholder: 'boardgame-assets' },
+              ].map(({ key, label, placeholder, type }) => (
+                <div key={key} className="space-y-1">
+                  <label className="text-sm font-medium">{label}</label>
+                  <input
+                    type={type ?? 'text'}
+                    value={s3Config[key] ?? ''}
+                    onChange={(e) => updateS3Field(key, e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
