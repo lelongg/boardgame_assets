@@ -263,11 +263,11 @@ export default function CollectionsPage() {
     } else parentId = t.root.id
     const parent = findSectionById(t.root, parentId)
     if (!parent) return
-    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 80, heightPct: 20 }
+    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 100, heightPct: 100 }
     const items: Record<string, any> = {
       text: { ...base, type: 'text', name: 'New Text', fieldId: 'field', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
-      frame: { ...base, type: 'frame', name: 'New Frame', heightPct: 90, widthPct: 90, strokeWidth: 2, cornerRadius: 8 },
-      image: { ...base, type: 'image', name: 'New Image', fieldId: 'image', heightPct: 60, fit: 'cover', cornerRadius: 0 },
+      frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
+      image: { ...base, type: 'image', name: 'New Image', fieldId: 'image', fit: 'cover', cornerRadius: 0 },
       emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
     }
     const item = items[itemType]
