@@ -366,8 +366,8 @@ export default function CollectionsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base">Collections</CardTitle>
-                <Button size="sm" onClick={handleCreateCollection} disabled={templates.length === 0}>
-                  New
+                <Button size="sm" variant="ghost" onClick={handleCreateCollection} disabled={templates.length === 0} title="New collection">
+                  <Plus className="h-4 w-4" />
                 </Button>
               </CardHeader>
               <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
@@ -389,8 +389,8 @@ export default function CollectionsPage() {
                     </div>
                     {expandedCollection === col.id && (
                       <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)}>
-                          Edit
+                        <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit">
+                          <Pencil className="h-4 w-4" />
                         </Button>
                         <select
                           className="rounded-md border bg-background px-2 py-1 text-sm"
@@ -591,8 +591,8 @@ export default function CollectionsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base">Templates</CardTitle>
-                  <Button size="sm" onClick={handleCreateTemplate}>
-                    New
+                  <Button size="sm" variant="ghost" onClick={handleCreateTemplate} title="New template">
+                    <Plus className="h-4 w-4" />
                   </Button>
                 </CardHeader>
                 <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">

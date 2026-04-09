@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Pencil, Printer, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -93,29 +94,20 @@ export default function GamesPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-background px-7 py-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[3px] text-muted-foreground">
-              Boardgame Studio
-            </p>
-            <h1 className="mt-1.5 font-['Fraunces'] text-3xl font-bold">
-              Asset Editor
-            </h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-muted-foreground">{status}</div>
-            <div className="flex gap-2">
-              {!isAuthorized ? (
-                <Button variant="outline" onClick={handleConnectDrive}>
-                  Connect Drive
-                </Button>
-              ) : (
-                <Button variant="outline" onClick={handleDisconnect}>
-                  Disconnect
-                </Button>
-              )}
-            </div>
+      <header className="border-b bg-background px-4 py-2 md:px-7">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold">Boardgame Studio</h1>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-sm text-muted-foreground hidden sm:inline">{status}</span>
+            {!isAuthorized ? (
+              <Button size="sm" variant="outline" onClick={handleConnectDrive}>
+                Connect Drive
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleDisconnect}>
+                Disconnect
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -131,8 +123,8 @@ export default function GamesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Games</CardTitle>
-            <Button size="sm" onClick={handleCreateGame}>
-              New
+            <Button size="sm" variant="ghost" onClick={handleCreateGame} title="New game">
+              <Plus className="h-4 w-4" />
             </Button>
           </CardHeader>
           <CardContent className="space-y-4 overflow-y-auto max-h-[60vh]">
@@ -148,15 +140,11 @@ export default function GamesPage() {
                   </div>
                   {expandedGame === game.id && (
                     <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                      <Button size="sm" onClick={() => navigate(`/game/${game.id}`)}>
-                        Edit
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}`)} title="Edit">
+                        <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => window.open(`/print/${game.id}`, '_blank')}
-                      >
-                        Print
+                      <Button size="sm" variant="outline" onClick={() => window.open(`/print/${game.id}`, '_blank')} title="Print">
+                        <Printer className="h-4 w-4" />
                       </Button>
                       <ConfirmButton onConfirm={async () => {
                         try {
@@ -184,8 +172,8 @@ export default function GamesPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle>Fonts</CardTitle>
-                  <Button size="sm" onClick={() => setShowAddFont(!showAddFont)}>
-                    {showAddFont ? 'Cancel' : 'New'}
+                  <Button size="sm" variant="ghost" onClick={() => setShowAddFont(!showAddFont)} title={showAddFont ? 'Cancel' : 'New font'}>
+                    {showAddFont ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                   </Button>
                 </CardHeader>
                 <CardContent>
