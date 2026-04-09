@@ -53,9 +53,10 @@ export type CardTemplateImageItem = CardTemplateItemBase & {
   cornerRadius?: number;
 };
 
-// Emoji item - displays a static emoji character
+// Emoji item - displays an emoji, optionally bound to a card field
 export type CardTemplateEmojiItem = CardTemplateItemBase & {
   type: "emoji";
+  fieldId?: string;
   emoji?: string;
   fontSize: number;
 };

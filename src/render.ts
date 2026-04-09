@@ -308,7 +308,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       
       if (itemType === "emoji") {
         if (item.type !== "emoji") return "";
-        const emoji = (item as any).emoji || "⭐";
+        const emoji = ((item as any).fieldId ? card.fields[(item as any).fieldId] : null) || (item as any).emoji || "⭐";
         const fontSize = item.fontSize ?? 32;
         const textX = rect.x + rect.width / 2;
         const textY = rect.y + rect.height / 2;

@@ -64,7 +64,8 @@ const IMAGE_PROPERTIES: PropertyDef[] = [
 ]
 
 const EMOJI_PROPERTIES: PropertyDef[] = [
-  { key: 'emoji', label: 'Emoji' },
+  { key: 'fieldId', label: 'Field ID' },
+  { key: 'emoji', label: 'Default Emoji' },
   { key: 'fontSize', label: 'Size' },
 ]
 
