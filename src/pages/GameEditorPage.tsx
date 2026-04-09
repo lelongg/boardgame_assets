@@ -67,23 +67,10 @@ export default function GameEditorPage() {
     if (!selectedCard || !game?.template || !gameId) return
     const timer = setTimeout(async () => {
       try {
-        const { renderCardSvg, embedFontsInSvg } = await import('../render')
+        const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
         let svg = renderCardSvg(selectedCard, game.template)
         svg = await embedFontsInSvg(svg, game.template, gameId)
-        // Embed images as base64 for blob SVGs
-        const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
-        for (const match of imgMatches) {
-          const url = match.slice(6, -1)
-          try {
-            const resp = await fetch(url)
-            if (resp.ok) {
-              const b = await resp.blob()
-              const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(b) })
-              svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-            }
-          } catch { /* skip */ }
-        }
-        // Also embed data: URIs that are already inline (no fetch needed)
+        svg = await embedImagesInSvg(svg)
         const blob = new Blob([svg], { type: 'image/svg+xml' })
         const blobUrl = URL.createObjectURL(blob)
         setCardPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return blobUrl })
@@ -208,26 +195,10 @@ export default function GameEditorPage() {
   useEffect(() => {
     if (!game?.template) { setTemplatePreview(''); return }
     const updatePreview = async () => {
-      const { renderTemplateSvg, computeLayout, embedFontsInSvg } = await import('../render')
+      const { renderTemplateSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
       let svg = renderTemplateSvg(game.template, { showSections, showItems: showItemWires, selectedNodeId })
       svg = await embedFontsInSvg(svg, game.template, gameId!)
-      // Embed images as base64 data URIs since blob SVGs can't fetch external URLs
-      const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
-      for (const match of imgMatches) {
-        const url = match.slice(6, -1) // extract URL from href="..."
-        try {
-          const resp = await fetch(url)
-          if (resp.ok) {
-            const blob = await resp.blob()
-            const b64 = await new Promise<string>(resolve => {
-              const reader = new FileReader()
-              reader.onload = () => resolve(reader.result as string)
-              reader.readAsDataURL(blob)
-            })
-            svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-          }
-        } catch { /* skip */ }
-      }
+      svg = await embedImagesInSvg(svg)
       const layout = computeLayout(game.template)
       setTemplateHitAreas([
         ...Array.from(layout.sections.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),

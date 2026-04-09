@@ -60,26 +60,10 @@ export default function CollectionsPage() {
   useEffect(() => {
     if (!selectedTemplate) { setTemplatePreview(''); return }
     const updatePreview = async () => {
-      const { renderTemplateSvg, computeLayout, embedFontsInSvg } = await import('../render')
+      const { renderTemplateSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
       let svg = renderTemplateSvg(selectedTemplate, { showSections, showItems: showItemWires, selectedNodeId })
       svg = await embedFontsInSvg(svg, selectedTemplate, gameId!)
-      // Embed images as base64 data URIs since blob SVGs can't fetch external URLs
-      const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
-      for (const match of imgMatches) {
-        const url = match.slice(6, -1)
-        try {
-          const resp = await fetch(url)
-          if (resp.ok) {
-            const blob = await resp.blob()
-            const b64 = await new Promise<string>(resolve => {
-              const reader = new FileReader()
-              reader.onload = () => resolve(reader.result as string)
-              reader.readAsDataURL(blob)
-            })
-            svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-          }
-        } catch { /* skip */ }
-      }
+      svg = await embedImagesInSvg(svg)
       const layout = computeLayout(selectedTemplate)
       const areas = [
         ...Array.from(layout.sections.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
@@ -101,26 +85,13 @@ export default function CollectionsPage() {
     if (!tpl) { setCardPreviews({}); return }
     let cancelled = false
     const renderAll = async () => {
-      const { renderCardSvg, embedFontsInSvg } = await import('../render')
+      const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
       const previews: Record<string, string> = {}
       for (const card of collectionCards) {
         if (cancelled) return
         let svg = renderCardSvg(card, tpl)
         svg = await embedFontsInSvg(svg, tpl, gameId!)
-        // Embed images as base64
-        const matches = svg.match(/href="((?:\/api\/|data:)[^"]+)"/g) || []
-        for (const m of matches) {
-          const url = m.slice(6, -1)
-          if (url.startsWith('data:')) continue
-          try {
-            const resp = await fetch(url)
-            if (resp.ok) {
-              const blob = await resp.blob()
-              const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(blob) })
-              svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-            }
-          } catch { /* skip */ }
-        }
+        svg = await embedImagesInSvg(svg)
         const blob = new Blob([svg], { type: 'image/svg+xml' })
         previews[card.id] = URL.createObjectURL(blob)
       }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { createStorage } from '../storage'
-import { renderCardSvg, embedFontsInSvg } from '../render'
+import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
 import type { CardData, CardTemplate } from '../types'
 
 type DeckEntry = { card: CardData; template: CardTemplate; collectionName: string }
@@ -15,21 +15,6 @@ const svgToImage = (svg: string): Promise<HTMLImageElement> =>
     img.src = URL.createObjectURL(blob)
   })
 
-const embedImages = async (svg: string): Promise<string> => {
-  const matches = svg.match(/href="(\/api\/[^"]+)"/g) || []
-  for (const m of matches) {
-    const url = m.slice(6, -1)
-    try {
-      const resp = await fetch(url)
-      if (resp.ok) {
-        const blob = await resp.blob()
-        const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(blob) })
-        svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-      }
-    } catch { /* skip */ }
-  }
-  return svg
-}
 
 const MAX_ATLAS_SIZE = 4096
 const TTS_MAX_CARDS = 69
@@ -105,7 +90,7 @@ export default function ExportTTSPage() {
         const { card, template } = entries[i]
         let svg = renderCardSvg(card, template)
         svg = await embedFontsInSvg(svg, template, gameId!)
-        svg = await embedImages(svg)
+        svg = await embedImagesInSvg(svg)
 
         const img = await svgToImage(svg)
         const col = i % numWidth
