@@ -104,9 +104,9 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         const frameItem: CardTemplateFrameItem = {
             ...base,
             type: "frame" as const,
-            strokeWidth: obj.strokeWidth !== undefined && obj.strokeWidth !== null ? safeNumber(obj.strokeWidth, 2) : undefined,
-            strokeColor: obj.strokeColor !== undefined && obj.strokeColor !== null ? safeString(obj.strokeColor, "#000000") : undefined,
-            fillColor: obj.fillColor !== undefined && obj.fillColor !== null ? safeString(obj.fillColor, "none") : undefined,
+            strokeWidth: safeNumber(obj.strokeWidth, 2),
+            strokeColor: safeString(obj.strokeColor, "#000000"),
+            fillColor: safeString(obj.fillColor, "none"),
             cornerRadius: obj.cornerRadius !== undefined && obj.cornerRadius !== null ? safeNumber(obj.cornerRadius, 8) : undefined
         };
         return frameItem;
@@ -132,7 +132,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         align: safeEnum(obj.align, ["left", "center", "right"] as const, "center" as const),
         verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
         font: obj.font !== undefined && obj.font !== null && obj.font !== "" ? safeString(obj.font, "body") : undefined,
-        color: obj.color !== undefined && obj.color !== null ? safeString(obj.color, "#000000") : undefined
+        color: obj.color !== undefined && obj.color !== null && obj.color !== '' ? safeString(obj.color, "#000000") : undefined
     };
     return textItem;
 };
