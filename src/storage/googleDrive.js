@@ -25,7 +25,7 @@ export const createGoogleDriveStorage = (options = {}) => {
   const appTag = options.appTag ?? "boardgame-assets";
   const rootFolderId = options.folderId ? String(options.folderId) : "";
   const defaultTemplate = options.defaultTemplate;
-  const isConfigured = clientId && !clientId.includes("YOUR_GOOGLE_CLIENT_ID");
+  const isConfigured = clientId && clientId.length > 10 && clientId.includes(".");
 
   if (typeof defaultTemplate !== "function") throw new Error("Missing default template factory.");
 
