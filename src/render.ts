@@ -306,8 +306,17 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
         return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${preserveAspectRatio}"${clipAttr} />`;
       }
       
+      if (itemType === "emoji") {
+        if (item.type !== "emoji") return "";
+        const emoji = (item as any).emoji ?? "⭐";
+        const fontSize = item.fontSize ?? 32;
+        const textX = rect.x + rect.width / 2;
+        const textY = rect.y + rect.height / 2;
+        return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}">${escape(emoji)}</text>`;
+      }
+
       // Render text item (default) - type guard
-      if (item.type === "frame" || item.type === "image") return "";
+      if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
       const value = item.fieldId === "name" ? card.name : (item.fieldId ? card.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
       if (!value) return "";
       const slotName = item.font && template.fonts?.[item.font] ? item.font : fontSlots[0];
@@ -427,7 +436,15 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
       const ca = cr > 0 ? ` clip-path="url(#${clipId})"` : "";
       return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${par}"${ca} />`;
     }
-    if (item.type === "frame" || item.type === "image") return "";
+    if (itemType === "emoji") {
+      if (item.type !== "emoji") return "";
+      const emoji = (item as any).emoji ?? "⭐";
+      const fontSize = item.fontSize ?? 32;
+      const textX = rect.x + rect.width / 2;
+      const textY = rect.y + rect.height / 2;
+      return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}">${escape(emoji)}</text>`;
+    }
+    if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
     const value = item.fieldId === "name" ? emptyCard.name : (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
     if (!value) return "";
     const slotName = item.font && template.fonts?.[item.font] ? item.font : fontSlots[0];

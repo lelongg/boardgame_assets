@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem, FontSlot } from "./types";
+import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem, CardTemplateEmojiItem, FontSlot } from "./types";
 
 /**
  * Safely parse a number from a value that might be empty, null, or undefined.
@@ -86,7 +86,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
     const heightPct = safeNumber(obj.heightPct, 50);
     // Determine item type - only if explicitly set
     const hasType = obj.type !== undefined && obj.type !== null && obj.type !== "";
-    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image"] as const, "text" as const) : null;
+    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image", "emoji"] as const, "text" as const) : null;
     // Common base
     const base = {
         id,
@@ -121,6 +121,15 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
             cornerRadius: obj.cornerRadius !== undefined && obj.cornerRadius !== null ? safeNumber(obj.cornerRadius, 0) : undefined
         };
         return imageItem;
+    }
+    if (type === "emoji") {
+        const emojiItem: CardTemplateEmojiItem = {
+            ...base,
+            type: "emoji" as const,
+            emoji: typeof obj.emoji === 'string' ? obj.emoji : '⭐',
+            fontSize: safeNumber(obj.fontSize, 32)
+        };
+        return emojiItem;
     }
     // Default to text item (with optional type for legacy support)
     const textItem: CardTemplateTextItem = {

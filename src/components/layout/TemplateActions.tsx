@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import type { CardTemplate, CardTemplateSection, CardTemplateItem, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem } from '../../types'
+import type { CardTemplate, CardTemplateSection, CardTemplateItem, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateEmojiItem } from '../../types'
 import { findSectionById, findNodeLocation, findParentSection, getNodeKind } from './templateHelpers'
 
 type TemplateActionsProps = {
@@ -58,6 +58,18 @@ const newImageItem = (sectionId: string): CardTemplateImageItem => ({
   cornerRadius: 0,
 })
 
+const newEmojiItem = (sectionId: string): CardTemplateEmojiItem => ({
+  type: 'emoji',
+  id: crypto.randomUUID(),
+  name: 'Emoji',
+  emoji: '⭐',
+  anchor: { x: 0.5, y: 0.5 },
+  attach: { targetType: 'section', targetId: sectionId, anchor: { x: 0.5, y: 0.5 } },
+  widthPct: 80,
+  heightPct: 20,
+  fontSize: 32,
+})
+
 export default function TemplateActions({ template, selectedNodeId, onTemplateChange, onSelectNode }: TemplateActionsProps) {
   const [showItemType, setShowItemType] = useState(false)
 
@@ -79,7 +91,7 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
     onSelectNode(section.id)
   }
 
-  const handleAddItem = (itemType: 'text' | 'frame' | 'image') => {
+  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji') => {
     const t = clone()
     let parentId: string
     if (selectedKind === 'section' && selectedNodeId) {
@@ -96,6 +108,7 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
     let item: CardTemplateItem
     if (itemType === 'frame') item = newFrameItem(parentId)
     else if (itemType === 'image') item = newImageItem(parentId)
+    else if (itemType === 'emoji') item = newEmojiItem(parentId)
     else item = newTextItem(parentId)
 
     if (selectedKind === 'item' && selectedNodeId) {
@@ -139,6 +152,7 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
             <button onClick={() => handleAddItem('text')} className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50">Text</button>
             <button onClick={() => handleAddItem('frame')} className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50">Frame</button>
             <button onClick={() => handleAddItem('image')} className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50">Image</button>
+            <button onClick={() => handleAddItem('emoji')} className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50">Emoji</button>
           </div>
         )}
       </div>

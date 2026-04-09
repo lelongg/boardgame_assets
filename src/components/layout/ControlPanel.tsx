@@ -84,6 +84,7 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
       }
       return { type: 'text' }
     }
+    case 'emoji': return { type: 'text' }
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
     default: return { type: 'text' }

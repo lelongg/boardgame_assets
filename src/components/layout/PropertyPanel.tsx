@@ -63,6 +63,11 @@ const IMAGE_PROPERTIES: PropertyDef[] = [
   { key: 'cornerRadius', label: 'Corner Radius' },
 ]
 
+const EMOJI_PROPERTIES: PropertyDef[] = [
+  { key: 'emoji', label: 'Emoji' },
+  { key: 'fontSize', label: 'Size' },
+]
+
 const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boolean): PropertyDef[] => {
   if (kind === 'section') return isRoot ? ROOT_PROPERTIES : SECTION_PROPERTIES
   const itemType = node.type ?? 'text'
@@ -70,6 +75,7 @@ const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boole
     case 'text': return [...COMMON_ITEM_PROPERTIES, ...TEXT_PROPERTIES]
     case 'frame': return [...COMMON_ITEM_PROPERTIES, ...FRAME_PROPERTIES]
     case 'image': return [...COMMON_ITEM_PROPERTIES, ...IMAGE_PROPERTIES]
+    case 'emoji': return [...COMMON_ITEM_PROPERTIES, ...EMOJI_PROPERTIES]
     default: return COMMON_ITEM_PROPERTIES
   }
 }

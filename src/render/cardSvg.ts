@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem } from "../types.js";
+import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateEmojiItem } from "../types.js";
 import { theme } from "../theme.js";
 
 const DEBUG_FONT = "'Space Grotesk', sans-serif";
@@ -311,7 +311,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       const cornerRadius = imageItem.cornerRadius ?? 0;
       const clipId = `clip-${imageItem.id}`;
       const fit = imageItem.fit ?? "cover";
-      
+
       // Calculate image dimensions based on fit mode
       let imageProps = "";
       if (fit === "cover" || fit === "contain") {
@@ -319,13 +319,22 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       } else {
         imageProps = `x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" preserveAspectRatio="none"`;
       }
-      
+
       if (cornerRadius > 0) {
         clipPaths.push(`<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" /></clipPath>`);
         itemElements.push(`<image ${imageProps} href="${escape(imageUrl)}" clip-path="url(#${clipId})" />`);
       } else {
         itemElements.push(`<image ${imageProps} href="${escape(imageUrl)}" />`);
       }
+    }
+
+    if (itemType === "emoji") {
+      const emojiItem = item as CardTemplateEmojiItem;
+      const emoji = emojiItem.emoji ?? "⭐";
+      const fontSize = emojiItem.fontSize ?? 32;
+      const textX = rect.x + rect.width / 2;
+      const textY = rect.y + rect.height / 2;
+      itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}">${escape(emoji)}</text>`);
     }
   });
 

@@ -53,11 +53,19 @@ export type CardTemplateImageItem = CardTemplateItemBase & {
   cornerRadius?: number;
 };
 
+// Emoji item - displays a static emoji character
+export type CardTemplateEmojiItem = CardTemplateItemBase & {
+  type: "emoji";
+  emoji?: string;
+  fontSize: number;
+};
+
 // Union type for all item types
-export type CardTemplateItem = 
-  | CardTemplateTextItem 
-  | CardTemplateFrameItem 
-  | CardTemplateImageItem;
+export type CardTemplateItem =
+  | CardTemplateTextItem
+  | CardTemplateFrameItem
+  | CardTemplateImageItem
+  | CardTemplateEmojiItem;
 
 export type CardTemplateSection = {
   id: string;
