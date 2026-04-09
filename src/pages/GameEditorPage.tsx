@@ -409,14 +409,14 @@ export default function GameEditorPage() {
                         </div>
 
                         {game?.template?.root && (() => {
-                          const fields: { fieldId: string; itemName: string; itemType: string }[] = []
+                          const fields: { fieldId: string; itemName: string; itemType: string; values?: string[] }[] = []
                           const seen = new Set<string>()
                           const collectFields = (section: any) => {
                             section.items?.forEach((item: any) => {
                               const type = item.type ?? 'text'
                               if ((type === 'text' || type === 'image' || type === 'emoji') && item.fieldId && item.fieldId !== 'name' && !seen.has(item.fieldId)) {
                                 seen.add(item.fieldId)
-                                fields.push({ fieldId: item.fieldId, itemName: item.name, itemType: type })
+                                fields.push({ fieldId: item.fieldId, itemName: item.name, itemType: type, values: Array.isArray(item.values) && item.values.length > 0 ? item.values : undefined })
                               }
                             })
                             section.children?.forEach(collectFields)
@@ -425,10 +425,19 @@ export default function GameEditorPage() {
                           if (fields.length === 0) return null
                           return (
                             <div className="space-y-3">
-                              {fields.map(({ fieldId, itemType }) => (
+                              {fields.map(({ fieldId, itemType, values }) => (
                                 <div key={fieldId} className="space-y-1">
                                   <Label className="text-sm flex items-center gap-1.5">{{ text: <Type className="h-3.5 w-3.5 text-muted-foreground" />, image: <Image className="h-3.5 w-3.5 text-muted-foreground" />, emoji: <Smile className="h-3.5 w-3.5 text-muted-foreground" /> }[itemType]} {fieldId}</Label>
-                                  {itemType === 'image' ? (
+                                  {values ? (
+                                    <select
+                                      value={selectedCard.fields?.[fieldId] ?? ''}
+                                      onChange={(e) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: e.target.value } })}
+                                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                    >
+                                      <option value="">— select —</option>
+                                      {values.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                  ) : itemType === 'image' ? (
                                     <div className="space-y-2">
                                       <div className="relative">
                                         <Input

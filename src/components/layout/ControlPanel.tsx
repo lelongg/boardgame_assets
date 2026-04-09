@@ -15,7 +15,7 @@ type ControlPanelProps = {
 }
 
 type FieldMeta = {
-  type: 'number' | 'select' | 'anchor' | 'text' | 'color' | 'image-upload' | 'emoji'
+  type: 'number' | 'select' | 'anchor' | 'text' | 'color' | 'image-upload' | 'emoji' | 'values'
   min?: number
   max?: number
   step?: number
@@ -85,6 +85,7 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
       return { type: 'text' }
     }
     case 'emoji': return { type: 'emoji' }
+    case 'values': return { type: 'values' }
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
     default: return { type: 'text' }
@@ -325,6 +326,24 @@ export default function ControlPanel({ property, value, template, selectedNodeId
 
   if (meta.type === 'emoji') {
     return <EmojiPicker value={String(value ?? '')} onChange={onChange} />
+  }
+
+  if (meta.type === 'values') {
+    const arr = Array.isArray(value) ? value : []
+    return (
+      <div className="space-y-1">
+        <textarea
+          value={arr.join('\n')}
+          onChange={(e) => {
+            const lines = e.target.value.split('\n').map(s => s.trimStart())
+            onChange(lines.filter(Boolean).length > 0 ? lines.filter(Boolean) : [])
+          }}
+          placeholder="One value per line (leave empty for free input)"
+          className="w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[80px] resize-y"
+        />
+        <p className="text-xs text-muted-foreground">{arr.length} value{arr.length !== 1 ? 's' : ''}</p>
+      </div>
+    )
   }
 
   if (meta.type === 'anchor') {

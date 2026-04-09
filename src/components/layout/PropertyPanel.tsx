@@ -41,6 +41,7 @@ const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
 
 const TEXT_PROPERTIES: PropertyDef[] = [
   { key: 'fieldId', label: 'Field ID' },
+  { key: 'values', label: 'Values' },
   { key: 'defaultValue', label: 'Default' },
   { key: 'fontSize', label: 'Font Size' },
   { key: 'align', label: 'H Align' },
@@ -58,6 +59,7 @@ const FRAME_PROPERTIES: PropertyDef[] = [
 
 const IMAGE_PROPERTIES: PropertyDef[] = [
   { key: 'fieldId', label: 'Field ID' },
+  { key: 'values', label: 'Values' },
   { key: 'defaultValue', label: 'Default Image' },
   { key: 'fit', label: 'Fit' },
   { key: 'cornerRadius', label: 'Corner Radius' },
@@ -65,6 +67,7 @@ const IMAGE_PROPERTIES: PropertyDef[] = [
 
 const EMOJI_PROPERTIES: PropertyDef[] = [
   { key: 'fieldId', label: 'Field ID' },
+  { key: 'values', label: 'Values' },
   { key: 'emoji', label: 'Default Emoji' },
   { key: 'fontSize', label: 'Size' },
 ]

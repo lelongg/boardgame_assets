@@ -27,6 +27,7 @@ type CardTemplateItemBase = {
 export type CardTemplateTextItem = CardTemplateItemBase & {
   type?: "text";  // Optional to support legacy items
   fieldId: string;
+  values?: string[];
   fontSize: number;
   align: "left" | "center" | "right";
   font?: "title" | "body";
@@ -46,6 +47,7 @@ export type CardTemplateFrameItem = CardTemplateItemBase & {
 export type CardTemplateImageItem = CardTemplateItemBase & {
   type: "image";
   fieldId: string;
+  values?: string[];
   fit?: "cover" | "contain" | "fill";
   cornerRadius?: number;
 };
@@ -55,6 +57,7 @@ export type CardTemplateEmojiItem = CardTemplateItemBase & {
   type: "emoji";
   fieldId?: string;
   emoji?: string;
+  values?: string[];
   fontSize: number;
 };
 
