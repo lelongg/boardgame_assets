@@ -32,6 +32,7 @@ export default function SettingsPage() {
     fetch('/api/games', { method: 'HEAD' })
       .then(() => setServerReachable(true))
       .catch(() => setServerReachable(false))
+    loadFromGames(migrateFrom)
   }, [])
 
   const handleSelectProvider = (key: string) => {
@@ -106,7 +107,7 @@ export default function SettingsPage() {
         // Copy templates
         const templates = await srcStorage.listTemplates(gameId)
         for (const tpl of templates) {
-          await dstStorage.saveTemplate(newGameId, tpl)
+          await dstStorage.saveTemplate(newGameId, tpl.id, tpl)
         }
 
         // Copy collections and their cards
@@ -115,7 +116,7 @@ export default function SettingsPage() {
           const newCol = await dstStorage.createCollection(newGameId, col.name, col.templateId)
           const cards = await srcStorage.listCards(gameId, col.id)
           for (const card of cards) {
-            await dstStorage.saveCard(newGameId, newCol.id, card)
+            await dstStorage.saveCard(newGameId, newCol.id, card.id, card)
           }
         }
 
