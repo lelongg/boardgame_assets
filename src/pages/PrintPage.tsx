@@ -54,7 +54,7 @@ export default function PrintPage() {
       for (const { card, template } of entries) {
         if (cancelled) return
         let svg = renderCardSvg(card, template)
-        svg = await embedFontsInSvg(svg, template)
+        svg = await embedFontsInSvg(svg, template, gameId!)
         const matches = svg.match(/href="(\/api\/[^"]+)"/g) || []
         for (const m of matches) {
           const url = m.slice(6, -1)

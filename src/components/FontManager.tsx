@@ -6,6 +6,8 @@ import ConfirmButton from './ConfirmButton'
 type FontEntry = { name: string; file: string; source: 'upload' | 'google' }
 
 type FontManagerProps = {
+  gameId: string
+  storage: any
   fonts: Record<string, FontEntry>
   onFontsChange: (fonts: Record<string, FontEntry>) => void
   onStatus: (status: string) => void
@@ -15,7 +17,7 @@ type FontManagerProps = {
   onSelectFont: (key: string | null) => void
 }
 
-export default function FontManager({ fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont }: FontManagerProps) {
+export default function FontManager({ gameId, storage, fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont }: FontManagerProps) {
   const [showAddFormInternal, setShowAddFormInternal] = useState(false)
   const showAddForm = showAdd ?? showAddFormInternal
   const setShowAddForm = onToggleAdd ? () => onToggleAdd() : setShowAddFormInternal
@@ -34,27 +36,18 @@ export default function FontManager({ fonts, onFontsChange, onStatus, showAdd, o
     }
     const rules = Object.values(fonts)
       .filter((f) => f.file)
-      .map((f) => `@font-face { font-family: '${f.name}'; src: url('/api/fonts/${f.file}'); }`)
+      .map((f) => `@font-face { font-family: '${f.name}'; src: url('/api/games/${gameId}/fonts/${f.file}'); }`)
       .join('\n')
     style.textContent = rules
     return () => { if (style) style.textContent = '' }
-  }, [fonts])
+  }, [fonts, gameId])
 
   const handleAddGoogle = async () => {
     if (!googleFontName.trim()) return
     setLoading(true)
     onStatus('Adding font...')
     try {
-      const res = await fetch('/api/fonts/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: googleFontName.trim() }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error(body?.error || 'Failed to add font')
-      }
-      const data = await res.json()
+      const data = await storage.addGoogleFont(gameId, googleFontName.trim())
       onFontsChange(data.fonts)
       setGoogleFontName('')
       setShowAddForm(false)
@@ -70,16 +63,7 @@ export default function FontManager({ fonts, onFontsChange, onStatus, showAdd, o
     setLoading(true)
     onStatus('Uploading font...')
     try {
-      const res = await fetch('/api/fonts/upload', {
-        method: 'POST',
-        headers: { 'Content-Disposition': `attachment; filename="${file.name}"` },
-        body: await file.arrayBuffer(),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error(body?.error || 'Failed to upload font')
-      }
-      const data = await res.json()
+      const data = await storage.uploadFont(gameId, file)
       onFontsChange(data.fonts)
       setShowAddForm(false)
       onStatus('Font uploaded.')
@@ -97,9 +81,7 @@ export default function FontManager({ fonts, onFontsChange, onStatus, showAdd, o
     onStatus('Deleting font...')
     try {
       if (font.file) {
-        const res = await fetch(`/api/fonts/${font.file}`, { method: 'DELETE' })
-        if (!res.ok) throw new Error('Failed to delete font')
-        const data = await res.json()
+        const data = await storage.deleteFont(gameId, font.file)
         onFontsChange(data.fonts)
       } else {
         const updated = { ...fonts }

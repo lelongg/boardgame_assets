@@ -466,14 +466,14 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
 
 /** Fetch template fonts and embed them as base64 @font-face rules into the SVG.
  *  Blob SVGs displayed via <img> can't access the page's @font-face rules. */
-export const embedFontsInSvg = async (svg: string, template: CardTemplate): Promise<string> => {
+export const embedFontsInSvg = async (svg: string, template: CardTemplate, gameId: string): Promise<string> => {
   const fonts = template.fonts;
   if (!fonts) return svg;
   const rules: string[] = [];
   for (const slot of Object.values(fonts)) {
     if (!slot.file) continue;
     try {
-      const resp = await fetch(`/api/fonts/${slot.file}`);
+      const resp = await fetch(`/api/games/${gameId}/fonts/${slot.file}`);
       if (!resp.ok) continue;
       const blob = await resp.blob();
       const b64 = await new Promise<string>((resolve) => {

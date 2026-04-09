@@ -61,7 +61,7 @@ export default function CollectionsPage() {
     const updatePreview = async () => {
       const { renderTemplateSvg, computeLayout, embedFontsInSvg } = await import('../render')
       let svg = renderTemplateSvg(selectedTemplate, { showSections, showItems: showItemWires, selectedNodeId })
-      svg = await embedFontsInSvg(svg, selectedTemplate)
+      svg = await embedFontsInSvg(svg, selectedTemplate, gameId!)
       // Embed images as base64 data URIs since blob SVGs can't fetch external URLs
       const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
       for (const match of imgMatches) {
@@ -105,7 +105,7 @@ export default function CollectionsPage() {
       for (const card of collectionCards) {
         if (cancelled) return
         let svg = renderCardSvg(card, tpl)
-        svg = await embedFontsInSvg(svg, tpl)
+        svg = await embedFontsInSvg(svg, tpl, gameId!)
         // Embed images as base64
         const matches = svg.match(/href="((?:\/api\/|data:)[^"]+)"/g) || []
         for (const m of matches) {

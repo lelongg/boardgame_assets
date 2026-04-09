@@ -56,7 +56,7 @@ export default function GameEditorPage() {
     }
     const rules = Object.values(game.template.fonts)
       .filter((f: any) => f.file)
-      .map((f: any) => `@font-face { font-family: '${f.name}'; src: url('/api/fonts/${f.file}'); }`)
+      .map((f: any) => `@font-face { font-family: '${f.name}'; src: url('/api/games/${gameId}/fonts/${f.file}'); }`)
       .join('\n')
     style.textContent = rules
     return () => { if (style) style.textContent = '' }
@@ -68,7 +68,7 @@ export default function GameEditorPage() {
       try {
         const { renderCardSvg, embedFontsInSvg } = await import('../render')
         let svg = renderCardSvg(selectedCard, game.template)
-        svg = await embedFontsInSvg(svg, game.template)
+        svg = await embedFontsInSvg(svg, game.template, gameId)
         // Embed images as base64 for blob SVGs
         const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
         for (const match of imgMatches) {
@@ -209,7 +209,7 @@ export default function GameEditorPage() {
     const updatePreview = async () => {
       const { renderTemplateSvg, computeLayout, embedFontsInSvg } = await import('../render')
       let svg = renderTemplateSvg(game.template, { showSections, showItems: showItemWires, selectedNodeId })
-      svg = await embedFontsInSvg(svg, game.template)
+      svg = await embedFontsInSvg(svg, game.template, gameId!)
       // Embed images as base64 data URIs since blob SVGs can't fetch external URLs
       const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
       for (const match of imgMatches) {

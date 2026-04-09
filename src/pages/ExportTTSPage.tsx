@@ -104,7 +104,7 @@ export default function ExportTTSPage() {
         setStatus(`Rendering card ${i + 1}/${cardCount}...`)
         const { card, template } = entries[i]
         let svg = renderCardSvg(card, template)
-        svg = await embedFontsInSvg(svg, template)
+        svg = await embedFontsInSvg(svg, template, gameId!)
         svg = await embedImages(svg)
 
         const img = await svgToImage(svg)
