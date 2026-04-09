@@ -9,17 +9,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/templateHelpers'
-import { createStorage } from '../storage'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
 import ListItem from '@/components/ListItem'
+import useStorage from '../hooks/useStorage'
 
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
   const navigate = useNavigate()
-  const [status, setStatus] = useState('Loading...')
-  const [storage, setStorage] = useState<any>(null)
+  const { storage, status, setStatus } = useStorage()
   const [game, setGame] = useState<any>(null)
   const [collection, setCollection] = useState<any>(null)
   const [cards, setCards] = useState<any[]>([])
@@ -38,13 +37,9 @@ export default function GameEditorPage() {
   const isCardDirty = selectedCard && JSON.stringify(selectedCard) !== savedCardJson
 
   useEffect(() => {
-    const initStorage = async () => {
-      const s = await createStorage()
-      setStorage(s)
-      await loadGame(s)
-    }
-    initStorage()
-  }, [gameId])
+    if (!storage || !gameId) return
+    loadGame(storage)
+  }, [storage, gameId])
 
   useEffect(() => {
     if (!game?.template?.fonts) return

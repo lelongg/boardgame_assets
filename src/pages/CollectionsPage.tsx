@@ -4,18 +4,18 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, LayoutGrid, Layers, Printer } from 'lucide-react'
-import { createStorage } from '../storage'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/templateHelpers'
+import useStorage from '../hooks/useStorage'
 
 export default function CollectionsPage() {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
-  const [storage, setStorage] = useState<any>(null)
+  const { storage, status, setStatus } = useStorage()
   const [game, setGame] = useState<any>(null)
   const [collections, setCollections] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
@@ -33,7 +33,6 @@ export default function CollectionsPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(() => {
     try { return localStorage.getItem(`game:${gameId}:selectedTemplate`) } catch { return null }
   })
-  const [status, setStatus] = useState('Loading...')
   const [showSections, setShowSections] = useState(true)
   const [showItemWires, setShowItemWires] = useState(true)
   const [editingName, setEditingName] = useState(false)
@@ -48,13 +47,9 @@ export default function CollectionsPage() {
   const selectedTemplate = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) : null
 
   useEffect(() => {
-    const init = async () => {
-      const s = await createStorage()
-      setStorage(s)
-      await loadData(s)
-    }
-    init()
-  }, [gameId])
+    if (!storage || !gameId) return
+    loadData(storage)
+  }, [storage, gameId])
 
   // Template preview
   useEffect(() => {

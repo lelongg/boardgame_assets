@@ -5,31 +5,18 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
-
-import { createStorage } from '../storage'
+import useStorage from '../hooks/useStorage'
 
 export default function GamesPage() {
   const [games, setGames] = useState<any[]>([])
-  const [status, setStatus] = useState('Ready.')
-  const [storage, setStorage] = useState<any>(null)
-  const [isAuthorized, setIsAuthorized] = useState(false)
   const [expandedGame, setExpandedGame] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { storage, status, setStatus, isAuthorized, setIsAuthorized } = useStorage()
 
   useEffect(() => {
-    const initStorage = async () => {
-      try {
-        const s = await createStorage()
-        setStorage(s)
-        setIsAuthorized(s.isAuthorized())
-        loadGames(s)
-      } catch (error) {
-        setStatus('Error initializing storage.')
-        console.error('Storage initialization failed:', error)
-      }
-    }
-    initStorage()
-  }, [])
+    if (!storage) return
+    loadGames(storage)
+  }, [storage])
 
   const loadGames = async (s: any) => {
     try {
