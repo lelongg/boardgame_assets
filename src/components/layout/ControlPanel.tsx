@@ -249,17 +249,13 @@ export default function ControlPanel({ property, value, template, selectedNodeId
             input.accept = 'image/*'
             input.onchange = async () => {
               const file = input.files?.[0]
-              if (!file || !gameId) return
-              try {
-                const res = await fetch(`/api/games/${gameId}/images/upload`, {
-                  method: 'POST',
-                  headers: { 'Content-Disposition': `attachment; filename="${file.name}"` },
-                  body: await file.arrayBuffer(),
-                })
-                if (!res.ok) return
-                const { url } = await res.json()
-                onChange(url)
-              } catch { /* ignore */ }
+              if (!file) return
+              const dataUrl = await new Promise((resolve) => {
+                const reader = new FileReader()
+                reader.onload = () => resolve(reader.result)
+                reader.readAsDataURL(file)
+              })
+              onChange(dataUrl)
             }
             input.click()
           }}

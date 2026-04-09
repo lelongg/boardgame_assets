@@ -66,17 +66,25 @@ export default function GameEditorPage() {
     if (!selectedCard || !game?.template || !gameId) return
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/games/${gameId}/render`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ card: selectedCard, template: game.template }),
-        })
-        if (res.ok) {
-          const svg = await res.text()
-          const blob = new Blob([svg], { type: 'image/svg+xml' })
-          const url = URL.createObjectURL(blob)
-          setCardPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return url })
+        const { renderCardSvg } = await import('../render')
+        let svg = renderCardSvg(selectedCard, game.template)
+        // Embed images as base64 for blob SVGs
+        const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
+        for (const match of imgMatches) {
+          const url = match.slice(6, -1)
+          try {
+            const resp = await fetch(url)
+            if (resp.ok) {
+              const b = await resp.blob()
+              const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(b) })
+              svg = svg.replace(`href="${url}"`, `href="${b64}"`)
+            }
+          } catch { /* skip */ }
         }
+        // Also embed data: URIs that are already inline (no fetch needed)
+        const blob = new Blob([svg], { type: 'image/svg+xml' })
+        const blobUrl = URL.createObjectURL(blob)
+        setCardPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return blobUrl })
       } catch (error) {
         console.error('Error updating card preview:', error)
       }
@@ -492,20 +500,18 @@ export default function GameEditorPage() {
                                               input.accept = 'image/*'
                                               input.onchange = async () => {
                                                 const file = input.files?.[0]
-                                                if (!file || !gameId) return
+                                                if (!file) return
                                                 try {
-                                                  setStatus('Uploading image...')
-                                                  const res = await fetch(`/api/games/${gameId}/images/upload`, {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Disposition': `attachment; filename="${file.name}"` },
-                                                    body: await file.arrayBuffer(),
+                                                  setStatus('Processing image...')
+                                                  const dataUrl = await new Promise<string>((resolve) => {
+                                                    const reader = new FileReader()
+                                                    reader.onload = () => resolve(reader.result as string)
+                                                    reader.readAsDataURL(file)
                                                   })
-                                                  if (!res.ok) throw new Error('Upload failed')
-                                                  const { url } = await res.json()
-                                                  setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldId]: url } }))
-                                                  setStatus('Image uploaded.')
+                                                  setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldId]: dataUrl } }))
+                                                  setStatus('Image added.')
                                                 } catch {
-                                                  setStatus('Error uploading image.')
+                                                  setStatus('Error processing image.')
                                                 }
                                               }
                                               input.click()
