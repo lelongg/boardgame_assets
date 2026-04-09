@@ -10,6 +10,7 @@ function App() {
       <Route path="/" element={<GamesPage />} />
       <Route path="/game/:gameId" element={<CollectionsPage />} />
       <Route path="/game/:gameId/collection/:collectionId" element={<GameEditorPage />} />
+      <Route path="/game/:gameId/print" element={<PrintPage />} />
       <Route path="/game/:gameId/collection/:collectionId/print" element={<PrintPage />} />
     </Routes>
   )

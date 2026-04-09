@@ -4,10 +4,11 @@ import { createStorage } from '../storage'
 import { renderCardSvg } from '../render'
 import type { CardData, CardTemplate } from '../types'
 
+type CardWithTemplate = { card: CardData; template: CardTemplate; collectionName: string }
+
 export default function PrintPage() {
-  const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
-  const [cards, setCards] = useState<CardData[]>([])
-  const [template, setTemplate] = useState<CardTemplate | null>(null)
+  const { gameId, collectionId } = useParams<{ gameId: string; collectionId?: string }>()
+  const [entries, setEntries] = useState<CardWithTemplate[]>([])
   const [svgs, setSvgs] = useState<string[]>([])
   const [status, setStatus] = useState('Loading...')
   const [cols, setCols] = useState(3)
@@ -16,17 +17,25 @@ export default function PrintPage() {
     const init = async () => {
       try {
         const s = await createStorage()
-        if (!gameId || !collectionId) return
+        if (!gameId) return
 
-        const col = await s.getCollection(gameId, collectionId)
-        const [tpl, cardList] = await Promise.all([
-          s.getTemplate(gameId, col.templateId),
-          s.listCards(gameId, collectionId),
-        ])
+        const collections = collectionId
+          ? [await s.getCollection(gameId, collectionId)]
+          : await s.listCollections(gameId)
 
-        setTemplate(tpl)
-        setCards(cardList)
-        setStatus(`${cardList.length} cards`)
+        const all: CardWithTemplate[] = []
+        for (const col of collections) {
+          const [tpl, cards] = await Promise.all([
+            s.getTemplate(gameId, col.templateId),
+            s.listCards(gameId, col.id),
+          ])
+          for (const card of cards) {
+            all.push({ card, template: tpl, collectionName: col.name })
+          }
+        }
+
+        setEntries(all)
+        setStatus(`${all.length} cards${collections.length > 1 ? ` across ${collections.length} collections` : ''}`)
       } catch (err) {
         setStatus('Error loading data.')
         console.error(err)
@@ -37,15 +46,14 @@ export default function PrintPage() {
 
   // Render SVGs client-side
   useEffect(() => {
-    if (!cards.length || !template) return
+    if (!entries.length) return
     let cancelled = false
 
     const render = async () => {
       const rendered: string[] = []
-      for (const card of cards) {
+      for (const { card, template } of entries) {
         if (cancelled) return
         let svg = renderCardSvg(card, template)
-        // Embed images as base64
         const matches = svg.match(/href="(\/api\/[^"]+)"/g) || []
         for (const m of matches) {
           const url = m.slice(6, -1)
@@ -68,9 +76,7 @@ export default function PrintPage() {
     }
     render()
     return () => { cancelled = true }
-  }, [cards, template])
-
-  const handlePrint = () => window.print()
+  }, [entries])
 
   return (
     <div className="print-page">
@@ -99,7 +105,7 @@ export default function PrintPage() {
       `}</style>
 
       <div className="print-toolbar">
-        <button className="primary" onClick={handlePrint}>Print</button>
+        <button className="primary" onClick={() => window.print()}>Print</button>
         <button onClick={() => window.history.back()}>Back</button>
         <label>
           Columns:
@@ -112,10 +118,10 @@ export default function PrintPage() {
 
       <div className="print-sheet" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
         {svgs.map((svg, i) => (
-          <div key={cards[i]?.id ?? i} className="print-card">
+          <div key={entries[i]?.card.id ?? i} className="print-card">
             <img
               src={URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))}
-              alt={cards[i]?.name ?? `Card ${i + 1}`}
+              alt={entries[i]?.card.name ?? `Card ${i + 1}`}
             />
           </div>
         ))}
