@@ -80,7 +80,10 @@ export const createGoogleDriveStorage = (options = {}) => {
   const signIn = async () => {
     if (!initialized) throw new Error("Not initialized.");
     if (!isConfigured) throw new Error("Google Drive not configured.");
-    await requestToken("consent");
+    await Promise.race([
+      requestToken("consent"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Sign-in timed out. The popup may have been blocked — please allow popups for this site.")), 60000))
+    ]);
   };
 
   const tryRestoreSession = async () => {
