@@ -86,7 +86,14 @@ export const createGoogleDriveStorage = (options = {}) => {
   const tryRestoreSession = async () => {
     if (!initialized) await init();
     if (isAuthorized()) return true;
-    try { await requestToken("none"); return true; } catch { return false; }
+    if (!isConfigured) return false;
+    try {
+      await Promise.race([
+        requestToken("none"),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000))
+      ]);
+      return true;
+    } catch { return false; }
   };
 
   const signOut = async () => {
@@ -99,8 +106,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     if (!initialized) await init();
     if (!isConfigured) throw new Error("Google Drive not configured.");
     if (isAuthorized()) return accessToken;
-    try { await requestToken("none"); return accessToken; }
-    catch { throw new Error("Not signed in."); }
+    throw new Error("Not signed in.");
   };
 
   // --- Drive primitives ---
@@ -198,7 +204,7 @@ export const createGoogleDriveStorage = (options = {}) => {
   // --- Games ---
 
   const listGames = async () => {
-    if (!isConfigured) return [];
+    if (!isConfigured || !isAuthorized()) return [];
     try {
       const folders = await foldersIn(rootParent());
       const games = [];
