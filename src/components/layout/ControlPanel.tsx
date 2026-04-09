@@ -3,6 +3,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { RgbaColorPicker } from 'react-colorful'
 import AnchorGrid from './AnchorGrid'
+import ListItem from '@/components/ListItem'
+import ConfirmButton from '@/components/ConfirmButton'
 import { findParentSection, findItemById, getNodeKind } from './templateHelpers'
 import type { CardTemplate } from '../../types'
 
@@ -234,6 +236,50 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown
   )
 }
 
+function ValuesEditor({ value, onChange, template, selectedNodeId }: { value: unknown; onChange: (v: unknown) => void; template: CardTemplate; selectedNodeId?: string }) {
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const arr: string[] = Array.isArray(value) ? value : []
+  const node = selectedNodeId ? findItemById(template.root, selectedNodeId) : null
+  const itemType = (node as any)?.type ?? 'text'
+
+  const updateAt = (i: number, v: string) => {
+    const next = [...arr]
+    next[i] = v
+    onChange(next)
+  }
+  const removeAt = (i: number) => {
+    onChange(arr.filter((_, j) => j !== i))
+    setSelectedIdx(null)
+  }
+  const add = () => {
+    onChange([...arr, ''])
+    setSelectedIdx(arr.length)
+  }
+
+  return (
+    <div className="space-y-2">
+      {arr.map((v, i) => (
+        <ListItem
+          key={i}
+          selected={selectedIdx === i}
+          onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
+          actions={<div className="flex-1 space-y-2">
+            {itemType === 'emoji' ? (
+              <EmojiPicker value={v} onChange={(val) => updateAt(i, String(val))} />
+            ) : (
+              <Input value={v} onChange={(e) => updateAt(i, e.target.value)} placeholder={`Value ${i + 1}`} />
+            )}
+            <ConfirmButton onConfirm={() => removeAt(i)} />
+          </div>}
+        >
+          <span className="text-sm">{v || <span className="text-muted-foreground italic">empty</span>}</span>
+        </ListItem>
+      ))}
+      <Button size="sm" variant="outline" className="w-full" onClick={add}>+ Add value</Button>
+    </div>
+  )
+}
+
 export default function ControlPanel({ property, value, template, selectedNodeId, onChange }: ControlPanelProps) {
   const meta = getFieldMeta(property, template, selectedNodeId)
 
@@ -329,35 +375,7 @@ export default function ControlPanel({ property, value, template, selectedNodeId
   }
 
   if (meta.type === 'values') {
-    const arr: string[] = Array.isArray(value) ? value : []
-    const node = selectedNodeId ? findItemById(template.root, selectedNodeId) : null
-    const itemType = (node as any)?.type ?? 'text'
-
-    const updateAt = (i: number, v: string) => {
-      const next = [...arr]
-      next[i] = v
-      onChange(next)
-    }
-    const removeAt = (i: number) => onChange(arr.filter((_, j) => j !== i))
-    const add = () => onChange([...arr, ''])
-
-    return (
-      <div className="space-y-2">
-        {arr.map((v, i) => (
-          <div key={i} className="flex items-start gap-1">
-            <div className="flex-1">
-              {itemType === 'emoji' ? (
-                <EmojiPicker value={v} onChange={(val) => updateAt(i, String(val))} />
-              ) : (
-                <Input value={v} onChange={(e) => updateAt(i, e.target.value)} placeholder={`Value ${i + 1}`} />
-              )}
-            </div>
-            <Button size="sm" variant="ghost" className="shrink-0 mt-1" onClick={() => removeAt(i)}>×</Button>
-          </div>
-        ))}
-        <Button size="sm" variant="outline" onClick={add}>+ Add value</Button>
-      </div>
-    )
+    return <ValuesEditor value={value} onChange={onChange} template={template} selectedNodeId={selectedNodeId} />
   }
 
   if (meta.type === 'anchor') {
