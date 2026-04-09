@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pencil, Printer, Plus, X } from 'lucide-react'
+import { Pencil, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -142,9 +142,6 @@ export default function GamesPage() {
                     <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
                       <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}`)} title="Edit">
                         <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => window.open(`/print/${game.id}`, '_blank')} title="Print">
-                        <Printer className="h-4 w-4" />
                       </Button>
                       <ConfirmButton onConfirm={async () => {
                         const prev = games

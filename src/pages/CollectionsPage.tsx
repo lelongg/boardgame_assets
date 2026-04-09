@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, LayoutGrid, Layers } from 'lucide-react'
+import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, LayoutGrid, Layers, Printer } from 'lucide-react'
 import { createStorage } from '../storage'
 import ConfirmButton from '@/components/ConfirmButton'
 import NodeTree from '@/components/layout/NodeTree'
@@ -399,6 +399,9 @@ export default function CollectionsPage() {
                       <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit">
                           <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}/print`)} title="Print">
+                          <Printer className="h-4 w-4" />
                         </Button>
                         <select
                           className="rounded-md border bg-background px-2 py-1 text-sm"
