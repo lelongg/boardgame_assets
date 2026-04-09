@@ -146,7 +146,8 @@ export const importGameZip = async (
   const collectionFiles = zip.file(/^collections\/[^/]+\/collection\.json$/)
   for (const f of collectionFiles) {
     const col = JSON.parse(await f.async('text'))
-    await storage.createCollection(newGameId, col.name, col.templateId)
+    const newCol = await storage.createCollection(newGameId, col.name, col.templateId)
+    const newColId = newCol.id
 
     const colDir = f.name.replace('/collection.json', '')
     const cardFiles = zip.file(new RegExp(`^${colDir}/cards/.*\\.json$`))
@@ -160,7 +161,7 @@ export const importGameZip = async (
           }
         }
       }
-      await storage.saveCard(newGameId, col.id, card.id, card)
+      await storage.saveCard(newGameId, newColId, card.id, card)
     }
   }
 
