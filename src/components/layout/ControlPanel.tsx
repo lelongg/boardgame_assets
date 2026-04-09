@@ -15,7 +15,7 @@ type ControlPanelProps = {
 }
 
 type FieldMeta = {
-  type: 'number' | 'select' | 'anchor' | 'text' | 'color' | 'image-upload'
+  type: 'number' | 'select' | 'anchor' | 'text' | 'color' | 'image-upload' | 'emoji'
   min?: number
   max?: number
   step?: number
@@ -84,7 +84,7 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
       }
       return { type: 'text' }
     }
-    case 'emoji': return { type: 'text' }
+    case 'emoji': return { type: 'emoji' }
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
     default: return { type: 'text' }
@@ -187,6 +187,48 @@ function ColorControl({ value, onChange }: { value: string; onChange: (v: unknow
   )
 }
 
+const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
+  { label: 'Symbols', emojis: ['⭐', '✨', '💎', '🔥', '⚡', '💀', '☠️', '🎯', '🛡️', '⚔️', '🗡️', '🏹', '💣', '🔮', '🧿', '♠️', '♥️', '♦️', '♣️', '🎲'] },
+  { label: 'Nature', emojis: ['🌟', '☀️', '🌙', '⛰️', '🌊', '🔱', '🌿', '🍀', '🌸', '🌺', '🍂', '❄️', '🐉', '🦅', '🐺', '🦁', '🐍', '🕷️', '🦇', '🐙'] },
+  { label: 'Objects', emojis: ['👑', '💰', '🪙', '📜', '🗝️', '🔑', '⚙️', '🧪', '🏺', '🪄', '📿', '🎭', '🏰', '⛵', '🚀', '🎪', '🏆', '🎖️', '🧭', '⏳'] },
+  { label: 'People', emojis: ['👤', '👥', '🧙', '🧝', '🧛', '🧟', '🤖', '👻', '👹', '🤴', '👸', '🦸', '🦹', '🧜', '🧞', '🧚', '💂', '🥷', '🧑‍🌾', '🧑‍🔬'] },
+  { label: 'Shapes', emojis: ['⬛', '⬜', '🔴', '🔵', '🟢', '🟡', '🟠', '🟣', '🟤', '⚪', '⚫', '🔶', '🔷', '🔸', '🔹', '▪️', '▫️', '◼️', '◻️', '💠'] },
+]
+
+function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown) => void }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-3xl">{value || '⭐'}</span>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Type or pick emoji"
+          className="flex-1"
+        />
+      </div>
+      <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-2">
+        {EMOJI_GROUPS.map((group) => (
+          <div key={group.label}>
+            <div className="text-xs text-muted-foreground mb-1">{group.label}</div>
+            <div className="flex flex-wrap gap-0.5">
+              {group.emojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => onChange(emoji)}
+                  className={`rounded p-1 text-lg hover:bg-accent/50 ${value === emoji ? 'bg-accent ring-1 ring-primary' : ''}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function ControlPanel({ property, value, template, selectedNodeId, onChange }: ControlPanelProps) {
   const meta = getFieldMeta(property, template, selectedNodeId)
 
@@ -275,6 +317,10 @@ export default function ControlPanel({ property, value, template, selectedNodeId
         )}
       </div>
     )
+  }
+
+  if (meta.type === 'emoji') {
+    return <EmojiPicker value={String(value ?? '')} onChange={onChange} />
   }
 
   if (meta.type === 'anchor') {
