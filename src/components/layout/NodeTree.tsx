@@ -218,16 +218,14 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
                 onSelectNode(node.id)
               }
             }}
-            className={`w-full rounded px-2 text-left transition-colors cursor-grab ${
-              isSection ? 'py-1.5 text-sm font-medium' : 'py-1 text-xs text-muted-foreground'
-            } ${
+            className={`w-full rounded px-2 py-1.5 text-left text-sm transition-colors cursor-grab ${
               isDragging ? 'opacity-40' : ''
             } ${
               isSelected
                 ? 'bg-primary text-primary-foreground'
-                : isSection
-                  ? 'bg-muted/30 hover:bg-accent/50'
-                  : 'hover:bg-accent/50'
+                : 'hover:bg-accent/50'
+            } ${
+              !isSelected && isSection ? 'text-muted-foreground' : ''
             } ${dropClass}`}
             style={{ paddingLeft: `${8 + node.depth * 16}px` }}
           >
