@@ -29,7 +29,7 @@ export const exportGameZip = async (
     if (!slot.file) continue
     try {
       const resp = await fetch(`/api/games/${gameId}/fonts/${slot.file}`)
-      if (resp.ok) zip.file(`fonts/${slot.file}`, await resp.blob())
+      if (resp.ok) zip.file(`fonts/${slot.file}`, await resp.arrayBuffer())
     } catch { /* skip */ }
   }
 
@@ -69,7 +69,7 @@ export const exportGameZip = async (
   for (const file of imageFiles) {
     try {
       const resp = await fetch(`/api/games/${gameId}/images/${file}`)
-      if (resp.ok) zip.file(`images/${file}`, await resp.blob())
+      if (resp.ok) zip.file(`images/${file}`, await resp.arrayBuffer())
     } catch { /* skip */ }
   }
 

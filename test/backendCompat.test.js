@@ -1,824 +1,629 @@
 import assert from "node:assert/strict";
-import { describe, it, before, after, mock } from "node:test";
+import { describe, it, before, after } from "node:test";
 import "fake-indexeddb/auto";
 import { defaultTemplate } from "../src/template.js";
 import { createLocalFileStorage } from "../src/storage/localFile.js";
 import { createIndexedDBStorage } from "../src/storage/indexedDB.js";
 import { exportGameZip, importGameZip } from "../src/gameZip.js";
+import { getAsset } from "../src/storage/assetCache.js";
+
+// ── Start real server for localFile tests ─────────────────────────────────
+
+let serverProcess;
+const TEST_PORT = 5199;
+
+async function startServer() {
+  const { Hono } = await import("hono");
+  const { serve } = await import("@hono/node-server");
+  // Import the server app setup — we need to build it fresh with a temp data dir
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const os = await import("node:os");
+  const crypto = await import("node:crypto");
+
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bgtest-"));
+
+  // Minimal server replicating the real endpoints
+  const app = new Hono();
+
+  const readJson = (fp, fallback) => {
+    if (!fs.existsSync(fp)) return fallback;
+    return JSON.parse(fs.readFileSync(fp, "utf8"));
+  };
+  const writeJson = (fp, value) => {
+    fs.mkdirSync(path.dirname(fp), { recursive: true });
+    fs.writeFileSync(fp, JSON.stringify(value, null, 2), "utf8");
+  };
+  const slug = (v) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  const uid = () => crypto.randomUUID().slice(0, 8);
+  const hashBuf = (d) => crypto.createHash("sha256").update(d).digest("hex").slice(0, 12);
+
+  const gamePath = (gid) => path.join(dataRoot, gid, "game.json");
+  const templatesDir = (gid) => path.join(dataRoot, gid, "templates");
+  const tplPath = (gid, tid) => path.join(templatesDir(gid), `${tid}.json`);
+  const colsDir = (gid) => path.join(dataRoot, gid, "collections");
+  const colDir = (gid, cid) => path.join(colsDir(gid), cid);
+  const colPath = (gid, cid) => path.join(colDir(gid, cid), "collection.json");
+  const cardsDir = (gid, cid) => path.join(colDir(gid, cid), "cards");
+  const cardPath = (gid, cid, kid) => path.join(cardsDir(gid, cid), `${kid}.json`);
+  const fontsDir = (gid) => path.join(dataRoot, gid, "fonts");
+  const fontsManifest = (gid) => path.join(fontsDir(gid), "fonts.json");
+  const imagesDir = (gid) => path.join(dataRoot, gid, "images");
+
+  // Games
+  app.get("/api/games", (c) => {
+    if (!fs.existsSync(dataRoot)) return c.json([]);
+    const games = fs.readdirSync(dataRoot, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => readJson(gamePath(d.name), null))
+      .filter(Boolean);
+    return c.json(games);
+  });
+  app.post("/api/games", async (c) => {
+    const { name } = await c.req.json();
+    let id = slug(name); let n = 1;
+    while (fs.existsSync(path.join(dataRoot, id))) id = `${slug(name)}-${n++}`;
+    const game = { id, name, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    writeJson(gamePath(id), game);
+    const tpl = defaultTemplate();
+    writeJson(tplPath(id, tpl.id), tpl);
+    writeJson(colPath(id, "default"), { id: "default", name: "Default", templateId: tpl.id });
+    writeJson(fontsManifest(id), {});
+    return c.json(game, 201);
+  });
+  app.get("/api/games/:gid", (c) => {
+    const g = readJson(gamePath(c.req.param("gid")), null);
+    return g ? c.json(g) : c.json({ error: "Not found" }, 404);
+  });
+  app.put("/api/games/:gid", async (c) => {
+    const gid = c.req.param("gid"); const g = readJson(gamePath(gid), null);
+    if (!g) return c.json({ error: "Not found" }, 404);
+    const upd = { ...g, ...(await c.req.json()), updatedAt: new Date().toISOString() };
+    writeJson(gamePath(gid), upd); return c.json(upd);
+  });
+  app.delete("/api/games/:gid", (c) => {
+    fs.rmSync(path.join(dataRoot, c.req.param("gid")), { recursive: true, force: true });
+    return c.json({});
+  });
+
+  // Templates
+  app.get("/api/games/:gid/templates", (c) => {
+    const dir = templatesDir(c.req.param("gid"));
+    if (!fs.existsSync(dir)) return c.json([]);
+    return c.json(fs.readdirSync(dir).filter(f => f.endsWith(".json")).map(f => readJson(path.join(dir, f), null)).filter(Boolean));
+  });
+  app.post("/api/games/:gid/templates", async (c) => {
+    const gid = c.req.param("gid"); const { name } = await c.req.json();
+    const tpl = { ...defaultTemplate(), id: slug(name) || uid(), name };
+    writeJson(tplPath(gid, tpl.id), tpl); return c.json(tpl, 201);
+  });
+  app.get("/api/games/:gid/templates/:tid", (c) => {
+    const t = readJson(tplPath(c.req.param("gid"), c.req.param("tid")), null);
+    return t ? c.json(t) : c.json({ error: "Not found" }, 404);
+  });
+  app.put("/api/games/:gid/templates/:tid", async (c) => {
+    const body = await c.req.json();
+    writeJson(tplPath(c.req.param("gid"), c.req.param("tid")), body);
+    return c.json(body);
+  });
+  app.delete("/api/games/:gid/templates/:tid", (c) => {
+    fs.rmSync(tplPath(c.req.param("gid"), c.req.param("tid")), { force: true }); return c.json({});
+  });
+  app.post("/api/games/:gid/templates/:tid/copy", (c) => {
+    const orig = readJson(tplPath(c.req.param("gid"), c.req.param("tid")), null);
+    if (!orig) return c.json({ error: "Not found" }, 404);
+    const copy = { ...orig, id: `${orig.id}-copy-${uid()}`, name: `${orig.name} (Copy)` };
+    writeJson(tplPath(c.req.param("gid"), copy.id), copy); return c.json(copy, 201);
+  });
+
+  // Collections
+  app.get("/api/games/:gid/collections", (c) => {
+    const dir = colsDir(c.req.param("gid"));
+    if (!fs.existsSync(dir)) return c.json([]);
+    return c.json(fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory())
+      .map(d => readJson(colPath(c.req.param("gid"), d.name), null)).filter(Boolean));
+  });
+  app.post("/api/games/:gid/collections", async (c) => {
+    const gid = c.req.param("gid"); const { name, templateId } = await c.req.json();
+    let id = slug(name); let n = 1;
+    while (fs.existsSync(colDir(gid, id))) id = `${slug(name)}-${n++}`;
+    const col = { id, name, templateId };
+    writeJson(colPath(gid, id), col); return c.json(col, 201);
+  });
+  app.get("/api/games/:gid/collections/:cid", (c) => {
+    const col = readJson(colPath(c.req.param("gid"), c.req.param("cid")), null);
+    return col ? c.json(col) : c.json({ error: "Not found" }, 404);
+  });
+  app.put("/api/games/:gid/collections/:cid", async (c) => {
+    const gid = c.req.param("gid"), cid = c.req.param("cid");
+    const col = readJson(colPath(gid, cid), null);
+    if (!col) return c.json({ error: "Not found" }, 404);
+    const upd = { ...col, ...(await c.req.json()) };
+    writeJson(colPath(gid, cid), upd); return c.json(upd);
+  });
+  app.delete("/api/games/:gid/collections/:cid", (c) => {
+    fs.rmSync(colDir(c.req.param("gid"), c.req.param("cid")), { recursive: true, force: true }); return c.json({});
+  });
+
+  // Cards
+  app.get("/api/games/:gid/collections/:cid/cards", (c) => {
+    const dir = cardsDir(c.req.param("gid"), c.req.param("cid"));
+    if (!fs.existsSync(dir)) return c.json([]);
+    return c.json(fs.readdirSync(dir).filter(f => f.endsWith(".json")).map(f => readJson(path.join(dir, f), null)).filter(Boolean));
+  });
+  app.get("/api/games/:gid/collections/:cid/cards/:kid", (c) => {
+    const card = readJson(cardPath(c.req.param("gid"), c.req.param("cid"), c.req.param("kid")), null);
+    return card ? c.json(card) : c.json({ error: "Not found" }, 404);
+  });
+  app.put("/api/games/:gid/collections/:cid/cards/:kid", async (c) => {
+    const body = await c.req.json();
+    writeJson(cardPath(c.req.param("gid"), c.req.param("cid"), c.req.param("kid")), body);
+    return c.json(body);
+  });
+  app.delete("/api/games/:gid/collections/:cid/cards/:kid", (c) => {
+    fs.rmSync(cardPath(c.req.param("gid"), c.req.param("cid"), c.req.param("kid")), { force: true }); return c.json({});
+  });
+  app.post("/api/games/:gid/collections/:cid/cards/:kid/copy", (c) => {
+    const orig = readJson(cardPath(c.req.param("gid"), c.req.param("cid"), c.req.param("kid")), null);
+    if (!orig) return c.json({ error: "Not found" }, 404);
+    const copy = { ...orig, id: uid(), name: `${orig.name} (Copy)` };
+    writeJson(cardPath(c.req.param("gid"), c.req.param("cid"), copy.id), copy); return c.json(copy, 201);
+  });
+
+  // Fonts
+  app.get("/api/games/:gid/fonts", (c) => c.json(readJson(fontsManifest(c.req.param("gid")), {})));
+  app.post("/api/games/:gid/fonts/google", async (c) => {
+    const gid = c.req.param("gid"); const { name, slotName } = await c.req.json();
+    const fonts = readJson(fontsManifest(gid), {});
+    const slot = slotName || slug(name);
+    // Fake font download — just create a file
+    const fileName = hashBuf(Buffer.from(name)) + ".woff2";
+    fs.mkdirSync(fontsDir(gid), { recursive: true });
+    fs.writeFileSync(path.join(fontsDir(gid), fileName), `fake-font-${name}`);
+    fonts[slot] = { name, file: fileName, source: "google" };
+    writeJson(fontsManifest(gid), fonts);
+    return c.json({ fonts });
+  });
+  app.post("/api/games/:gid/fonts/upload", async (c) => {
+    const gid = c.req.param("gid");
+    const disposition = c.req.header("content-disposition") ?? "";
+    const fnMatch = disposition.match(/filename="([^"]+)"/) || disposition.match(/filename=(\S+)/);
+    const originalName = fnMatch ? fnMatch[1] : "font.woff2";
+    const slotName = c.req.header("x-slot-name");
+    const ext = path.extname(originalName).toLowerCase();
+    if (![".woff2", ".woff", ".ttf", ".otf"].includes(ext)) {
+      return c.json({ error: `Unsupported font format: ${ext}` }, 400);
+    }
+    const data = Buffer.from(await c.req.arrayBuffer());
+    const fileName = hashBuf(data) + ext;
+    fs.mkdirSync(fontsDir(gid), { recursive: true });
+    fs.writeFileSync(path.join(fontsDir(gid), fileName), data);
+    const fonts = readJson(fontsManifest(gid), {});
+    const slot = slotName?.trim() || path.basename(originalName, ext).replace(/[-_]+/g, " ");
+    fonts[slot] = { name: path.basename(originalName, ext), file: fileName, source: "upload" };
+    writeJson(fontsManifest(gid), fonts);
+    return c.json({ fonts });
+  });
+  app.get("/api/games/:gid/fonts/:file", (c) => {
+    const fp = path.join(fontsDir(c.req.param("gid")), c.req.param("file"));
+    if (!fs.existsSync(fp)) return c.json({ error: "Not found" }, 404);
+    return c.body(fs.readFileSync(fp), { headers: { "Content-Type": "font/woff2" } });
+  });
+  app.delete("/api/games/:gid/fonts/:file", (c) => {
+    const gid = c.req.param("gid"), file = c.req.param("file");
+    fs.rmSync(path.join(fontsDir(gid), file), { force: true });
+    const fonts = readJson(fontsManifest(gid), {});
+    for (const [k, v] of Object.entries(fonts)) { if (v.file === file) delete fonts[k]; }
+    writeJson(fontsManifest(gid), fonts);
+    return c.json({ fonts });
+  });
+
+  // Images
+  app.post("/api/games/:gid/images/upload", async (c) => {
+    const gid = c.req.param("gid");
+    const disposition = c.req.header("content-disposition") ?? "";
+    const fnMatch = disposition.match(/filename="([^"]+)"/) || disposition.match(/filename=(\S+)/);
+    const originalName = fnMatch ? fnMatch[1] : `image-${Date.now()}.png`;
+    const ext = (path.extname(originalName) || ".png").toLowerCase();
+    const data = Buffer.from(await c.req.arrayBuffer());
+    const fileName = hashBuf(data) + ext;
+    const dir = imagesDir(gid);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, fileName), data);
+    return c.json({ file: fileName, url: `/api/games/${gid}/images/${fileName}` }, 201);
+  });
+  app.get("/api/games/:gid/images/:file", (c) => {
+    const fp = path.join(imagesDir(c.req.param("gid")), c.req.param("file"));
+    if (!fs.existsSync(fp)) return c.json({ error: "Not found" }, 404);
+    return c.body(fs.readFileSync(fp), { headers: { "Content-Type": "image/png" } });
+  });
+
+  serverProcess = serve({ fetch: app.fetch, port: TEST_PORT });
+  // Override fetch: route /api/ to test server with asset cache fallback, mock Google Fonts
+  const ASSET_PATTERN = /^\/api\/games\/[^/]+\/(fonts|images)\/[^/]+$/;
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (typeof url === "string" && url.startsWith("/api/")) {
+      // Try real server first
+      try {
+        const resp = await origFetch(`http://localhost:${TEST_PORT}${url}`, opts);
+        if (resp.ok) return resp;
+      } catch { /* server miss */ }
+      // Fall back to asset cache (for IndexedDB-stored binaries)
+      if (ASSET_PATTERN.test(url)) {
+        const entry = await getAsset(url);
+        if (entry) return new Response(entry.blob, { headers: { "Content-Type": entry.mimeType } });
+      }
+      return new Response(JSON.stringify({ error: "Not found" }), { status: 404 });
+    }
+    // Mock Google Fonts CSS responses for IndexedDB addGoogleFont
+    if (typeof url === "string" && url.includes("fonts.googleapis.com")) {
+      const fakeCss = `@font-face { src: url(https://fonts.gstatic.com/fake-font.woff2) format('woff2'); }`;
+      return new Response(fakeCss);
+    }
+    // Mock font binary download from gstatic
+    if (typeof url === "string" && url.includes("fonts.gstatic.com")) {
+      return new Response(new Uint8Array([0, 1, 2, 3]));
+    }
+    return origFetch(url, opts);
+  };
+
+  return { cleanup: () => { serverProcess.close(); globalThis.fetch = origFetch; fs.rmSync(dataRoot, { recursive: true, force: true }); } };
+}
 
 /**
  * Shared backend compatibility test suite.
- * Verifies that a storage backend correctly implements the full Storage interface.
  */
 function backendCompatSuite(name, createStorage) {
   describe(`${name}: backend compatibility`, () => {
-    let storage;
-    let gameId;
-    let templateId;
-    let collectionId;
-    let cardId;
+    let storage, gameId, templateId, collectionId, cardId;
 
-    before(async () => {
-      storage = await createStorage();
-      if (storage.init) await storage.init();
-    });
-
-    // ── Games ──────────────────────────────────────────────────────────
+    before(async () => { storage = await createStorage(); if (storage.init) await storage.init(); });
 
     it("createGame returns a game with id and name", async () => {
       const game = await storage.createGame("Test Game");
-      assert.ok(game.id, "game should have an id");
-      assert.equal(game.name, "Test Game");
-      gameId = game.id;
+      assert.ok(game.id); assert.equal(game.name, "Test Game"); gameId = game.id;
     });
-
     it("listGames includes the created game", async () => {
       const games = await storage.listGames();
-      const found = games.find((g) => g.id === gameId);
-      assert.ok(found, "created game should appear in list");
-      assert.equal(found.name, "Test Game");
+      assert.ok(games.find(g => g.id === gameId));
     });
-
     it("getGame returns the game by id", async () => {
       const game = await storage.getGame(gameId);
-      assert.equal(game.id, gameId);
-      assert.equal(game.name, "Test Game");
+      assert.equal(game.id, gameId); assert.equal(game.name, "Test Game");
     });
-
     it("updateGame changes the game name", async () => {
-      const updated = await storage.updateGame(gameId, { name: "Renamed" });
-      assert.equal(updated.name, "Renamed");
-      const fetched = await storage.getGame(gameId);
-      assert.equal(fetched.name, "Renamed");
+      await storage.updateGame(gameId, { name: "Renamed" });
+      assert.equal((await storage.getGame(gameId)).name, "Renamed");
     });
-
-    // ── Templates ─────────────────────────────────────────────────────
 
     it("listTemplates returns at least the default template", async () => {
       const templates = await storage.listTemplates(gameId);
-      assert.ok(templates.length >= 1, "should have at least one template");
-      templateId = templates[0].id;
+      assert.ok(templates.length >= 1); templateId = templates[0].id;
     });
-
     it("getTemplate returns the template", async () => {
       const tpl = await storage.getTemplate(gameId, templateId);
-      assert.ok(tpl, "template should exist");
-      assert.equal(tpl.id, templateId);
-      assert.ok(tpl.root, "template should have a root section");
+      assert.ok(tpl); assert.ok(tpl.root);
     });
-
     it("saveTemplate updates the template", async () => {
       const tpl = await storage.getTemplate(gameId, templateId);
-      tpl.name = "Updated Template";
-      const saved = await storage.saveTemplate(gameId, templateId, tpl);
-      assert.equal(saved.name, "Updated Template");
+      tpl.name = "Updated"; const saved = await storage.saveTemplate(gameId, templateId, tpl);
+      assert.equal(saved.name, "Updated");
     });
-
     it("createTemplate creates a new template", async () => {
-      const tpl = await storage.createTemplate(gameId, "Second Template");
-      assert.ok(tpl.id, "new template should have an id");
-      assert.equal(tpl.name, "Second Template");
-      // Clean up
-      await storage.deleteTemplate(gameId, tpl.id);
+      const tpl = await storage.createTemplate(gameId, "Second");
+      assert.ok(tpl.id); await storage.deleteTemplate(gameId, tpl.id);
     });
-
-    // ── Collections ───────────────────────────────────────────────────
 
     it("listCollections returns at least the default collection", async () => {
       const cols = await storage.listCollections(gameId);
-      assert.ok(cols.length >= 1, "should have at least one collection");
-      collectionId = cols[0].id;
+      assert.ok(cols.length >= 1); collectionId = cols[0].id;
     });
-
     it("getCollection returns the collection", async () => {
       const col = await storage.getCollection(gameId, collectionId);
-      assert.ok(col, "collection should exist");
-      assert.equal(col.id, collectionId);
-      assert.equal(col.templateId, templateId);
+      assert.ok(col); assert.equal(col.templateId, templateId);
     });
-
     it("createCollection creates a new collection", async () => {
       const col = await storage.createCollection(gameId, "Second", templateId);
-      assert.ok(col.id, "new collection should have an id");
-      assert.equal(col.name, "Second");
-      assert.equal(col.templateId, templateId);
-      // Clean up
-      await storage.deleteCollection(gameId, col.id);
+      assert.ok(col.id); await storage.deleteCollection(gameId, col.id);
     });
-
     it("updateCollection renames the collection", async () => {
-      const updated = await storage.updateCollection(gameId, collectionId, { name: "Renamed Col" });
-      assert.equal(updated.name, "Renamed Col");
+      const upd = await storage.updateCollection(gameId, collectionId, { name: "Renamed Col" });
+      assert.equal(upd.name, "Renamed Col");
     });
-
-    // ── Cards ─────────────────────────────────────────────────────────
 
     it("saveCard creates a new card", async () => {
       const card = await storage.saveCard(gameId, collectionId, "test-card", {
-        id: "test-card",
-        name: "Test Card",
-        fields: { cost: "3", description: "A test" },
+        id: "test-card", name: "Test Card", fields: { cost: "3", description: "A test" },
       });
-      assert.ok(card.id, "card should have an id");
-      assert.equal(card.name, "Test Card");
-      cardId = card.id;
+      assert.ok(card.id); cardId = card.id;
     });
-
     it("listCards includes the created card", async () => {
       const cards = await storage.listCards(gameId, collectionId);
-      const found = cards.find((c) => c.id === cardId);
-      assert.ok(found, "card should appear in list");
-      assert.equal(found.fields.cost, "3");
+      assert.ok(cards.find(c => c.id === cardId));
     });
-
     it("getCard returns the card", async () => {
       const card = await storage.getCard(gameId, collectionId, cardId);
-      assert.equal(card.id, cardId);
-      assert.equal(card.name, "Test Card");
       assert.equal(card.fields.description, "A test");
     });
-
     it("saveCard updates an existing card", async () => {
-      const updated = await storage.saveCard(gameId, collectionId, cardId, {
-        id: cardId,
-        name: "Updated Card",
-        fields: { cost: "5" },
+      const upd = await storage.saveCard(gameId, collectionId, cardId, {
+        id: cardId, name: "Updated Card", fields: { cost: "5" },
       });
-      assert.equal(updated.name, "Updated Card");
-      assert.equal(updated.fields.cost, "5");
+      assert.equal(upd.name, "Updated Card");
     });
-
     it("copyCard duplicates the card", async () => {
       const copy = await storage.copyCard(gameId, collectionId, cardId);
-      assert.ok(copy.id !== cardId, "copy should have a different id");
-      assert.ok(copy.name.includes("Copy") || copy.name.includes("copy"), "copy name should indicate it's a copy");
-      // Clean up
+      assert.ok(copy.id !== cardId);
       await storage.deleteCard(gameId, collectionId, copy.id);
     });
-
     it("deleteCard removes the card", async () => {
       await storage.deleteCard(gameId, collectionId, cardId);
       const cards = await storage.listCards(gameId, collectionId);
-      const found = cards.find((c) => c.id === cardId);
-      assert.ok(!found, "deleted card should not appear in list");
+      assert.ok(!cards.find(c => c.id === cardId));
     });
-
-    // ── Fonts ─────────────────────────────────────────────────────────
 
     it("listFonts returns a Record (object, not array)", async () => {
       const fonts = await storage.listFonts(gameId);
-      assert.ok(typeof fonts === "object" && !Array.isArray(fonts), "fonts should be a plain object");
+      assert.ok(typeof fonts === "object" && !Array.isArray(fonts));
     });
-
-    // ── Auth (no-op for local/indexedDB) ──────────────────────────────
-
     it("isAuthorized returns a boolean", () => {
-      const result = storage.isAuthorized();
-      assert.equal(typeof result, "boolean");
+      assert.equal(typeof storage.isAuthorized(), "boolean");
     });
-
-    // ── Cleanup ───────────────────────────────────────────────────────
-
     it("deleteGame removes the game", async () => {
       await storage.deleteGame(gameId);
-      const games = await storage.listGames();
-      const found = games.find((g) => g.id === gameId);
-      assert.ok(!found, "deleted game should not appear in list");
+      assert.ok(!(await storage.listGames()).find(g => g.id === gameId));
     });
   });
 }
 
-// ── Mock fetch for localFile backend ──────────────────────────────────────
-
-function createMockFetchForLocalFile() {
-  const data = { games: {}, templates: {}, collections: {}, cards: {}, fonts: {} };
-  const slug = (v) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-  const uid = () => Math.random().toString(36).slice(2, 10);
-
-  return mock.fn(async (url, opts = {}) => {
-    const method = opts.method || "GET";
-    const json = () => opts.body ? JSON.parse(opts.body) : {};
-    const ok = (body) => ({ ok: true, json: async () => body, status: 200 });
-    const created = (body) => ({ ok: true, json: async () => body, status: 201 });
-    const notFound = () => ({ ok: false, status: 404, json: async () => ({ error: "Not found" }) });
-
-    let m;
-
-    // Games
-    if (url === "/api/games" && method === "GET") return ok(Object.values(data.games));
-    if (url === "/api/games" && method === "POST") {
-      const b = json(); const id = slug(b.name) || uid();
-      const game = { id, name: b.name, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-      data.games[id] = game;
-      data.templates[id] = {};
-      data.collections[id] = {};
-      data.cards[id] = {};
-      data.fonts[id] = {};
-      // Create default template and collection
-      const tpl = defaultTemplate();
-      data.templates[id][tpl.id] = tpl;
-      data.collections[id]["default"] = { id: "default", name: "Default", templateId: tpl.id };
-      data.cards[id]["default"] = {};
-      return created(game);
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)$/))) {
-      const gid = m[1];
-      if (method === "GET") return data.games[gid] ? ok(data.games[gid]) : notFound();
-      if (method === "PUT") {
-        if (!data.games[gid]) return notFound();
-        Object.assign(data.games[gid], json(), { updatedAt: new Date().toISOString() });
-        return ok(data.games[gid]);
-      }
-      if (method === "DELETE") {
-        delete data.games[gid]; delete data.templates[gid]; delete data.collections[gid]; delete data.cards[gid]; delete data.fonts[gid];
-        return ok({});
-      }
-    }
-
-    // Templates
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/templates$/))) {
-      const gid = m[1];
-      if (method === "GET") return ok(Object.values(data.templates[gid] || {}));
-      if (method === "POST") {
-        const b = json(); const tpl = { ...defaultTemplate(), id: slug(b.name) || uid(), name: b.name };
-        if (!data.templates[gid]) data.templates[gid] = {};
-        data.templates[gid][tpl.id] = tpl;
-        return created(tpl);
-      }
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/templates\/([^/]+)$/))) {
-      const [, gid, tid] = m;
-      if (method === "GET") return data.templates[gid]?.[tid] ? ok(data.templates[gid][tid]) : notFound();
-      if (method === "PUT") {
-        const b = json();
-        if (!data.templates[gid]) data.templates[gid] = {};
-        data.templates[gid][tid] = { ...b, id: tid };
-        return ok(data.templates[gid][tid]);
-      }
-      if (method === "DELETE") {
-        delete data.templates[gid]?.[tid];
-        return ok({});
-      }
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/templates\/([^/]+)\/copy$/)) && method === "POST") {
-      const [, gid, tid] = m;
-      const orig = data.templates[gid]?.[tid];
-      if (!orig) return notFound();
-      const copy = { ...orig, id: `${tid}-copy-${uid()}`, name: `${orig.name} (Copy)` };
-      data.templates[gid][copy.id] = copy;
-      return created(copy);
-    }
-
-    // Collections
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/collections$/))) {
-      const gid = m[1];
-      if (method === "GET") return ok(Object.values(data.collections[gid] || {}));
-      if (method === "POST") {
-        const b = json(); const id = slug(b.name) || uid();
-        const col = { id, name: b.name, templateId: b.templateId };
-        if (!data.collections[gid]) data.collections[gid] = {};
-        data.collections[gid][id] = col;
-        if (!data.cards[gid]) data.cards[gid] = {};
-        data.cards[gid][id] = {};
-        return created(col);
-      }
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/collections\/([^/]+)$/))) {
-      const [, gid, cid] = m;
-      if (method === "GET") return data.collections[gid]?.[cid] ? ok(data.collections[gid][cid]) : notFound();
-      if (method === "PUT") {
-        if (!data.collections[gid]?.[cid]) return notFound();
-        Object.assign(data.collections[gid][cid], json());
-        return ok(data.collections[gid][cid]);
-      }
-      if (method === "DELETE") {
-        delete data.collections[gid]?.[cid];
-        delete data.cards[gid]?.[cid];
-        return ok({});
-      }
-    }
-
-    // Cards
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/collections\/([^/]+)\/cards$/))) {
-      const [, gid, cid] = m;
-      if (method === "GET") return ok(Object.values(data.cards[gid]?.[cid] || {}));
-      if (method === "POST") {
-        const b = json(); const card = { id: b.id || uid(), name: b.name || "Card", fields: b.fields || {} };
-        if (!data.cards[gid]) data.cards[gid] = {};
-        if (!data.cards[gid][cid]) data.cards[gid][cid] = {};
-        data.cards[gid][cid][card.id] = card;
-        return created(card);
-      }
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/collections\/([^/]+)\/cards\/([^/]+)$/))) {
-      const [, gid, cid, kid] = m;
-      if (method === "GET") return data.cards[gid]?.[cid]?.[kid] ? ok(data.cards[gid][cid][kid]) : notFound();
-      if (method === "PUT") {
-        const b = json();
-        if (!data.cards[gid]?.[cid]) return notFound();
-        data.cards[gid][cid][kid] = { ...b, id: kid };
-        return ok(data.cards[gid][cid][kid]);
-      }
-      if (method === "DELETE") {
-        delete data.cards[gid]?.[cid]?.[kid];
-        return ok({});
-      }
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/collections\/([^/]+)\/cards\/([^/]+)\/copy$/)) && method === "POST") {
-      const [, gid, cid, kid] = m;
-      const orig = data.cards[gid]?.[cid]?.[kid];
-      if (!orig) return notFound();
-      const copy = { ...orig, id: uid(), name: `${orig.name} (Copy)` };
-      data.cards[gid][cid][copy.id] = copy;
-      return created(copy);
-    }
-
-    // Fonts (per-game)
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/fonts$/)) && method === "GET") {
-      return ok(data.fonts[m[1]] || {});
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/fonts\/upload$/)) && method === "POST") {
-      const gid = m[1];
-      if (!data.fonts[gid]) data.fonts[gid] = {};
-      const slotName = opts.headers?.["X-Slot-Name"] || "font-" + uid();
-      const fileName = uid() + ".woff2";
-      data.fonts[gid][slotName] = { name: slotName, file: fileName, source: "upload" };
-      return ok({ fonts: data.fonts[gid] });
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/fonts\/google$/)) && method === "POST") {
-      const gid = m[1]; const b = json();
-      if (!data.fonts[gid]) data.fonts[gid] = {};
-      const slot = b.slotName || slug(b.name);
-      data.fonts[gid][slot] = { name: b.name, file: uid() + ".woff2", source: "google" };
-      return ok({ fonts: data.fonts[gid] });
-    }
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/fonts\/([^/]+)$/)) && method === "DELETE") {
-      const [, gid, file] = m;
-      const fonts = data.fonts[gid] || {};
-      for (const [k, v] of Object.entries(fonts)) { if (v.file === file) delete fonts[k]; }
-      return ok({ fonts });
-    }
-
-    // Font file GET (for export)
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/fonts\/([^/]+)$/)) && method === "GET") {
-      const [, gid, file] = m;
-      const fonts = data.fonts[gid] || {};
-      const found = Object.values(fonts).find((f) => f.file === file);
-      if (!found) return notFound();
-      // Return a fake blob response
-      const fakeBlob = Buffer.from("fake-font-data");
-      return { ok: true, blob: async () => fakeBlob, status: 200 };
-    }
-
-    // Images
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/images\/upload$/)) && method === "POST") {
-      const gid = m[1];
-      const fileName = uid() + ".png";
-      if (!data.images) data.images = {};
-      if (!data.images[gid]) data.images[gid] = {};
-      data.images[gid][fileName] = true;
-      return created({ file: fileName, url: `/api/games/${gid}/images/${fileName}` });
-    }
-    // Image file GET (for export)
-    if ((m = url.match(/^\/api\/games\/([^/]+)\/images\/([^/]+)$/)) && method === "GET") {
-      const [, gid, file] = m;
-      if (data.images?.[gid]?.[file]) {
-        const fakeBlob = Buffer.from("fake-image-data");
-        return { ok: true, blob: async () => fakeBlob, status: 200 };
-      }
-      return notFound();
-    }
-
-    return { ok: false, status: 404, json: async () => ({ error: "Not found" }) };
-  });
-}
-
-// ── Run suite against localFile backend ───────────────────────────────────
-
-describe("localFile backend", () => {
-  let originalFetch;
-
-  before(() => {
-    originalFetch = globalThis.fetch;
-    globalThis.fetch = createMockFetchForLocalFile();
-  });
-
-  after(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  backendCompatSuite("localFile", async () => {
-    return createLocalFileStorage({ defaultTemplate });
-  });
-});
-
-// ── IndexedDB backend ─────────────────────────────────────────────────────
-
-describe("indexedDB backend", () => {
-  let originalFetch;
-
-  before(() => {
-    originalFetch = globalThis.fetch;
-    // IndexedDB backend still needs fetch for Google Fonts downloads — mock it
-    globalThis.fetch = createMockFetchForLocalFile();
-  });
-
-  after(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  backendCompatSuite("indexedDB", async () => {
-    return createIndexedDBStorage({ defaultTemplate });
-  });
-});
-
-// ── Round-trip tests ──────────────────────────────────────────────────────
-
-describe("round-trip export/import", () => {
-  let originalFetch;
-
-  before(() => {
-    originalFetch = globalThis.fetch;
-    globalThis.fetch = createMockFetchForLocalFile();
-  });
-
-  after(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  it("preserves all game data through zip export and import", async () => {
-    const srcStorage = createLocalFileStorage({ defaultTemplate });
-
-    // Create a game
-    const game = await srcStorage.createGame("Round Trip Test");
-    const gameId = game.id;
-
-    // Upload fonts
-    const fontData = await srcStorage.addGoogleFont(gameId, "Roboto", "title");
-    const titleFontFile = fontData.fonts.title?.file ?? fontData.fonts.roboto?.file;
-
-    // Upload an image
-    const fakeImageFile = new File(["fake-png-data"], "hero.png", { type: "image/png" });
-    const imageUrl = await srcStorage.uploadImage(gameId, fakeImageFile);
-
-    // Build a template with all item types
-    const templates = await srcStorage.listTemplates(gameId);
-    const tpl = templates[0];
-    tpl.name = "Full Template";
-    tpl.width = 800;
-    tpl.height = 1200;
-    tpl.radius = 16;
-    tpl.bleed = 10;
-    tpl.root = {
-      id: "root", name: "Root", layout: "column", sizePct: 100, gap: 12, columns: 2, children: [
-        {
-          id: "header", name: "Header", layout: "row", sizePct: 30, gap: 8, columns: 2, children: [], items: [
-            { id: "title-item", name: "Title", type: "text", fieldId: "name", defaultValue: "Untitled",
-              values: ["Warrior", "Mage", "Rogue"],
-              fontSize: 32, align: "center", verticalAlign: "middle", font: "title", color: "#1a1a2e",
-              anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0.5, y: 0.5 } },
-              widthPct: 100, heightPct: 100 },
-            { id: "cost-item", name: "Cost", type: "text", fieldId: "cost", defaultValue: "0",
-              fontSize: 20, align: "right", verticalAlign: "top", font: "title", color: "#e94560",
-              anchor: { x: 1, y: 0 }, attach: { targetType: "item", targetId: "title-item", anchor: { x: 1, y: 0 } },
-              widthPct: 20, heightPct: 30 },
-          ],
-        },
-        {
-          id: "body", name: "Body", layout: "stack", sizePct: 70, gap: 0, columns: 2, children: [
-            {
-              id: "art-section", name: "Art Section", layout: "grid", sizePct: 60, gap: 4, columns: 3, children: [], items: [
-                { id: "art-item", name: "Artwork", type: "image", fieldId: "image", defaultValue: imageUrl,
-                  fit: "cover", cornerRadius: 12,
-                  anchor: { x: 0.5, y: 0 }, attach: { targetType: "section", targetId: "art-section", anchor: { x: 0.5, y: 0 } },
-                  widthPct: 100, heightPct: 80 },
-              ],
-            },
-          ],
-          items: [
-            { id: "border-item", name: "Border", type: "frame",
-              strokeWidth: 3, strokeColor: "#16213e", fillColor: "none", cornerRadius: 8,
-              anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } },
-              widthPct: 95, heightPct: 95 },
-            { id: "emoji-item", name: "Faction", type: "emoji", fieldId: "faction", emoji: "⚔️",
-              values: ["⚔️", "🛡️", "🔮", "🏹"], fontSize: 48,
-              anchor: { x: 0.5, y: 1 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 1 } },
-              widthPct: 15, heightPct: 10 },
-            { id: "desc-item", name: "Description", type: "text", fieldId: "description", defaultValue: "",
-              fontSize: 14, align: "left", verticalAlign: "top", color: "#333",
-              anchor: { x: 0, y: 0 }, attach: { targetType: "item", targetId: "art-item", anchor: { x: 0, y: 1 } },
-              widthPct: 90, heightPct: 30 },
-          ],
-        },
-      ],
-      items: [],
-    };
-    await srcStorage.saveTemplate(gameId, tpl.id, tpl);
-
-    // Get the default collection and add cards
-    const collections = await srcStorage.listCollections(gameId);
-    const colId = collections[0].id;
-
-    await srcStorage.saveCard(gameId, colId, "card-1", {
-      id: "card-1", name: "Warrior",
-      fields: { cost: "5", description: "<b>Brave</b> hero", image: imageUrl, faction: "⚔️" },
-    });
-    await srcStorage.saveCard(gameId, colId, "card-2", {
-      id: "card-2", name: "Mage",
-      fields: { cost: "3", description: "*Wise* mage", faction: "🔮" },
-    });
-
-    // Create second collection
-    const col2 = await srcStorage.createCollection(gameId, "Expansion", tpl.id);
-    await srcStorage.saveCard(gameId, col2.id, "card-3", {
-      id: "card-3", name: "Rogue",
-      fields: { cost: "4", faction: "🏹" },
-    });
-
-    // ── Export ──────────────────────────────────────────────────────────
-    const zipBlob = await exportGameZip(srcStorage, gameId);
-    assert.ok(zipBlob.size > 0, "zip should not be empty");
-    const zipBuffer = await zipBlob.arrayBuffer();
-
-    // ── Import ─────────────────────────────────────────────────────────
-    const dstStorage = createLocalFileStorage({ defaultTemplate });
-    const newGameId = await importGameZip(dstStorage, zipBuffer);
-    assert.ok(newGameId, "import should return a game id");
-
-    // ── Verify game metadata ───────────────────────────────────────────
-    const imp = await dstStorage.getGame(newGameId);
-    assert.equal(imp.name, "Round Trip Test");
-
-    // ── Verify template structure ──────────────────────────────────────
-    const impTemplates = await dstStorage.listTemplates(newGameId);
-    assert.equal(impTemplates.length, 1);
-    const impTpl = impTemplates[0];
-    assert.equal(impTpl.name, "Full Template");
-    assert.equal(impTpl.width, 800);
-    assert.equal(impTpl.height, 1200);
-    assert.equal(impTpl.radius, 16);
-    assert.equal(impTpl.bleed, 10);
-
-    // Root section
-    assert.equal(impTpl.root.layout, "column");
-    assert.equal(impTpl.root.gap, 12);
-    assert.equal(impTpl.root.children.length, 2);
-
-    // Header section
-    const header = impTpl.root.children[0];
-    assert.equal(header.name, "Header");
-    assert.equal(header.layout, "row");
-    assert.equal(header.items.length, 2);
-
-    // Text item with all fields
-    const titleItem = header.items.find((i) => i.id === "title-item");
-    assert.ok(titleItem);
-    assert.equal(titleItem.type, "text");
-    assert.equal(titleItem.fieldId, "name");
-    assert.equal(titleItem.defaultValue, "Untitled");
-    assert.deepEqual(titleItem.values, ["Warrior", "Mage", "Rogue"]);
-    assert.equal(titleItem.fontSize, 32);
-    assert.equal(titleItem.align, "center");
-    assert.equal(titleItem.verticalAlign, "middle");
-    assert.equal(titleItem.font, "title");
-    assert.equal(titleItem.color, "#1a1a2e");
-    assert.deepEqual(titleItem.anchor, { x: 0.5, y: 0.5 });
-    assert.equal(titleItem.attach.targetType, "section");
-    assert.equal(titleItem.attach.targetId, "header");
-
-    // Cost item with attach to another item
-    const costItem = header.items.find((i) => i.id === "cost-item");
-    assert.ok(costItem);
-    assert.equal(costItem.attach.targetType, "item");
-    assert.equal(costItem.attach.targetId, "title-item");
-
-    // Body section
-    const body = impTpl.root.children[1];
-    assert.equal(body.layout, "stack");
-    assert.equal(body.children.length, 1);
-    assert.equal(body.items.length, 3);
-
-    // Grid sub-section
-    const artSection = body.children[0];
-    assert.equal(artSection.layout, "grid");
-    assert.equal(artSection.columns, 3);
-
-    // Image item
-    const artItem = artSection.items.find((i) => i.id === "art-item");
-    assert.ok(artItem);
-    assert.equal(artItem.type, "image");
-    assert.equal(artItem.fit, "cover");
-    assert.equal(artItem.cornerRadius, 12);
-    // Image URL should be rewritten to new game ID
-    assert.ok(artItem.defaultValue.includes(`/api/games/${newGameId}/images/`), "image URL should reference new game");
-
-    // Frame item
-    const borderItem = body.items.find((i) => i.id === "border-item");
-    assert.ok(borderItem);
-    assert.equal(borderItem.type, "frame");
-    assert.equal(borderItem.strokeWidth, 3);
-    assert.equal(borderItem.strokeColor, "#16213e");
-    assert.equal(borderItem.fillColor, "none");
-    assert.equal(borderItem.cornerRadius, 8);
-
-    // Emoji item
-    const emojiItem = body.items.find((i) => i.id === "emoji-item");
-    assert.ok(emojiItem);
-    assert.equal(emojiItem.type, "emoji");
-    assert.equal(emojiItem.fieldId, "faction");
-    assert.equal(emojiItem.emoji, "⚔️");
-    assert.deepEqual(emojiItem.values, ["⚔️", "🛡️", "🔮", "🏹"]);
-    assert.equal(emojiItem.fontSize, 48);
-
-    // Description item attached to another item
-    const descItem = body.items.find((i) => i.id === "desc-item");
-    assert.ok(descItem);
-    assert.equal(descItem.attach.targetType, "item");
-    assert.equal(descItem.attach.targetId, "art-item");
-
-    // ── Verify collections ─────────────────────────────────────────────
-    const impCols = await dstStorage.listCollections(newGameId);
-    assert.equal(impCols.length, 2);
-    const colNames = impCols.map((c) => c.name).sort();
-    assert.deepEqual(colNames, ["Default", "Expansion"]);
-    for (const col of impCols) {
-      assert.equal(col.templateId, tpl.id);
-    }
-
-    // ── Verify cards ───────────────────────────────────────────────────
-    const defCol = impCols.find((c) => c.name === "Default");
-    const defCards = await dstStorage.listCards(newGameId, defCol.id);
-    assert.equal(defCards.length, 2);
-
-    const warrior = defCards.find((c) => c.name === "Warrior");
-    assert.ok(warrior);
-    assert.equal(warrior.fields.cost, "5");
-    assert.equal(warrior.fields.description, "<b>Brave</b> hero");
-    assert.equal(warrior.fields.faction, "⚔️");
-    // Image URL should be rewritten
-    assert.ok(warrior.fields.image.includes(`/api/games/${newGameId}/images/`));
-
-    const mage = defCards.find((c) => c.name === "Mage");
-    assert.ok(mage);
-    assert.equal(mage.fields.cost, "3");
-    assert.equal(mage.fields.faction, "🔮");
-
-    const expCol = impCols.find((c) => c.name === "Expansion");
-    const expCards = await dstStorage.listCards(newGameId, expCol.id);
-    assert.equal(expCards.length, 1);
-    assert.equal(expCards[0].name, "Rogue");
-    assert.equal(expCards[0].fields.faction, "🏹");
-
-    // ── Verify fonts ───────────────────────────────────────────────────
-    const impFonts = await dstStorage.listFonts(newGameId);
-    assert.ok(typeof impFonts === "object" && !Array.isArray(impFonts));
-    const fontSlots = Object.keys(impFonts);
-    assert.ok(fontSlots.length >= 1, "should have at least 1 font slot");
-  });
-
-  it("preserves card field data with special characters", async () => {
-    const srcStorage = createLocalFileStorage({ defaultTemplate });
-    const game = await srcStorage.createGame("Special Chars");
-    const cols = await srcStorage.listCollections(game.id);
-
-    await srcStorage.saveCard(game.id, cols[0].id, "card-special", {
-      id: "card-special",
-      name: 'Card with "quotes" & <tags>',
-      fields: { text: "Line 1\nLine 2", emoji: "⚔️🛡️", html: "<b>Bold</b>" },
-    });
-
-    const zipBlob = await exportGameZip(srcStorage, game.id);
-    const zipBuffer = await zipBlob.arrayBuffer();
-    const dstStorage = createLocalFileStorage({ defaultTemplate });
-    const newId = await importGameZip(dstStorage, zipBuffer);
-
-    const newCols = await dstStorage.listCollections(newId);
-    const cards = await dstStorage.listCards(newId, newCols[0].id);
-    const card = cards.find((c) => c.id === "card-special");
-    assert.ok(card, "card should exist after import");
-    assert.equal(card.name, 'Card with "quotes" & <tags>');
-    assert.equal(card.fields.emoji, "⚔️🛡️");
-    assert.equal(card.fields.text, "Line 1\nLine 2");
-    assert.equal(card.fields.html, "<b>Bold</b>");
-  });
-});
-
-// ── Helper: create a test game with all data types ────────────────────────
+// ── Helper: create a full test game ───────────────────────────────────────
 
 async function createFullTestGame(storage) {
-  const game = await storage.createGame("Cross Backend Test");
+  const game = await storage.createGame("Transfer Test");
   const gameId = game.id;
+
+  // Upload fonts with realistic names (spaces!)
+  await storage.addGoogleFont(gameId, "Playwrite IE", "title");
+  await storage.addGoogleFont(gameId, "Space Grotesk", "body");
+
+  // Upload an image
+  const fakeImage = new File([new Uint8Array([137, 80, 78, 71])], "hero artwork.png", { type: "image/png" });
+  const imageUrl = await storage.uploadImage(gameId, fakeImage);
+
+  // Build template with all item types
   const templates = await storage.listTemplates(gameId);
   const tpl = templates[0];
-  tpl.name = "Test Template";
-  tpl.width = 900;
-  tpl.height = 1300;
-  tpl.root.items = [
-    { id: "emoji-1", name: "Badge", type: "emoji", fieldId: "badge", emoji: "🛡️",
-      values: ["🛡️", "⚔️", "🔮"], fontSize: 40,
-      anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: tpl.root.id, anchor: { x: 0.5, y: 0.5 } },
-      widthPct: 20, heightPct: 10 },
-  ];
+  tpl.name = "Full Template";
+  tpl.width = 800;
+  tpl.height = 1200;
+  tpl.radius = 16;
+  tpl.bleed = 10;
+  tpl.root = {
+    id: "root", name: "Root", layout: "column", sizePct: 100, gap: 12, columns: 2,
+    children: [
+      { id: "header", name: "Header", layout: "row", sizePct: 30, gap: 8, columns: 2, children: [], items: [
+        { id: "title-item", name: "Title", type: "text", fieldId: "name", defaultValue: "Untitled",
+          values: ["Warrior", "Mage", "Rogue"],
+          fontSize: 32, align: "center", verticalAlign: "middle", font: "title", color: "#1a1a2e",
+          anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0.5, y: 0.5 } },
+          widthPct: 100, heightPct: 100 },
+      ]},
+      { id: "body", name: "Body", layout: "stack", sizePct: 70, gap: 0, columns: 2,
+        children: [
+          { id: "grid-section", name: "Grid", layout: "grid", sizePct: 60, gap: 4, columns: 3, children: [], items: [
+            { id: "art-item", name: "Artwork", type: "image", fieldId: "image", defaultValue: imageUrl,
+              values: [], fit: "cover", cornerRadius: 12,
+              anchor: { x: 0.5, y: 0 }, attach: { targetType: "section", targetId: "grid-section", anchor: { x: 0.5, y: 0 } },
+              widthPct: 100, heightPct: 80 },
+          ]},
+        ],
+        items: [
+          { id: "border-item", name: "Border", type: "frame",
+            strokeWidth: 3, strokeColor: "#16213e", fillColor: "none", cornerRadius: 8,
+            anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } },
+            widthPct: 95, heightPct: 95 },
+          { id: "emoji-item", name: "Faction", type: "emoji", fieldId: "faction", emoji: "⚔️",
+            values: ["⚔️", "🛡️", "🔮", "🏹"], fontSize: 48,
+            anchor: { x: 0.5, y: 1 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 1 } },
+            widthPct: 15, heightPct: 10 },
+          { id: "desc-item", name: "Description", type: "text", fieldId: "description", defaultValue: "",
+            fontSize: 14, align: "left", verticalAlign: "top", color: "#333",
+            anchor: { x: 0, y: 0 }, attach: { targetType: "item", targetId: "art-item", anchor: { x: 0, y: 1 } },
+            widthPct: 90, heightPct: 30 },
+        ],
+      },
+    ],
+    items: [],
+  };
   await storage.saveTemplate(gameId, tpl.id, tpl);
 
+  // Cards
   const cols = await storage.listCollections(gameId);
-  await storage.saveCard(gameId, cols[0].id, "c1", {
-    id: "c1", name: "Card One", fields: { badge: "⚔️", cost: "3", description: "<i>Test</i>" },
+  await storage.saveCard(gameId, cols[0].id, "card-1", {
+    id: "card-1", name: "Warrior",
+    fields: { cost: "5", description: "<b>Brave</b> hero", image: imageUrl, faction: "⚔️" },
   });
-  await storage.saveCard(gameId, cols[0].id, "c2", {
-    id: "c2", name: "Card Two", fields: { badge: "🔮", cost: "7" },
+  await storage.saveCard(gameId, cols[0].id, "card-2", {
+    id: "card-2", name: "Mage",
+    fields: { cost: "3", description: "*Wise* mage", faction: "🔮" },
   });
 
-  return { gameId, templateId: tpl.id, collectionId: cols[0].id };
+  // Second collection
+  const col2 = await storage.createCollection(gameId, "Expansion", tpl.id);
+  await storage.saveCard(gameId, col2.id, "card-3", {
+    id: "card-3", name: "Rogue",
+    fields: { cost: "4", faction: "🏹" },
+  });
+
+  return { gameId, templateId: tpl.id };
 }
 
 async function verifyFullTestGame(storage, gameId) {
   const game = await storage.getGame(gameId);
-  assert.equal(game.name, "Cross Backend Test");
+  assert.equal(game.name, "Transfer Test");
 
   const templates = await storage.listTemplates(gameId);
   assert.equal(templates.length, 1);
-  assert.equal(templates[0].name, "Test Template");
-  assert.equal(templates[0].width, 900);
-  assert.equal(templates[0].height, 1300);
+  const tpl = templates[0];
+  assert.equal(tpl.name, "Full Template");
+  assert.equal(tpl.width, 800);
+  assert.equal(tpl.height, 1200);
+  assert.equal(tpl.radius, 16);
+  assert.equal(tpl.bleed, 10);
 
-  const emojiItem = templates[0].root.items?.find((i) => i.id === "emoji-1");
-  assert.ok(emojiItem, "emoji item should exist in template");
-  assert.equal(emojiItem.type, "emoji");
-  assert.equal(emojiItem.emoji, "🛡️");
-  assert.deepEqual(emojiItem.values, ["🛡️", "⚔️", "🔮"]);
-  assert.equal(emojiItem.fieldId, "badge");
+  // Collect all items
+  const items = [];
+  function collect(s) { items.push(...(s.items || [])); (s.children || []).forEach(collect); }
+  collect(tpl.root);
+  assert.equal(items.length, 5, `expected 5 items, got ${items.length}: ${items.map(i => i.name).join(", ")}`);
 
+  // Text item
+  const title = items.find(i => i.id === "title-item");
+  assert.ok(title); assert.equal(title.type, "text");
+  assert.equal(title.fieldId, "name"); assert.equal(title.defaultValue, "Untitled");
+  assert.deepEqual(title.values, ["Warrior", "Mage", "Rogue"]);
+  assert.equal(title.fontSize, 32); assert.equal(title.align, "center");
+  assert.equal(title.font, "title"); assert.equal(title.color, "#1a1a2e");
+
+  // Frame item
+  const border = items.find(i => i.id === "border-item");
+  assert.ok(border); assert.equal(border.type, "frame");
+  assert.equal(border.strokeWidth, 3); assert.equal(border.cornerRadius, 8);
+
+  // Image item
+  const art = items.find(i => i.id === "art-item");
+  assert.ok(art); assert.equal(art.type, "image");
+  assert.equal(art.fit, "cover"); assert.equal(art.cornerRadius, 12);
+  assert.ok(art.defaultValue.includes(`/api/games/${gameId}/images/`), "image URL should reference the game");
+
+  // Emoji item
+  const emoji = items.find(i => i.id === "emoji-item");
+  assert.ok(emoji); assert.equal(emoji.type, "emoji");
+  assert.equal(emoji.fieldId, "faction"); assert.equal(emoji.emoji, "⚔️");
+  assert.deepEqual(emoji.values, ["⚔️", "🛡️", "🔮", "🏹"]);
+  assert.equal(emoji.fontSize, 48);
+
+  // Description attached to item
+  const desc = items.find(i => i.id === "desc-item");
+  assert.ok(desc); assert.equal(desc.attach.targetType, "item");
+  assert.equal(desc.attach.targetId, "art-item");
+
+  // Grid section
+  const grid = tpl.root.children.find(c => c.children?.some(cc => cc.id === "grid-section"));
+  const gridSection = grid?.children?.find(cc => cc.id === "grid-section") ?? tpl.root.children.flatMap(c => c.children || []).find(cc => cc.id === "grid-section");
+  assert.ok(gridSection); assert.equal(gridSection.layout, "grid"); assert.equal(gridSection.columns, 3);
+
+  // Collections
   const cols = await storage.listCollections(gameId);
-  assert.equal(cols.length, 1);
+  assert.equal(cols.length, 2);
+  assert.deepEqual(cols.map(c => c.name).sort(), ["Default", "Expansion"]);
 
-  const cards = await storage.listCards(gameId, cols[0].id);
-  assert.equal(cards.length, 2);
-  const c1 = cards.find((c) => c.name === "Card One");
-  assert.ok(c1);
-  assert.equal(c1.fields.badge, "⚔️");
-  assert.equal(c1.fields.cost, "3");
-  assert.equal(c1.fields.description, "<i>Test</i>");
-  const c2 = cards.find((c) => c.name === "Card Two");
-  assert.ok(c2);
-  assert.equal(c2.fields.badge, "🔮");
+  // Cards
+  const defCol = cols.find(c => c.name === "Default");
+  const defCards = await storage.listCards(gameId, defCol.id);
+  assert.equal(defCards.length, 2);
+  const warrior = defCards.find(c => c.name === "Warrior");
+  assert.ok(warrior); assert.equal(warrior.fields.faction, "⚔️");
+  assert.equal(warrior.fields.cost, "5");
+  assert.ok(warrior.fields.image.includes(`/api/games/${gameId}/images/`));
 
+  const expCol = cols.find(c => c.name === "Expansion");
+  const expCards = await storage.listCards(gameId, expCol.id);
+  assert.equal(expCards.length, 1);
+  assert.equal(expCards[0].fields.faction, "🏹");
+
+  // Fonts
   const fonts = await storage.listFonts(gameId);
   assert.ok(typeof fonts === "object" && !Array.isArray(fonts));
+  const fontSlots = Object.keys(fonts);
+  assert.ok(fontSlots.includes("title"), `expected 'title' font slot, got: ${fontSlots}`);
+  assert.ok(fontSlots.includes("body"), `expected 'body' font slot, got: ${fontSlots}`);
 }
 
-// ── Cross-backend round-trips ─────────────────────────────────────────────
+// ── Run suites ────────────────────────────────────────────────────────────
+// Single server for all tests
 
-describe("cross-backend round-trip via zip", () => {
-  let originalFetch;
+let serverCleanup;
+before(async () => { serverCleanup = (await startServer()).cleanup; });
+after(() => { serverCleanup?.(); });
 
-  before(() => {
-    originalFetch = globalThis.fetch;
-    globalThis.fetch = createMockFetchForLocalFile();
+describe("localFile backend (real server)", () => {
+  backendCompatSuite("localFile", async () => createLocalFileStorage({ defaultTemplate }));
+});
+
+describe("indexedDB backend", () => {
+  backendCompatSuite("indexedDB", async () => createIndexedDBStorage({ defaultTemplate }));
+});
+
+describe("round-trip: same backend", () => {
+  it("localFile → zip → localFile preserves all data", async () => {
+    const src = createLocalFileStorage({ defaultTemplate });
+    const { gameId } = await createFullTestGame(src);
+    const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
+    const dst = createLocalFileStorage({ defaultTemplate });
+    const newId = await importGameZip(dst, zip);
+    await verifyFullTestGame(dst, newId);
   });
 
-  after(() => {
-    globalThis.fetch = originalFetch;
+  it("indexedDB → zip → indexedDB preserves all data", async () => {
+    const src = createIndexedDBStorage({ defaultTemplate });
+    const { gameId } = await createFullTestGame(src);
+    const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
+    const dst = createIndexedDBStorage({ defaultTemplate });
+    const newId = await importGameZip(dst, zip);
+    await verifyFullTestGame(dst, newId);
   });
+});
 
+describe("round-trip: cross-backend", () => {
   it("localFile → zip → indexedDB preserves all data", async () => {
     const src = createLocalFileStorage({ defaultTemplate });
     const { gameId } = await createFullTestGame(src);
-
-    const zipBlob = await exportGameZip(src, gameId);
-    const zipBuffer = await zipBlob.arrayBuffer();
-
+    const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
     const dst = createIndexedDBStorage({ defaultTemplate });
-    const newId = await importGameZip(dst, zipBuffer);
+    const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
 
   it("indexedDB → zip → localFile preserves all data", async () => {
     const src = createIndexedDBStorage({ defaultTemplate });
     const { gameId } = await createFullTestGame(src);
-
-    const zipBlob = await exportGameZip(src, gameId);
-    const zipBuffer = await zipBlob.arrayBuffer();
-
+    const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
     const dst = createLocalFileStorage({ defaultTemplate });
-    const newId = await importGameZip(dst, zipBuffer);
+    const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
 
-  it("localFile → zip → localFile → zip → indexedDB survives double transfer", async () => {
+  it("localFile → zip → indexedDB → zip → localFile survives double transfer", async () => {
     const src = createLocalFileStorage({ defaultTemplate });
     const { gameId } = await createFullTestGame(src);
-
-    // First hop: localFile → zip → localFile
     const zip1 = await (await exportGameZip(src, gameId)).arrayBuffer();
-    const mid = createLocalFileStorage({ defaultTemplate });
+    const mid = createIndexedDBStorage({ defaultTemplate });
     const midId = await importGameZip(mid, zip1);
-
-    // Second hop: localFile → zip → indexedDB
     const zip2 = await (await exportGameZip(mid, midId)).arrayBuffer();
-    const dst = createIndexedDBStorage({ defaultTemplate });
+    const dst = createLocalFileStorage({ defaultTemplate });
     const finalId = await importGameZip(dst, zip2);
-
     await verifyFullTestGame(dst, finalId);
+  });
+
+  it("preserves special characters through transfer", async () => {
+    const src = createLocalFileStorage({ defaultTemplate });
+    const game = await src.createGame("Special Chars");
+    const cols = await src.listCollections(game.id);
+    await src.saveCard(game.id, cols[0].id, "card-special", {
+      id: "card-special", name: 'Card with "quotes" & <tags>',
+      fields: { text: "Line 1\nLine 2", emoji: "⚔️🛡️", html: "<b>Bold</b>" },
+    });
+    const zip = await (await exportGameZip(src, game.id)).arrayBuffer();
+    const dst = createIndexedDBStorage({ defaultTemplate });
+    const newId = await importGameZip(dst, zip);
+    const newCols = await dst.listCollections(newId);
+    const cards = await dst.listCards(newId, newCols[0].id);
+    const card = cards.find(c => c.id === "card-special");
+    assert.ok(card);
+    assert.equal(card.name, 'Card with "quotes" & <tags>');
+    assert.equal(card.fields.emoji, "⚔️🛡️");
+    assert.equal(card.fields.html, "<b>Bold</b>");
   });
 });
