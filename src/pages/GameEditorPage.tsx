@@ -164,44 +164,37 @@ export default function GameEditorPage() {
   }
 
   const handleCreateCard = async () => {
+    if (!gameId || !collectionId) return
+    const newCard = { id: crypto.randomUUID(), name: `New Card ${cards.length + 1}`, fields: {} }
+    setCards(prev => [...prev, newCard as any])
+    setSelectedCard(newCard)
+    setSavedCardJson(JSON.stringify(newCard))
     try {
-      if (!gameId || !collectionId) return
-      setStatus('Creating card...')
-      const newCard = {
-        id: crypto.randomUUID(),
-        name: `New Card ${cards.length + 1}`,
-        fields: {}
-      }
       await storage.saveCard(gameId, collectionId, newCard.id, newCard)
-      await loadGame(storage)
-      await selectCard(storage, newCard.id)
-      setStatus('Card created.')
-    } catch (error) {
+    } catch {
+      setCards(prev => prev.filter(c => c.id !== newCard.id))
       setStatus('Error creating card.')
-      console.error(error)
     }
   }
 
   const handleDeleteCard = async () => {
+    if (!gameId || !collectionId || !selectedCard) return
+    const prevCards = cards
+    const prevCard = selectedCard
+    const updatedCards = cards.filter(c => c.id !== selectedCard.id)
+    setCards(updatedCards)
+    if (updatedCards.length > 0) {
+      await selectCard(storage, updatedCards[0].id)
+    } else {
+      setSelectedCard(null)
+      setCardPreview('')
+    }
     try {
-      if (!gameId || !collectionId || !selectedCard) return
-      setStatus('Deleting card...')
-      await storage.deleteCard(gameId, collectionId, selectedCard.id)
-      
-      const updatedCards = cards.filter(c => c.id !== selectedCard.id)
-      setCards(updatedCards)
-      
-      if (updatedCards.length > 0) {
-        await selectCard(storage, updatedCards[0].id)
-      } else {
-        setSelectedCard(null)
-        setCardPreview('')
-      }
-      
-      setStatus('Card deleted.')
-    } catch (error) {
+      await storage.deleteCard(gameId, collectionId, prevCard.id)
+    } catch {
+      setCards(prevCards)
+      setSelectedCard(prevCard)
       setStatus('Error deleting card.')
-      console.error(error)
     }
   }
 
@@ -417,12 +410,16 @@ export default function GameEditorPage() {
                             <Save className="h-4 w-4" />
                           </Button>
                           <Button size="sm" variant="outline" onClick={async () => {
+                            const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
+                            setCards(prev => [...prev, opt])
+                            setSelectedCard(opt)
+                            setSavedCardJson(JSON.stringify(opt))
                             try {
                               const copy = await storage.copyCard(gameId, collectionId, card.id)
-                              await loadGame(storage)
-                              await selectCard(storage, copy.id)
-                              setStatus('Card copied.')
-                            } catch { setStatus('Error copying card.') }
+                              setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
+                              setSelectedCard(copy)
+                              setSavedCardJson(JSON.stringify(copy))
+                            } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
                           }}>
                             <Copy className="h-4 w-4" />
                           </Button>

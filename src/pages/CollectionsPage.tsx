@@ -164,26 +164,34 @@ export default function CollectionsPage() {
 
   const handleCreateCollection = async () => {
     if (!storage || !gameId || templates.length === 0) return
+    const name = `Collection ${collections.length + 1}`
+    const optimistic = { id: `temp-${Date.now()}`, name, templateId: templates[0].id }
+    setCollections(prev => [...prev, optimistic])
+    setExpandedCollection(optimistic.id)
     try {
-      const name = `Collection ${collections.length + 1}`
       const created = await storage.createCollection(gameId, name, templates[0].id)
-      setCollections([...collections, created])
+      setCollections(prev => prev.map(c => c.id === optimistic.id ? created : c))
       setExpandedCollection(created.id)
       if (gameId) localStorage.setItem(`game:${gameId}:selectedCollection`, created.id)
     } catch {
+      setCollections(prev => prev.filter(c => c.id !== optimistic.id))
       setStatus('Error creating collection.')
     }
   }
 
   const handleCreateTemplate = async () => {
     if (!storage || !gameId) return
+    const name = `Template ${templates.length + 1}`
+    const optimistic = { version: 2 as const, id: `temp-${Date.now()}`, name, width: 750, height: 1050, radius: 28, bleed: 18, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
+    setTemplates(prev => [...prev, optimistic])
+    setSelectedTemplateId(optimistic.id)
     try {
-      const name = `Template ${templates.length + 1}`
       const created = await storage.createTemplate(gameId, name)
-      setTemplates([...templates, created])
+      setTemplates(prev => prev.map(t => t.id === optimistic.id ? created : t))
       setSelectedTemplateId(created.id)
       if (gameId) localStorage.setItem(`game:${gameId}:selectedTemplate`, created.id)
     } catch {
+      setTemplates(prev => prev.filter(t => t.id !== optimistic.id))
       setStatus('Error creating template.')
     }
   }
@@ -409,12 +417,11 @@ export default function CollectionsPage() {
                           ))}
                         </select>
                         <ConfirmButton onConfirm={async () => {
-                          try {
-                            await storage.deleteCollection(gameId, col.id)
-                            setCollections(collections.filter((c) => c.id !== col.id))
-                          } catch {
-                            setStatus('Error deleting collection.')
-                          }
+                          const prev = collections
+                          setCollections(collections.filter((c) => c.id !== col.id))
+                          setExpandedCollection(null)
+                          try { await storage.deleteCollection(gameId, col.id) }
+                          catch { setCollections(prev); setStatus('Error deleting collection.') }
                         }} />
                       </div>
                     )}
@@ -437,11 +444,14 @@ export default function CollectionsPage() {
                         className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
                         title="Copy"
                         onClick={async () => {
+                          const card = collectionCards.find(c => c.id === selectedCardId)
+                          if (!card) return
+                          const optimistic = { ...card, id: `temp-${Date.now()}`, name: `New Card ${collectionCards.length + 1}` }
+                          setCollectionCards(prev => [...prev, optimistic])
                           try {
-                            await storage.copyCard(gameId, expandedCollection, selectedCardId)
-                            storage.listCards(gameId, expandedCollection).then(setCollectionCards)
-                            setStatus('Card copied.')
-                          } catch { setStatus('Error copying card.') }
+                            const copy = await storage.copyCard(gameId, expandedCollection, selectedCardId)
+                            setCollectionCards(prev => prev.map(c => c.id === optimistic.id ? copy : c))
+                          } catch { setCollectionCards(prev => prev.filter(c => c.id !== optimistic.id)); setStatus('Error copying card.') }
                         }}
                       >
                         <Copy className="h-4 w-4" />
@@ -462,14 +472,15 @@ export default function CollectionsPage() {
                       <ConfirmButton
                         iconOnly
                         onConfirm={async () => {
+                          const prev = collectionCards
+                          const prevId = selectedCardId
+                          const updated = collectionCards.filter(c => c.id !== selectedCardId)
+                          setCollectionCards(updated)
+                          if (updated.length > 0) setSelectedCardId(updated[0].id)
+                          else { setSelectedCardId(null); setShowBigPreview(false) }
                           try {
-                            await storage.deleteCard(gameId, expandedCollection, selectedCardId)
-                            const updated = collectionCards.filter(c => c.id !== selectedCardId)
-                            setCollectionCards(updated)
-                            if (updated.length > 0) setSelectedCardId(updated[0].id)
-                            else { setSelectedCardId(null); setShowBigPreview(false) }
-                            setStatus('Card deleted.')
-                          } catch { setStatus('Error deleting card.') }
+                            await storage.deleteCard(gameId, expandedCollection, prevId)
+                          } catch { setCollectionCards(prev); setSelectedCardId(prevId); setStatus('Error deleting card.') }
                         }}
                       />
                     </div>
@@ -542,14 +553,26 @@ export default function CollectionsPage() {
                     {selectedCardId && (
                       <>
                         <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy"
-                          onClick={async () => { try { await storage.copyCard(gameId, expandedCollection, selectedCardId); storage.listCards(gameId, expandedCollection).then(setCollectionCards); setStatus('Card copied.') } catch { setStatus('Error copying card.') } }}>
+                          onClick={async () => {
+                            const card = collectionCards.find(c => c.id === selectedCardId)
+                            if (!card) return
+                            const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${collectionCards.length + 1}` }
+                            setCollectionCards(prev => [...prev, opt])
+                            try { const copy = await storage.copyCard(gameId, expandedCollection, selectedCardId); setCollectionCards(prev => prev.map(c => c.id === opt.id ? copy : c)) }
+                            catch { setCollectionCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
+                          }}>
                           <Copy className="h-4 w-4" />
                         </button>
                         <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
                           onClick={() => { if (gameId && expandedCollection) { if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); localStorage.setItem(`editor:${gameId}:tab`, 'cards') }; navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
                           <Pencil className="h-4 w-4" />
                         </button>
-                        <ConfirmButton iconOnly onConfirm={async () => { try { await storage.deleteCard(gameId, expandedCollection, selectedCardId); setCollectionCards(collectionCards.filter(c => c.id !== selectedCardId)); setSelectedCardId(null); setStatus('Card deleted.') } catch { setStatus('Error deleting card.') } }} />
+                        <ConfirmButton iconOnly onConfirm={async () => {
+                          const prev = collectionCards; const prevId = selectedCardId
+                          setCollectionCards(collectionCards.filter(c => c.id !== selectedCardId)); setSelectedCardId(null)
+                          try { await storage.deleteCard(gameId, expandedCollection, prevId) }
+                          catch { setCollectionCards(prev); setSelectedCardId(prevId); setStatus('Error deleting card.') }
+                        }} />
                       </>
                     )}
                     <div className="ml-auto flex items-center gap-1">
@@ -614,21 +637,21 @@ export default function CollectionsPage() {
                       {selectedTemplateId === tpl.id && (
                         <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
                           <Button size="sm" variant="outline" onClick={async () => {
+                            const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Template ${templates.length + 1}` }
+                            setTemplates(prev => [...prev, opt])
                             try {
                               const copy = await storage.copyTemplate(gameId, tpl.id)
-                              setTemplates([...templates, copy])
-                            } catch { setStatus('Error copying template.') }
+                              setTemplates(prev => prev.map(t => t.id === opt.id ? copy : t))
+                            } catch { setTemplates(prev => prev.filter(t => t.id !== opt.id)); setStatus('Error copying template.') }
                           }}>
                             <Copy className="h-4 w-4" />
                           </Button>
                           <ConfirmButton onConfirm={async () => {
-                            try {
-                              await storage.deleteTemplate(gameId, tpl.id)
-                              setTemplates(templates.filter((t) => t.id !== tpl.id))
-                              if (selectedTemplateId === tpl.id) setSelectedTemplateId(null)
-                            } catch (err: any) {
-                              setStatus(err.message || 'Error deleting template.')
-                            }
+                            const prev = templates
+                            setTemplates(templates.filter((t) => t.id !== tpl.id))
+                            if (selectedTemplateId === tpl.id) setSelectedTemplateId(null)
+                            try { await storage.deleteTemplate(gameId, tpl.id) }
+                            catch (err: any) { setTemplates(prev); setStatus(err.message || 'Error deleting template.') }
                           }} />
                         </div>
                       )}

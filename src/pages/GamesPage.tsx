@@ -147,11 +147,13 @@ export default function GamesPage() {
                         <Printer className="h-4 w-4" />
                       </Button>
                       <ConfirmButton onConfirm={async () => {
+                        const prev = games
+                        setGames(games.filter(g => g.id !== game.id))
+                        setExpandedGame(null)
                         try {
                           await storage.deleteGame(game.id)
-                          await loadGames(storage)
-                          setStatus('Game deleted.')
                         } catch {
+                          setGames(prev)
                           setStatus('Error deleting game.')
                         }
                       }} />
