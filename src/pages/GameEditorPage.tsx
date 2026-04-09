@@ -503,11 +503,17 @@ export default function GameEditorPage() {
                                                 if (!file) return
                                                 try {
                                                   setStatus('Uploading image...')
-                                                  const url = await storage.uploadImage(gameId, file)
+                                                  let url: string
+                                                  try {
+                                                    url = await storage.uploadImage(gameId, file)
+                                                  } catch {
+                                                    // Fallback to data URI if storage upload fails
+                                                    url = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(file) })
+                                                  }
                                                   setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldId]: url } }))
                                                   setStatus('Image uploaded.')
-                                                } catch {
-                                                  setStatus('Error uploading image.')
+                                                } catch (err: any) {
+                                                  setStatus(`Error: ${err.message || 'Upload failed'}`)
                                                 }
                                               }
                                               input.click()
