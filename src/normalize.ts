@@ -55,7 +55,7 @@ const normalizeFonts = (fonts: unknown): Record<string, FontSlot> => {
 const normalizeAnchorPoint = (anchor: unknown): AnchorPoint => {
     const obj = anchor && typeof anchor === "object" ? anchor as Record<string, unknown> : {};
     const normalizeCoord = (coord: unknown): 0 | 0.5 | 1 => {
-        const num = safeNumber(coord, 0);
+        const num = safeNumber(coord, 0.5);
         if (num >= 0.75)
             return 1;
         if (num >= 0.25)

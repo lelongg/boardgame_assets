@@ -134,10 +134,10 @@ test("normalizeTemplate handles item with empty anchor points", () => {
     }
   });
   const item = template.root.items[0];
-  assert.equal(item.anchor.x, 0);
-  assert.equal(item.anchor.y, 0);
-  assert.equal(item.attach.anchor.x, 0);
-  assert.equal(item.attach.anchor.y, 0);
+  assert.equal(item.anchor.x, 0.5);
+  assert.equal(item.anchor.y, 0.5);
+  assert.equal(item.attach.anchor.x, 0.5);
+  assert.equal(item.attach.anchor.y, 0.5);
 });
 
 test("normalizeTemplate handles text item with empty values", () => {
