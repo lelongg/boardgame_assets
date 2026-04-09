@@ -99,6 +99,26 @@ const layoutSections = (section: CardTemplateSection, rect: Rect, result: Layout
     return;
   }
 
+  if (section.layout === "grid") {
+    const cols = section.columns ?? 2;
+    const rows = Math.ceil(section.children.length / cols);
+    const gapX = section.gap;
+    const gapY = section.gap;
+    const cellW = (rect.width - (cols - 1) * gapX) / cols;
+    const cellH = (rect.height - (rows - 1) * gapY) / rows;
+    section.children.forEach((child, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      layoutSections(child, {
+        x: rect.x + col * (cellW + gapX),
+        y: rect.y + row * (cellH + gapY),
+        width: cellW,
+        height: cellH,
+      }, result);
+    });
+    return;
+  }
+
   const gapTotal = Math.max(section.children.length - 1, 0) * section.gap;
   const available = section.layout === "row" ? rect.width : rect.height;
   const totalPct = section.children.reduce((sum, child) => sum + (child.sizePct || 0), 0) || 100;

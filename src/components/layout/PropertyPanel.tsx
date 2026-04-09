@@ -17,6 +17,7 @@ const SECTION_PROPERTIES: PropertyDef[] = [
   { key: 'layout', label: 'Layout' },
   { key: 'sizePct', label: 'Size %' },
   { key: 'gap', label: 'Gap' },
+  { key: 'columns', label: 'Columns' },
 ]
 
 const ROOT_PROPERTIES: PropertyDef[] = [

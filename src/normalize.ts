@@ -143,7 +143,8 @@ const normalizeSection = (section: unknown): CardTemplateSection => {
     const obj = section && typeof section === "object" ? section as Record<string, unknown> : {};
     const id = safeString(obj.id, `section-${Date.now()}`);
     const name = safeString(obj.name, "New Section");
-    const layout = safeEnum(obj.layout, ["row", "column", "stack"] as const, "stack" as const);
+    const layout = safeEnum(obj.layout, ["row", "column", "stack", "grid"] as const, "stack" as const);
+    const columns = typeof obj.columns === 'number' && obj.columns >= 1 ? Math.round(obj.columns) : 2;
     const sizePct = safeNumber(obj.sizePct, 100);
     const gap = safeNumber(obj.gap, 0);
     const children = Array.isArray(obj.children)
@@ -156,6 +157,7 @@ const normalizeSection = (section: unknown): CardTemplateSection => {
         id,
         name,
         layout,
+        columns,
         sizePct,
         gap,
         children,

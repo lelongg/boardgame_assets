@@ -39,7 +39,9 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
       { value: 'row', label: 'Row' },
       { value: 'column', label: 'Column' },
       { value: 'stack', label: 'Stack' },
+      { value: 'grid', label: 'Grid' },
     ]}
+    case 'columns': return { type: 'number', min: 1, max: 12, step: 1 }
     case 'align': return { type: 'select', options: [
       { value: 'left', label: 'Left' },
       { value: 'center', label: 'Center' },

@@ -59,7 +59,8 @@ export type CardTemplateItem =
 export type CardTemplateSection = {
   id: string;
   name: string;
-  layout: "row" | "column" | "stack";
+  layout: "row" | "column" | "stack" | "grid";
+  columns?: number;
   sizePct: number;
   gap: number;
   children: CardTemplateSection[];
