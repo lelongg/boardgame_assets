@@ -31,6 +31,40 @@ const escape = (value: unknown): string =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
+type StyledRun = { text: string; bold?: boolean; italic?: boolean };
+type StyledLine = StyledRun[];
+
+const parseRichText = (html: string): StyledLine[] => {
+  if (!/<(?:p|strong|em|\/p|\/strong|\/em)[ >]/.test(html)) {
+    return html.split('\n').map(line => [{ text: line }]);
+  }
+  const lines: StyledLine[] = [];
+  const blocks = html.match(/<p>([\s\S]*?)<\/p>/g);
+  const parts = blocks ? blocks.map(b => b.replace(/<\/?p>/g, '')) : [html];
+  for (const part of parts) {
+    const runs: StyledRun[] = [];
+    const regex = /(<(?:strong|em|\/strong|\/em)>)|([^<]+)/g;
+    let bold = false, italic = false, match;
+    while ((match = regex.exec(part)) !== null) {
+      if (match[1]) { const tag = match[1]; if (tag === '<strong>') bold = true; else if (tag === '</strong>') bold = false; else if (tag === '<em>') italic = true; else if (tag === '</em>') italic = false; }
+      else if (match[2]) { runs.push({ text: match[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'), bold, italic }); }
+    }
+    lines.push(runs.length ? runs : [{ text: '' }]);
+  }
+  return lines.length ? lines : [[{ text: '' }]];
+};
+
+const renderStyledLine = (runs: StyledRun[]): string => {
+  return runs.map(run => {
+    const text = escape(run.text);
+    if (!text && runs.length === 1) return '&#160;';
+    let result = text;
+    if (run.bold) result = `<tspan font-weight="bold">${result}</tspan>`;
+    if (run.italic) result = `<tspan font-style="italic">${result}</tspan>`;
+    return result;
+  }).join('');
+};
+
 // Selection highlight styling
 const SELECTION_COLOR = "#c65a32";
 const SELECTION_STROKE_WIDTH = "2.5";
@@ -263,7 +297,15 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       const color = escape(item.color ?? palette.ink);
       const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
       const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
-      return `<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`;
+      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"`;
+      const styledLines = parseRichText(value);
+      if (styledLines.length === 1) {
+        return `<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`;
+      }
+      const tspans = styledLines.map((line, i) =>
+        `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
+      ).join('');
+      return `<text ${baseAttrs}>${tspans}</text>`;
     })
     .join("");
 
@@ -373,7 +415,15 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
     const color = escape(item.color ?? palette.ink);
     const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
     const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
-    return `<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`;
+    const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"`;
+    const styledLines = parseRichText(value);
+    if (styledLines.length === 1) {
+      return `<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`;
+    }
+    const tspans = styledLines.map((line, i) =>
+      `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
+    ).join('');
+    return `<text ${baseAttrs}>${tspans}</text>`;
   }).join("");
 
   // Section wireframes

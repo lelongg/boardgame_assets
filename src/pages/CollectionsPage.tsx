@@ -450,7 +450,10 @@ export default function CollectionsPage() {
                         className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
                         title="Edit"
                         onClick={() => {
-                          if (selectedCardId && gameId && expandedCollection) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId)
+                          if (gameId && expandedCollection) {
+                            if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId)
+                            localStorage.setItem(`editor:${gameId}:tab`, 'cards')
+                          }
                           navigate(`/game/${gameId}/collection/${expandedCollection}`)
                         }}
                       >
@@ -543,7 +546,7 @@ export default function CollectionsPage() {
                           <Copy className="h-4 w-4" />
                         </button>
                         <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
-                          onClick={() => { if (selectedCardId && gameId && expandedCollection) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
+                          onClick={() => { if (gameId && expandedCollection) { if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); localStorage.setItem(`editor:${gameId}:tab`, 'cards') }; navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
                           <Pencil className="h-4 w-4" />
                         </button>
                         <ConfirmButton iconOnly onConfirm={async () => { try { await storage.deleteCard(gameId, expandedCollection, selectedCardId); setCollectionCards(collectionCards.filter(c => c.id !== selectedCardId)); setSelectedCardId(null); setStatus('Card deleted.') } catch { setStatus('Error deleting card.') } }} />
