@@ -24,6 +24,10 @@ type FieldMeta = {
 
 const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?: string): FieldMeta => {
   switch (property) {
+    case 'width': return { type: 'number', min: 50, max: 2000, step: 1 }
+    case 'height': return { type: 'number', min: 50, max: 2000, step: 1 }
+    case 'radius': return { type: 'number', min: 0, max: 100, step: 1 }
+    case 'bleed': return { type: 'number', min: 0, max: 50, step: 1 }
     case 'sizePct': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'gap': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'fontSize': return { type: 'number', min: 8, max: 120, step: 1 }

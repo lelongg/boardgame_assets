@@ -19,6 +19,16 @@ const SECTION_PROPERTIES: PropertyDef[] = [
   { key: 'gap', label: 'Gap' },
 ]
 
+const ROOT_PROPERTIES: PropertyDef[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'width', label: 'Width' },
+  { key: 'height', label: 'Height' },
+  { key: 'radius', label: 'Radius' },
+  { key: 'bleed', label: 'Bleed' },
+  { key: 'layout', label: 'Layout' },
+  { key: 'gap', label: 'Gap' },
+]
+
 const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
   { key: 'name', label: 'Name' },
   { key: 'widthPct', label: 'Width %' },
@@ -52,8 +62,8 @@ const IMAGE_PROPERTIES: PropertyDef[] = [
   { key: 'cornerRadius', label: 'Corner Radius' },
 ]
 
-const getPropertiesForNode = (kind: 'section' | 'item', node: any): PropertyDef[] => {
-  if (kind === 'section') return SECTION_PROPERTIES
+const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boolean): PropertyDef[] => {
+  if (kind === 'section') return isRoot ? ROOT_PROPERTIES : SECTION_PROPERTIES
   const itemType = node.type ?? 'text'
   switch (itemType) {
     case 'text': return [...COMMON_ITEM_PROPERTIES, ...TEXT_PROPERTIES]
@@ -81,13 +91,17 @@ export default function PropertyPanel({
   const kind = getNodeKind(template.root, selectedNodeId)
   if (!kind) return null
 
+  const isRoot = selectedNodeId === template.root.id
   const node = kind === 'section'
     ? findSectionById(template.root, selectedNodeId)
     : findItemById(template.root, selectedNodeId)
   if (!node) return null
 
-  const properties = getPropertiesForNode(kind, node)
-  const currentValue = selectedProperty ? getPropertyValue(node, selectedProperty) : null
+  const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
+  const properties = getPropertiesForNode(kind, node, isRoot)
+  const currentValue = selectedProperty
+    ? (TEMPLATE_KEYS.has(selectedProperty) ? (template as any)[selectedProperty] : getPropertyValue(node, selectedProperty))
+    : null
 
   return (
     <div className="space-y-3">

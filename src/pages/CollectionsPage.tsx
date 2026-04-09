@@ -221,7 +221,10 @@ export default function CollectionsPage() {
       node = findItem(t.root)
     }
     if (!node) return
-    if (property === 'attachAnchor') {
+    const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
+    if (TEMPLATE_KEYS.has(property)) {
+      (t as any)[property] = value
+    } else if (property === 'attachAnchor') {
       if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
       node.attach.anchor = value
     } else if (property === 'attachTargetId') {

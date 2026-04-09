@@ -248,7 +248,9 @@ export default function GameEditorPage() {
       node = find(t.root)
     }
     if (!node) return
-    if (property === 'attachAnchor') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.anchor = value }
+    const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
+    if (TEMPLATE_KEYS.has(property)) { (t as any)[property] = value }
+    else if (property === 'attachAnchor') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.anchor = value }
     else if (property === 'attachTargetId') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.targetId = value; node.attach.targetType = getNodeKind(t.root, value as string) ?? 'section' }
     else node[property] = value
     handleTemplateSave(t)
