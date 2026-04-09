@@ -27,7 +27,7 @@ export default function CollectionsPage() {
     try { return Number(localStorage.getItem('galleryCols')) || 3 } catch { return 3 }
   })
   const [showBigPreview, setShowBigPreview] = useState(false)
-  const [cacheBuster, setCacheBuster] = useState(Date.now())
+  const [cardPreviews, setCardPreviews] = useState<Record<string, string>>({})
   const carouselRefs = useRef<Map<string, HTMLElement>>(new Map())
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(() => {
     try { return localStorage.getItem(`game:${gameId}:selectedTemplate`) } catch { return null }
@@ -91,6 +91,45 @@ export default function CollectionsPage() {
     updatePreview()
   }, [selectedTemplate, showSections, showItemWires, selectedNodeId])
 
+  // Render card previews client-side
+  useEffect(() => {
+    if (!collectionCards.length || !expandedCollection || !templates.length) { setCardPreviews({}); return }
+    const col = collections.find(c => c.id === expandedCollection)
+    const tpl = col ? templates.find(t => t.id === col.templateId) : null
+    if (!tpl) { setCardPreviews({}); return }
+    let cancelled = false
+    const renderAll = async () => {
+      const { renderCardSvg } = await import('../render')
+      const previews: Record<string, string> = {}
+      for (const card of collectionCards) {
+        if (cancelled) return
+        let svg = renderCardSvg(card, tpl)
+        // Embed images as base64
+        const matches = svg.match(/href="((?:\/api\/|data:)[^"]+)"/g) || []
+        for (const m of matches) {
+          const url = m.slice(6, -1)
+          if (url.startsWith('data:')) continue
+          try {
+            const resp = await fetch(url)
+            if (resp.ok) {
+              const blob = await resp.blob()
+              const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(blob) })
+              svg = svg.replace(`href="${url}"`, `href="${b64}"`)
+            }
+          } catch { /* skip */ }
+        }
+        const blob = new Blob([svg], { type: 'image/svg+xml' })
+        previews[card.id] = URL.createObjectURL(blob)
+      }
+      if (!cancelled) setCardPreviews(prev => {
+        Object.values(prev).forEach(u => URL.revokeObjectURL(u))
+        return previews
+      })
+    }
+    renderAll()
+    return () => { cancelled = true }
+  }, [collectionCards, collections, templates, expandedCollection])
+
   // Load cards when a collection is selected
   useEffect(() => {
     if (!expandedCollection || !storage || !gameId) { setCollectionCards([]); setSelectedCardId(null); return; }
@@ -116,7 +155,7 @@ export default function CollectionsPage() {
       setGame(gameData)
       setCollections(colList)
       setTemplates(tplList)
-      setCacheBuster(Date.now())
+      setCardPreviews({})
       setStatus('Ready.')
     } catch {
       setStatus('Error loading game.')
@@ -449,7 +488,7 @@ export default function CollectionsPage() {
                     </button>
                     <div className="flex-1 rounded-lg border bg-card p-4 flex justify-center">
                       <img
-                        src={`/api/games/${gameId}/collections/${expandedCollection}/cards/${selectedCardId}.svg?v=${cacheBuster}`}
+                        src={selectedCardId ? cardPreviews[selectedCardId] || '' : ''}
                         alt="Card preview"
                         className="max-w-full max-h-[60vh]"
                       />
@@ -476,7 +515,7 @@ export default function CollectionsPage() {
                         onClick={() => setSelectedCardId(card.id)}
                       >
                         <img
-                          src={`/api/games/${gameId}/collections/${expandedCollection}/cards/${card.id}.svg?v=${cacheBuster}`}
+                          src={cardPreviews[card.id] || ''}
                           alt={card.name}
                           className="w-full"
                         />
@@ -528,7 +567,7 @@ export default function CollectionsPage() {
                         className={`relative rounded-md cursor-pointer transition-all ${selectedCardId === card.id ? 'outline outline-2 outline-primary' : 'outline outline-1 outline-border'}`}
                         onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}>
                         <div className="rounded-t-md overflow-hidden" style={{ aspectRatio: '5 / 7' }}>
-                          <img src={`/api/games/${gameId}/collections/${expandedCollection}/cards/${card.id}.svg?v=${cacheBuster}`} alt={card.name} className="w-full h-full" />
+                          <img src={cardPreviews[card.id] || ''} alt={card.name} className="w-full h-full" />
                         </div>
                         <p className="px-2 py-1 text-xs text-center text-muted-foreground truncate">{card.name}</p>
                       </div>
