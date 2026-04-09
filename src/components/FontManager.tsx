@@ -116,7 +116,7 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
             <span className="ml-2 text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
           </div>
           {selectedFont === key && (
-            <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex gap-2 border-t mx-2 px-1 py-2" onClick={(e) => e.stopPropagation()}>
               <ConfirmButton onConfirm={() => handleDelete(key)} disabled={loading} />
             </div>
           )}

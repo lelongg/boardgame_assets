@@ -398,7 +398,7 @@ export default function CollectionsPage() {
                       </span>
                     </div>
                     {expandedCollection === col.id && (
-                      <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-2 border-t mx-2 px-1 py-2" onClick={(e) => e.stopPropagation()}>
                         <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit">
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -640,7 +640,7 @@ export default function CollectionsPage() {
                         <span className="ml-2 text-xs text-muted-foreground">{tpl.width}×{tpl.height}</span>
                       </div>
                       {selectedTemplateId === tpl.id && (
-                        <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex gap-2 border-t mx-2 px-1 py-2" onClick={(e) => e.stopPropagation()}>
                           <Button size="sm" variant="outline" onClick={async () => {
                             const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Template ${templates.length + 1}` }
                             setTemplates(prev => [...prev, opt])

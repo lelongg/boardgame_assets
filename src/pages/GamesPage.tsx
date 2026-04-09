@@ -128,7 +128,7 @@ export default function GamesPage() {
                     {game.name}
                   </div>
                   {expandedGame === game.id && (
-                    <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-2 border-t mx-2 px-1 py-2" onClick={(e) => e.stopPropagation()}>
                       <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}`)} title="Edit">
                         <Pencil className="h-4 w-4" />
                       </Button>

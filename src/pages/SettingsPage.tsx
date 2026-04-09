@@ -49,17 +49,17 @@ export default function SettingsPage() {
     setFromGames([])
     setSelectedGames(new Set())
     setMigrationStatus(null)
+    const prev = getProvider()
     try {
-      const prev = getProvider()
       setProvider(backendKey)
       const storage = await createStorage()
-      setProvider(prev)
       const games = await storage.listGames()
       setFromGames(games)
     } catch (err) {
       console.error('Failed to load games from backend:', err)
       setMigrationStatus('Failed to load games from source backend.')
     } finally {
+      setProvider(prev)
       setLoadingFromGames(false)
     }
   }
@@ -83,16 +83,13 @@ export default function SettingsPage() {
     setMigrating(true)
     setMigrationStatus(`Copying ${selectedGames.size} game(s)...`)
 
+    const prev = getProvider()
     try {
-      const prev = getProvider()
-
       setProvider(migrateFrom)
       const srcStorage = await createStorage()
-      setProvider(prev)
 
       setProvider(migrateTo)
       const dstStorage = await createStorage()
-      setProvider(prev)
 
       let copied = 0
       for (const gameId of selectedGames) {
@@ -128,6 +125,7 @@ export default function SettingsPage() {
       console.error('Migration failed:', err)
       setMigrationStatus('Migration failed. Check console for details.')
     } finally {
+      setProvider(prev)
       setMigrating(false)
     }
   }

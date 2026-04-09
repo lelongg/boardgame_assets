@@ -387,7 +387,7 @@ export default function GameEditorPage() {
           </TabsList>
 
           <TabsContent value="cards">
-            <div className="grid grid-cols-1 md:grid-cols-[240px_1fr_360px] gap-6 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_360px] gap-6 items-start">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base">Cards</CardTitle>
@@ -407,7 +407,7 @@ export default function GameEditorPage() {
                         {card.name}
                       </button>
                       {selectedCard?.id === card.id && (
-                        <div className="flex gap-2 border-t px-3 py-2">
+                        <div className="flex gap-2 border-t mx-2 px-1 py-2">
                           <Button size="sm" variant="outline" onClick={handleSaveCard} disabled={!isCardDirty} title="Save">
                             <Save className="h-4 w-4" />
                           </Button>
