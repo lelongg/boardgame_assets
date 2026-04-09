@@ -577,7 +577,7 @@ app.post("/api/games/:gameId/fonts/google", async (c) => {
 app.post("/api/games/:gameId/fonts/upload", async (c) => {
   const gameId = c.req.param("gameId");
   const disposition = c.req.header("content-disposition") ?? "";
-  const filenameMatch = disposition.match(/filename="?([^";\s]+)"?/);
+  const filenameMatch = disposition.match(/filename="([^"]+)"/) || disposition.match(/filename=(\S+)/);
   const originalName = filenameMatch ? filenameMatch[1] : "font.woff2";
   const slotName = c.req.header("x-slot-name");
   const ext = path.extname(originalName).toLowerCase();
@@ -622,7 +622,7 @@ app.delete("/api/games/:gameId/fonts/:file", (c) => {
 app.post("/api/games/:gameId/images/upload", async (c) => {
   const gameId = c.req.param("gameId");
   const disposition = c.req.header("content-disposition") ?? "";
-  const nameMatch = disposition.match(/filename="?([^";\s]+)"?/);
+  const nameMatch = disposition.match(/filename="([^"]+)"/) || disposition.match(/filename=(\S+)/);
   const originalName = nameMatch ? nameMatch[1] : `image-${Date.now()}.png`;
   const ext = (path.extname(originalName) || ".png").toLowerCase();
   if (![".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"].includes(ext)) {
