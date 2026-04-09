@@ -39,6 +39,18 @@ export const createGoogleDriveStorage = (options = {}) => {
   const folderIds = new Map();
   // File ID cache: "path/file.json" -> driveId
   const fileIds = new Map();
+  // Content cache: driveId -> { data, ts }
+  const contentCache = new Map();
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  const getCached = (fid) => {
+    const entry = contentCache.get(fid);
+    if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
+    return undefined;
+  };
+  const setCache = (fid, data) => { contentCache.set(fid, { data, ts: Date.now() }); };
+  const invalidateCache = (fid) => { contentCache.delete(fid); };
+  const invalidateAll = () => { contentCache.clear(); };
 
   // --- Auth ---
 
@@ -102,7 +114,7 @@ export const createGoogleDriveStorage = (options = {}) => {
   const signOut = async () => {
     if (accessToken) window.google.accounts.oauth2.revoke(accessToken, () => {});
     accessToken = ""; tokenExpiry = 0;
-    clearToken(); folderIds.clear(); fileIds.clear();
+    clearToken(); folderIds.clear(); fileIds.clear(); contentCache.clear(); listingCache.clear();
   };
 
   const getToken = async () => {
@@ -128,23 +140,49 @@ export const createGoogleDriveStorage = (options = {}) => {
     return (await drvJson(url)).files ?? [];
   };
 
+  // Listing caches
+  const listingCache = new Map();
+  const getCachedListing = (key) => {
+    const entry = listingCache.get(key);
+    if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
+    return undefined;
+  };
+  const setCachedListing = (key, data) => { listingCache.set(key, { data, ts: Date.now() }); };
+
   const filesInFolder = async (fid, mime = "application/json") => {
+    const key = `files:${fid}:${mime}`;
+    const cached = getCachedListing(key);
+    if (cached) return cached;
     const q = `mimeType='${escQ(mime)}' and '${escQ(fid)}' in parents and trashed=false`;
-    return (await drvJson(`${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)`)).files ?? [];
+    const files = (await drvJson(`${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)`)).files ?? [];
+    setCachedListing(key, files);
+    return files;
   };
 
   const foldersIn = async (fid) => {
+    const key = `folders:${fid}`;
+    const cached = getCachedListing(key);
+    if (cached) return cached;
     const q = `mimeType='application/vnd.google-apps.folder' and '${escQ(fid)}' in parents and appProperties has { key='app' and value='${escQ(appTag)}' } and trashed=false`;
-    return (await drvJson(`${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)`)).files ?? [];
+    const folders = (await drvJson(`${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)`)).files ?? [];
+    setCachedListing(key, folders);
+    return folders;
   };
 
-  const readFile = async (fid) => (await drv(`${DRIVE_API}/files/${fid}?alt=media`)).json();
+  const readFile = async (fid) => {
+    const cached = getCached(fid);
+    if (cached !== undefined) return cached;
+    const data = await (await drv(`${DRIVE_API}/files/${fid}?alt=media`)).json();
+    setCache(fid, data);
+    return data;
+  };
 
   const writeFile = async (fid, content) => {
     await drv(`${DRIVE_UPLOAD}/files/${fid}?uploadType=media`, {
       method: "PATCH", headers: { "Content-Type": "application/json; charset=UTF-8" },
       body: JSON.stringify(content, null, 2)
     });
+    setCache(fid, content);
   };
 
   const mkFile = async (name, content, parentId, props = {}) => {
@@ -152,15 +190,22 @@ export const createGoogleDriveStorage = (options = {}) => {
     const meta = { name, mimeType: "application/json", appProperties: { app: appTag, ...props }, ...(parentId ? { parents: [parentId] } : {}) };
     const body = [`--${b}`, "Content-Type: application/json; charset=UTF-8", "", JSON.stringify(meta), `--${b}`, "Content-Type: application/json; charset=UTF-8", "", JSON.stringify(content, null, 2), `--${b}--`].join("\r\n");
     const r = await (await drv(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${b}` }, body })).json();
+    if (parentId) listingCache.delete(`files:${parentId}:application/json`);
+    if (content) setCache(r.id, content);
     return r.id;
   };
 
   const mkFolder = async (name, parentId, props = {}) => {
     const meta = { name, mimeType: "application/vnd.google-apps.folder", appProperties: { app: appTag, ...props }, ...(parentId ? { parents: [parentId] } : {}) };
-    return (await drvJson(`${DRIVE_API}/files?fields=id`, { method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" }, body: JSON.stringify(meta) })).id;
+    const r = (await drvJson(`${DRIVE_API}/files?fields=id`, { method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" }, body: JSON.stringify(meta) })).id;
+    if (parentId) listingCache.delete(`folders:${parentId}`);
+    return r;
   };
 
-  const rmFile = async (fid) => { await drv(`${DRIVE_API}/files/${fid}`, { method: "DELETE" }); };
+  const rmFile = async (fid) => {
+    await drv(`${DRIVE_API}/files/${fid}`, { method: "DELETE" });
+    invalidateCache(fid);
+  };
 
   const mkBinaryFile = async (name, mimeType, data, parentId, props = {}) => {
     const b = `b-${Math.random().toString(16).slice(2)}`;
