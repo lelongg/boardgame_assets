@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pencil, Plus, Printer, Download } from 'lucide-react'
+import { Pencil, Plus, Printer, Download, Upload, Archive } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
 import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
+import { exportGameZip, importGameZip } from '../gameZip'
 
 export default function GamesPage() {
   const [games, setGames] = useState<any[]>([])
@@ -74,6 +75,43 @@ export default function GamesPage() {
     }
   }
 
+  const handleExport = async (gameId: string) => {
+    if (!storage) return
+    setStatus('Exporting...')
+    try {
+      const blob = await exportGameZip(storage, gameId, setStatus)
+      const game = games.find(g => g.id === gameId)
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `${game?.name ?? gameId}.zip`
+      a.click()
+      URL.revokeObjectURL(a.href)
+      setStatus('Export complete.')
+    } catch (err: any) {
+      setStatus(`Export error: ${err.message}`)
+    }
+  }
+
+  const handleImport = () => {
+    if (!storage) return
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.zip'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      setStatus('Importing...')
+      try {
+        await importGameZip(storage, file, setStatus)
+        await loadGames(storage)
+        setStatus('Import complete.')
+      } catch (err: any) {
+        setStatus(`Import error: ${err.message}`)
+      }
+    }
+    input.click()
+  }
+
   return (
     <PageLayout
       header={<>
@@ -99,9 +137,14 @@ export default function GamesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Games</CardTitle>
-            <Button size="sm" variant="ghost" onClick={handleCreateGame} title="New game">
-              <Plus className="h-4 w-4" />
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" variant="ghost" onClick={handleImport} title="Import zip">
+                <Upload className="h-4 w-4" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleCreateGame} title="New game">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4 overflow-y-auto max-h-[60vh]">
             <div className="space-y-2">
@@ -119,6 +162,9 @@ export default function GamesPage() {
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/export/tts`)} title="Export for Tabletop Simulator">
                       <Download className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleExport(game.id)} title="Download zip">
+                      <Archive className="h-4 w-4" />
                     </Button>
                     <ConfirmButton onConfirm={async () => {
                       const prev = games
