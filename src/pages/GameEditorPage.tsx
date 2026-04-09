@@ -425,9 +425,9 @@ export default function GameEditorPage() {
                           if (fields.length === 0) return null
                           return (
                             <div className="space-y-3">
-                              {fields.map(({ fieldId, itemName, itemType }) => (
+                              {fields.map(({ fieldId, itemType }) => (
                                 <div key={fieldId} className="space-y-1">
-                                  <Label className="text-sm">{itemName} <span className="text-muted-foreground font-normal">({fieldId})</span></Label>
+                                  <Label className="text-sm">{fieldId} <span className="text-muted-foreground font-normal">({itemType})</span></Label>
                                   {itemType === 'image' ? (
                                     <div className="space-y-2">
                                       <div className="relative">
