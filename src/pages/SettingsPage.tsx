@@ -16,7 +16,8 @@ type BackendKey = (typeof BACKENDS)[number]['key']
 
 export default function SettingsPage() {
   const navigate = useNavigate()
-  const [currentProvider, setCurrentProvider] = useState<string>(getProvider())
+  const [savedProvider] = useState<string>(getProvider())
+  const [selectedProvider, setSelectedProvider] = useState<string>(getProvider())
   const [serverReachable, setServerReachable] = useState<boolean | null>(null)
 
   // Migration state
@@ -33,7 +34,7 @@ export default function SettingsPage() {
   const [driveStorage, setDriveStorage] = useState<any>(null)
 
   useEffect(() => {
-    if (currentProvider !== 'googleDrive') return
+    if (selectedProvider !== 'googleDrive') return
     const initDrive = async () => {
       try {
         const s = await createStorageFor('googleDrive')
@@ -42,7 +43,7 @@ export default function SettingsPage() {
       } catch { /* skip */ }
     }
     initDrive()
-  }, [currentProvider])
+  }, [selectedProvider])
 
   useEffect(() => {
     fetch('/api/games', { method: 'HEAD' })
@@ -52,14 +53,16 @@ export default function SettingsPage() {
   }, [])
 
   const handleSelectProvider = (key: string) => {
-    const backend = BACKENDS.find(b => b.key === key)
-    if (!backend) return
     if (key === 'localFile' && serverReachable === false) return
-    setProvider(key)
-    setCurrentProvider(key)
-    // Navigate home to reinitialize storage with the new provider
+    setSelectedProvider(key)
+  }
+
+  const handleApplyProvider = () => {
+    setProvider(selectedProvider)
     navigate('/')
   }
+
+  const providerChanged = selectedProvider !== savedProvider
 
   const loadFromGames = async (backendKey: BackendKey) => {
     setLoadingFromGames(true)
@@ -161,7 +164,8 @@ export default function SettingsPage() {
           <CardContent className="space-y-3">
             {BACKENDS.map(backend => {
               const disabled = isBackendDisabled(backend.key)
-              const selected = currentProvider === backend.key
+              const isSelected = selectedProvider === backend.key
+              const isSaved = savedProvider === backend.key
               return (
                 <div
                   key={backend.key}
@@ -169,22 +173,27 @@ export default function SettingsPage() {
                   className={[
                     'flex items-center justify-between rounded-lg border px-4 py-3 transition-colors',
                     disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50',
-                    selected ? 'ring-2 ring-primary' : '',
+                    isSelected ? 'ring-2 ring-primary' : '',
                   ].join(' ')}
                 >
                   <div>
                     <div className="font-medium">{backend.name}</div>
                     <div className="text-sm text-muted-foreground">{backend.description}</div>
                   </div>
-                  {selected && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
+                  {isSaved && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
                 </div>
               )
             })}
+            {providerChanged && (
+              <Button onClick={handleApplyProvider} className="w-full">
+                Switch to {BACKENDS.find(b => b.key === selectedProvider)?.name}
+              </Button>
+            )}
           </CardContent>
         </Card>
 
         {/* Google Drive Auth */}
-        {currentProvider === 'googleDrive' && (
+        {selectedProvider === 'googleDrive' && (
           <Card>
             <CardHeader>
               <CardTitle>Google Drive</CardTitle>
