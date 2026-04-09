@@ -16,8 +16,8 @@ type StyledRun = { text: string; bold?: boolean; italic?: boolean };
 type StyledLine = StyledRun[];
 
 const parseRichText = (html: string): StyledLine[] => {
-  // If it doesn't contain HTML tags, treat as plain text
-  if (!html.includes('<')) {
+  // Only treat as HTML if it contains known rich text tags
+  if (!/<(?:p|strong|em|\/p|\/strong|\/em)[ >]/.test(html)) {
     return html.split('\n').map(line => [{ text: line }]);
   }
   const lines: StyledLine[] = [];

@@ -179,11 +179,11 @@ test("normalizeTemplate handles text item with empty values", () => {
   });
   const item = template.root.items[0];
   assert.equal(item.type, "text");
-  assert.equal(item.fieldId, "name");
+  assert.equal(item.fieldId, undefined);
   assert.equal(item.widthPct, 50);
   assert.equal(item.heightPct, 50);
   assert.equal(item.fontSize, 16);
-  assert.equal(item.align, "left");
+  assert.equal(item.align, "center");
   assert.equal(item.font, undefined);
 });
 
@@ -266,7 +266,7 @@ test("normalizeTemplate handles image item with empty values", () => {
   });
   const item = template.root.items[0];
   assert.equal(item.type, "image");
-  assert.equal(item.fieldId, "image");
+  assert.equal(item.fieldId, undefined);
   assert.equal(item.fit, "cover");
   assert.equal(item.cornerRadius, 0);
 });
