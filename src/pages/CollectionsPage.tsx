@@ -576,9 +576,13 @@ export default function CollectionsPage() {
                     </div>
                     </div>
                   ) : expandedCollection ? (
-                    <p className="text-sm text-muted-foreground">No cards in this collection.</p>
+                    <div className="flex items-center justify-center p-8">
+                      <p className="text-sm text-muted-foreground">No cards in this collection.</p>
+                    </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Select a collection to preview cards.</p>
+                    <div className="flex items-center justify-center p-8">
+                      <p className="text-sm text-muted-foreground">Select a collection to preview cards.</p>
+                    </div>
                   )}
                 </div>
               )}
