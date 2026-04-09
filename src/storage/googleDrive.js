@@ -6,740 +6,466 @@ import { normalizeCard, normalizeTemplate } from "../normalizeExport.js";
 
 const loadGoogleScript = () =>
   new Promise((resolve, reject) => {
-    if (window.google?.accounts?.oauth2) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Google Identity Services."));
-    document.head.appendChild(script);
+    if (window.google?.accounts?.oauth2) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.async = true;
+    s.defer = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load Google Identity Services."));
+    document.head.appendChild(s);
   });
 
-const slugify = (value) =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-
-const escapeQueryValue = (value) => String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-
-const toIsoNow = () => new Date().toISOString();
+const slugify = (v) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+const escQ = (v) => String(v).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+const now = () => new Date().toISOString();
 
 export const createGoogleDriveStorage = (options = {}) => {
   const clientId = options.clientId ?? "";
   const appTag = options.appTag ?? "boardgame-assets";
-  const folderId = options.folderId ? String(options.folderId) : "";
+  const rootFolderId = options.folderId ? String(options.folderId) : "";
   const defaultTemplate = options.defaultTemplate;
-
-  // Check if client ID is properly configured (but don't throw yet)
   const isConfigured = clientId && !clientId.includes("YOUR_GOOGLE_CLIENT_ID");
-  
-  if (typeof defaultTemplate !== "function") {
-    throw new Error("Missing default template factory.");
-  }
 
-  const TOKEN_STORAGE_KEY = "boardgame_assets_google_token";
+  if (typeof defaultTemplate !== "function") throw new Error("Missing default template factory.");
 
+  const TOKEN_KEY = "boardgame_assets_google_token";
   let tokenClient = null;
   let accessToken = "";
   let tokenExpiry = 0;
   let initialized = false;
 
-  const fileCache = new Map();
-  const gameCache = new Map();
-  const folderCache = new Map();
+  // Folder ID cache: "path" -> driveId
+  const folderIds = new Map();
+  // File ID cache: "path/file.json" -> driveId
+  const fileIds = new Map();
 
-  const saveTokenToStorage = () => {
-    try {
-      if (typeof accessToken === "string" && accessToken.length > 0 && typeof tokenExpiry === "number" && tokenExpiry > 0) {
-        localStorage.setItem(
-          TOKEN_STORAGE_KEY,
-          JSON.stringify({ accessToken, tokenExpiry })
-        );
-      }
-    } catch (err) {
-      console.warn("Failed to save token to localStorage:", err);
-    }
+  // --- Auth ---
+
+  const saveToken = () => {
+    try { if (accessToken) localStorage.setItem(TOKEN_KEY, JSON.stringify({ accessToken, tokenExpiry })); }
+    catch {}
   };
-
-  const loadTokenFromStorage = () => {
+  const loadToken = () => {
     try {
-      const stored = localStorage.getItem(TOKEN_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const token = parsed?.accessToken;
-        const expiry = parsed?.tokenExpiry;
-        if (typeof token === "string" && token.length > 0 && typeof expiry === "number" && expiry > 0) {
-          if (Date.now() < expiry) {
-            accessToken = token;
-            tokenExpiry = expiry;
-            return true;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("Failed to load token from localStorage:", err);
-    }
+      const s = localStorage.getItem(TOKEN_KEY);
+      if (s) { const p = JSON.parse(s); if (p.accessToken && Date.now() < p.tokenExpiry) { accessToken = p.accessToken; tokenExpiry = p.tokenExpiry; return true; } }
+    } catch {}
     return false;
   };
-
-  const clearTokenFromStorage = () => {
-    try {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-    } catch (err) {
-      console.warn("Failed to clear token from localStorage:", err);
-    }
-  };
+  const clearToken = () => { try { localStorage.removeItem(TOKEN_KEY); } catch {} };
 
   const init = async () => {
     if (initialized) return;
-    if (!isConfigured) {
-      // Don't throw - just mark as initialized but not configured
-      // Error will be shown when user tries to actually use Google Drive
-      initialized = true;
-      return;
-    }
-    await loadGoogleScript();
-    tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: DRIVE_SCOPE,
-      callback: () => {}
-    });
-    loadTokenFromStorage();
     initialized = true;
+    if (!isConfigured) return;
+    await loadGoogleScript();
+    tokenClient = window.google.accounts.oauth2.initTokenClient({ client_id: clientId, scope: DRIVE_SCOPE, callback: () => {} });
+    loadToken();
   };
 
   const isAuthorized = () => Boolean(accessToken && Date.now() < tokenExpiry);
 
-  const requestToken = (prompt) =>
-    new Promise((resolve, reject) => {
-      tokenClient.callback = (response) => {
-        if (response?.error) {
-          reject(new Error(response.error));
-          return;
-        }
-        accessToken = response.access_token;
-        const expiresInMs = (response.expires_in ?? 3600) * 1000;
-        const bufferMs = Math.min(30_000, expiresInMs / 2);
-        tokenExpiry = Date.now() + expiresInMs - bufferMs;
-        saveTokenToStorage();
-        resolve();
-      };
-      tokenClient.requestAccessToken({ prompt });
-    });
+  const requestToken = (prompt) => new Promise((resolve, reject) => {
+    tokenClient.callback = (r) => {
+      if (r?.error) { reject(new Error(r.error)); return; }
+      accessToken = r.access_token;
+      tokenExpiry = Date.now() + (r.expires_in ?? 3600) * 1000 - 30000;
+      saveToken();
+      resolve();
+    };
+    tokenClient.requestAccessToken({ prompt });
+  });
 
   const signIn = async () => {
-    // Ensure init has been called before signIn is used
-    if (!initialized) {
-      throw new Error("Google Drive storage not initialized. Call init() during application startup.");
-    }
-    if (!isConfigured) {
-      throw new Error("Google Drive is not configured. The GOOGLE_CLIENT_ID environment variable was not set during build. Please contact the site administrator.");
-    }
-    // Call requestToken immediately to maintain user gesture context for popup
+    if (!initialized) throw new Error("Not initialized.");
+    if (!isConfigured) throw new Error("Google Drive not configured.");
     await requestToken("consent");
   };
 
   const tryRestoreSession = async () => {
-    // Init is required for session restore
-    if (!initialized) {
-      await init();
-    }
+    if (!initialized) await init();
     if (isAuthorized()) return true;
-    try {
-      await requestToken("none");
-      return true;
-    } catch (err) {
-      return false;
-    }
+    try { await requestToken("none"); return true; } catch { return false; }
   };
 
   const signOut = async () => {
-    if (!accessToken) return;
-    window.google.accounts.oauth2.revoke(accessToken, () => {});
-    accessToken = "";
-    tokenExpiry = 0;
-    clearTokenFromStorage();
-    fileCache.clear();
-    gameCache.clear();
-    folderCache.clear();
+    if (accessToken) window.google.accounts.oauth2.revoke(accessToken, () => {});
+    accessToken = ""; tokenExpiry = 0;
+    clearToken(); folderIds.clear(); fileIds.clear();
   };
 
-  const getAccessToken = async () => {
-    // Fallback to init() for background token refresh (doesn't require user gesture)
-    // Unlike signIn(), this uses silent "none" prompt which doesn't open a popup
-    if (!initialized) {
-      await init();
-    }
-    if (!isConfigured) {
-      throw new Error("Google Drive is not configured. The GOOGLE_CLIENT_ID environment variable was not set during build. Please contact the site administrator.");
-    }
+  const getToken = async () => {
+    if (!initialized) await init();
+    if (!isConfigured) throw new Error("Google Drive not configured.");
     if (isAuthorized()) return accessToken;
-    try {
-      await requestToken("none");
-      return accessToken;
-    } catch (err) {
-      throw new Error("Not signed in to Google Drive.");
-    }
+    try { await requestToken("none"); return accessToken; }
+    catch { throw new Error("Not signed in."); }
   };
 
-  const driveFetch = async (url, options = {}) => {
-    const token = await getAccessToken();
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(options.headers ?? {})
-      }
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `Drive request failed (${response.status})`);
-    }
-    return response;
+  // --- Drive primitives ---
+
+  const drv = async (url, opts = {}) => {
+    const t = await getToken();
+    const r = await fetch(url, { ...opts, headers: { Authorization: `Bearer ${t}`, ...(opts.headers ?? {}) } });
+    if (!r.ok) throw new Error(await r.text() || `Drive ${r.status}`);
+    return r;
   };
 
-  const driveFetchJson = async (url, options = {}) => {
-    const response = await driveFetch(url, options);
-    return response.json();
+  const drvJson = async (url, opts = {}) => (await drv(url, opts)).json();
+
+  const queryFiles = async (q) => {
+    const url = `${DRIVE_API}/files?q=${encodeURIComponent(q + " and trashed=false")}&fields=files(id,name,appProperties)`;
+    return (await drvJson(url)).files ?? [];
   };
 
-  const buildQuery = (filters) => {
-    const parts = [`appProperties has { key='app' and value='${escapeQueryValue(appTag)}' }`];
-    Object.entries(filters).forEach(([key, value]) => {
-      parts.push(`appProperties has { key='${escapeQueryValue(key)}' and value='${escapeQueryValue(value)}' }`);
-    });
-    parts.push("trashed=false");
-    return parts.join(" and ");
+  const filesInFolder = async (fid, mime = "application/json") => {
+    const q = `mimeType='${escQ(mime)}' and '${escQ(fid)}' in parents and trashed=false`;
+    return (await drvJson(`${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)`)).files ?? [];
   };
 
-  const listFiles = async (filters) => {
-    const q = buildQuery(filters);
-    const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties,createdTime,modifiedTime)`;
-    const data = await driveFetchJson(url);
-    return data.files ?? [];
+  const foldersIn = async (fid) => {
+    const q = `mimeType='application/vnd.google-apps.folder' and '${escQ(fid)}' in parents and appProperties has { key='app' and value='${escQ(appTag)}' } and trashed=false`;
+    return (await drvJson(`${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)`)).files ?? [];
   };
 
-  const listFilesInFolder = async (folderId, mimeType = "application/json") => {
-    const q = [
-      `mimeType='${escapeQueryValue(mimeType)}'`,
-      `'${escapeQueryValue(folderId)}' in parents`,
-      "trashed=false"
-    ].join(" and ");
-    const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties,createdTime,modifiedTime)`;
-    const data = await driveFetchJson(url);
-    return data.files ?? [];
-  };
+  const readFile = async (fid) => (await drv(`${DRIVE_API}/files/${fid}?alt=media`)).json();
 
-  const getFileContent = async (fileId) => {
-    const url = `${DRIVE_API}/files/${fileId}?alt=media`;
-    const response = await driveFetch(url);
-    return response.json();
-  };
-
-  const getParentsArray = (parentId) => {
-    if (parentId) return [parentId];
-    if (folderId) return [folderId];
-    return undefined;
-  };
-
-  const createFile = async ({ name, content, appProperties, parentId }) => {
-    const boundary = `boundary-${Math.random().toString(16).slice(2)}`;
-    const parents = getParentsArray(parentId);
-    const metadata = {
-      name,
-      mimeType: "application/json",
-      appProperties,
-      ...(parents ? { parents } : {})
-    };
-    const body = [
-      `--${boundary}`,
-      "Content-Type: application/json; charset=UTF-8",
-      "",
-      JSON.stringify(metadata),
-      `--${boundary}`,
-      "Content-Type: application/json; charset=UTF-8",
-      "",
-      JSON.stringify(content, null, 2),
-      `--${boundary}--`
-    ].join("\r\n");
-
-    const response = await driveFetch(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, {
-      method: "POST",
-      headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
-      body
-    });
-    const data = await response.json();
-    return data.id;
-  };
-
-  const updateFileContent = async (fileId, content) => {
-    await driveFetch(`${DRIVE_UPLOAD}/files/${fileId}?uploadType=media`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json; charset=UTF-8" },
+  const writeFile = async (fid, content) => {
+    await drv(`${DRIVE_UPLOAD}/files/${fid}?uploadType=media`, {
+      method: "PATCH", headers: { "Content-Type": "application/json; charset=UTF-8" },
       body: JSON.stringify(content, null, 2)
     });
   };
 
-  const deleteFile = async (fileId) => {
-    await driveFetch(`${DRIVE_API}/files/${fileId}`, { method: "DELETE" });
+  const mkFile = async (name, content, parentId, props = {}) => {
+    const b = `b-${Math.random().toString(16).slice(2)}`;
+    const meta = { name, mimeType: "application/json", appProperties: { app: appTag, ...props }, ...(parentId ? { parents: [parentId] } : {}) };
+    const body = [`--${b}`, "Content-Type: application/json; charset=UTF-8", "", JSON.stringify(meta), `--${b}`, "Content-Type: application/json; charset=UTF-8", "", JSON.stringify(content, null, 2), `--${b}--`].join("\r\n");
+    const r = await (await drv(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${b}` }, body })).json();
+    return r.id;
   };
 
-  const createFolder = async ({ name, parentId, appProperties }) => {
-    const parents = getParentsArray(parentId);
-    const metadata = {
-      name,
-      mimeType: "application/vnd.google-apps.folder",
-      appProperties,
-      ...(parents ? { parents } : {})
-    };
-    const data = await driveFetchJson(`${DRIVE_API}/files?fields=id`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json; charset=UTF-8" },
-      body: JSON.stringify(metadata)
-    });
-    return data.id;
+  const mkFolder = async (name, parentId, props = {}) => {
+    const meta = { name, mimeType: "application/vnd.google-apps.folder", appProperties: { app: appTag, ...props }, ...(parentId ? { parents: [parentId] } : {}) };
+    return (await drvJson(`${DRIVE_API}/files?fields=id`, { method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" }, body: JSON.stringify(meta) })).id;
   };
 
-  const listFoldersInParent = async (parentId) => {
-    const q = [
-      `mimeType='application/vnd.google-apps.folder'`,
-      `'${escapeQueryValue(parentId)}' in parents`,
-      `appProperties has { key='app' and value='${escapeQueryValue(appTag)}' }`,
-      "trashed=false"
-    ].join(" and ");
-    const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)`;
-    const data = await driveFetchJson(url);
-    return data.files ?? [];
-  };
+  const rmFile = async (fid) => { await drv(`${DRIVE_API}/files/${fid}`, { method: "DELETE" }); };
 
-  const ensureGameFolder = async (gameId) => {
-    const cached = folderCache.get(`game:${gameId}`);
+  // --- Folder resolution ---
+  // Structure: root / <gameId> / { game.json, templates/, collections/<colId>/{collection.json, cards/}, images/ }
+  // Global: root / fonts / { fonts.json, *.woff2 }
+
+  const ensureFolder = async (parentId, name, cacheKey, props = {}) => {
+    const cached = folderIds.get(cacheKey);
     if (cached) return cached;
-
-    const parentFolder = folderId || "root";
-    const folders = await listFoldersInParent(parentFolder);
-    const existing = folders.find((f) => f.appProperties?.gameId === gameId);
-    
-    if (existing) {
-      folderCache.set(`game:${gameId}`, existing.id);
-      return existing.id;
-    }
-
-    const newFolderId = await createFolder({
-      name: gameId,
-      parentId: parentFolder === "root" ? null : parentFolder,
-      appProperties: {
-        app: appTag,
-        type: "game-folder",
-        gameId
-      }
-    });
-    folderCache.set(`game:${gameId}`, newFolderId);
-    return newFolderId;
+    const folders = await foldersIn(parentId);
+    const existing = folders.find(f => f.name === name);
+    if (existing) { folderIds.set(cacheKey, existing.id); return existing.id; }
+    const id = await mkFolder(name, parentId, props);
+    folderIds.set(cacheKey, id);
+    return id;
   };
 
-  const ensureCardsFolder = async (gameId) => {
-    const cached = folderCache.get(`cards:${gameId}`);
+  const rootParent = () => rootFolderId || "root";
+
+  const gameFolder = (gameId) => ensureFolder(rootParent(), gameId, `game:${gameId}`, { type: "game-folder", gameId });
+  const templatesFolder = async (gameId) => ensureFolder(await gameFolder(gameId), "templates", `tpl:${gameId}`);
+  const collectionsFolder = async (gameId) => ensureFolder(await gameFolder(gameId), "collections", `cols:${gameId}`);
+  const collectionFolder = async (gameId, colId) => ensureFolder(await collectionsFolder(gameId), colId, `col:${gameId}:${colId}`, { type: "collection", collectionId: colId });
+  const cardsFolder = async (gameId, colId) => ensureFolder(await collectionFolder(gameId, colId), "cards", `cards:${gameId}:${colId}`);
+  const fontsFolder = () => ensureFolder(rootParent(), "fonts", "fonts", { type: "fonts-folder" });
+
+  // --- File helpers ---
+
+  const findOrCreate = async (folderId, name, cacheKey, defaultContent, props = {}) => {
+    const cached = fileIds.get(cacheKey);
     if (cached) return cached;
-
-    const gameFolderId = await ensureGameFolder(gameId);
-    const folders = await listFoldersInParent(gameFolderId);
-    const existing = folders.find((f) => f.name === "cards");
-    
-    if (existing) {
-      folderCache.set(`cards:${gameId}`, existing.id);
-      return existing.id;
-    }
-
-    const newFolderId = await createFolder({
-      name: "cards",
-      parentId: gameFolderId,
-      appProperties: {
-        app: appTag,
-        type: "cards-folder",
-        gameId
-      }
-    });
-    folderCache.set(`cards:${gameId}`, newFolderId);
-    return newFolderId;
+    const files = await filesInFolder(folderId);
+    const found = files.find(f => f.name === name);
+    if (found) { fileIds.set(cacheKey, found.id); return found.id; }
+    const id = await mkFile(name, defaultContent, folderId, props);
+    fileIds.set(cacheKey, id);
+    return id;
   };
 
-  const fileKey = (type, gameId, cardId = "") => `${type}:${gameId}:${cardId}`;
-
-  const cacheFile = (type, gameId, cardId, fileId) => {
-    fileCache.set(fileKey(type, gameId, cardId), fileId);
+  const readOrCreate = async (folderId, name, cacheKey, defaultContent, props = {}) => {
+    const fid = await findOrCreate(folderId, name, cacheKey, defaultContent, props);
+    return await readFile(fid);
   };
 
-  const getCachedFile = (type, gameId, cardId) => fileCache.get(fileKey(type, gameId, cardId));
-
-  const resolveFileId = async (type, gameId, cardId) => {
-    const cached = getCachedFile(type, gameId, cardId);
-    if (cached) return cached;
-    
-    // Try to find file in the appropriate folder first (new structure)
-    if (type === "game") {
-      const gameFolderId = folderCache.get(`game:${gameId}`);
-      if (gameFolderId) {
-        const files = await listFilesInFolder(gameFolderId);
-        const gameFile = files.find((f) => f.name === "game.json");
-        if (gameFile) {
-          cacheFile(type, gameId, cardId, gameFile.id);
-          return gameFile.id;
-        }
-      }
-    } else if (type === "template") {
-      const gameFolderId = folderCache.get(`game:${gameId}`);
-      if (gameFolderId) {
-        const files = await listFilesInFolder(gameFolderId);
-        const templateFile = files.find((f) => f.name === "template.json");
-        if (templateFile) {
-          cacheFile(type, gameId, cardId, templateFile.id);
-          return templateFile.id;
-        }
-      }
-    } else if (type === "card") {
-      const cardsFolderId = folderCache.get(`cards:${gameId}`);
-      if (cardsFolderId) {
-        const files = await listFilesInFolder(cardsFolderId);
-        const cardFile = files.find((f) => f.name === `${cardId}.json`);
-        if (cardFile) {
-          cacheFile(type, gameId, cardId, cardFile.id);
-          return cardFile.id;
-        }
-      }
-    }
-    
-    // Fall back to legacy flat structure (backward compatibility)
-    const files = await listFiles({
-      type,
-      gameId,
-      ...(cardId ? { cardId } : {})
-    });
-    if (!files.length) return null;
-    const fileId = files[0].id;
-    cacheFile(type, gameId, cardId, fileId);
-    return fileId;
-  };
-
-  const readGame = async (gameId) => {
-    const cached = gameCache.get(gameId);
-    if (cached?.meta) return cached.meta;
-    const fileId = await resolveFileId("game", gameId);
-    if (!fileId) return null;
-    const meta = await getFileContent(fileId);
-    gameCache.set(gameId, { fileId, meta });
-    return meta;
-  };
-
-  const writeGame = async (meta) => {
-    const gameId = meta.id;
-    const fileId = await resolveFileId("game", gameId);
-    if (fileId) {
-      await updateFileContent(fileId, meta);
-      gameCache.set(gameId, { fileId, meta });
-      return meta;
-    }
-    const gameFolderId = await ensureGameFolder(gameId);
-    const createdId = await createFile({
-      name: "game.json",
-      content: meta,
-      appProperties: {
-        app: appTag,
-        type: "game",
-        gameId
-      },
-      parentId: gameFolderId
-    });
-    cacheFile("game", gameId, "", createdId);
-    gameCache.set(gameId, { fileId: createdId, meta });
-    return meta;
-  };
-
-  const touchGame = async (gameId) => {
-    const meta = await readGame(gameId);
-    if (!meta) return;
-    meta.updatedAt = toIsoNow();
-    await writeGame(meta);
-  };
+  // --- Games ---
 
   const listGames = async () => {
-    if (!isConfigured) {
-      // Return empty array if not configured - user needs to sign in first
-      return [];
-    }
-    
+    if (!isConfigured) return [];
     try {
-      const parentFolder = folderId || "root";
-      const folders = await listFoldersInParent(parentFolder);
+      const folders = await foldersIn(rootParent());
       const games = [];
-      const seenGameIds = new Set();
-      
-      for (const folder of folders) {
-        if (folder.appProperties?.type === "game-folder") {
-          const gameId = folder.appProperties.gameId;
-          folderCache.set(`game:${gameId}`, folder.id);
-          
-          // Look for game.json in the folder
-          const files = await listFilesInFolder(folder.id);
-          const gameFile = files.find((f) => f.name === "game.json");
-          
-          if (gameFile) {
-            const meta = await getFileContent(gameFile.id);
-            if (meta?.id) {
-              games.push(meta);
-              seenGameIds.add(meta.id);
-              cacheFile("game", meta.id, "", gameFile.id);
-              gameCache.set(meta.id, { fileId: gameFile.id, meta });
-            }
-          }
+      for (const f of folders) {
+        if (f.appProperties?.type !== "game-folder") continue;
+        folderIds.set(`game:${f.appProperties.gameId}`, f.id);
+        const files = await filesInFolder(f.id);
+        const gf = files.find(x => x.name === "game.json");
+        if (gf) {
+          const meta = await readFile(gf.id);
+          if (meta?.id) { games.push(meta); fileIds.set(`game:${meta.id}`, gf.id); }
         }
       }
-      
-      // Also check for legacy flat structure games for backward compatibility
-      const legacyFiles = await listFiles({ type: "game" });
-      for (const file of legacyFiles) {
-        const meta = await getFileContent(file.id);
-        if (meta?.id && !seenGameIds.has(meta.id)) {
-          games.push(meta);
-          seenGameIds.add(meta.id);
-          cacheFile("game", meta.id, "", file.id);
-          gameCache.set(meta.id, { fileId: file.id, meta });
-        }
-      }
-      
       games.sort((a, b) => a.name.localeCompare(b.name));
       return games;
-    } catch (err) {
-      // If not signed in or any other error, return empty array
-      // User can sign in to load their games
-      console.warn('Failed to list games:', err);
-      return [];
-    }
+    } catch (err) { console.warn("listGames:", err); return []; }
+  };
+
+  const getGame = async (gameId) => {
+    const fid = await findOrCreate(await gameFolder(gameId), "game.json", `game:${gameId}`, null);
+    const meta = await readFile(fid);
+    if (!meta) throw new Error("Game not found.");
+    return meta;
   };
 
   const createGame = async (name) => {
-    const baseId = slugify(name) || `game-${Date.now()}`;
     const games = await listGames();
-    const existing = new Set(games.map((game) => game.id));
-    let id = baseId;
-    let suffix = 1;
-    while (existing.has(id)) {
-      id = `${baseId}-${suffix++}`;
-    }
-    const now = toIsoNow();
-    const meta = { id, name, createdAt: now, updatedAt: now };
-    await writeGame(meta);
-    const templateFileId = await resolveFileId("template", id);
-    if (!templateFileId) {
-      const gameFolderId = await ensureGameFolder(id);
-      const createdId = await createFile({
-        name: "template.json",
-        content: defaultTemplate(),
-        appProperties: {
-          app: appTag,
-          type: "template",
-          gameId: id
-        },
-        parentId: gameFolderId
-      });
-      cacheFile("template", id, "", createdId);
-    }
+    const ids = new Set(games.map(g => g.id));
+    let id = slugify(name) || `game-${Date.now()}`;
+    let s = 1;
+    while (ids.has(id)) id = `${slugify(name)}-${s++}`;
+    const meta = { id, name, createdAt: now(), updatedAt: now() };
+    const gf = await gameFolder(id);
+    await mkFile("game.json", meta, gf, { type: "game", gameId: id });
+    // Create default template
+    const tf = await templatesFolder(id);
+    const tpl = defaultTemplate();
+    await mkFile(`${tpl.id}.json`, tpl, tf, { type: "template", gameId: id, templateId: tpl.id });
+    // Create default collection
+    const cf = await collectionFolder(id, "default");
+    await mkFile("collection.json", { id: "default", name: "Default", templateId: tpl.id }, cf, { type: "collection", gameId: id });
+    await ensureFolder(cf, "cards", `cards:${id}:default`);
     return meta;
   };
 
   const updateGame = async (gameId, updates) => {
-    const meta = await readGame(gameId);
-    if (!meta) throw new Error("Game not found.");
-    const next = { ...meta, ...updates, updatedAt: toIsoNow() };
-    await writeGame(next);
+    const fid = fileIds.get(`game:${gameId}`) ?? (await findOrCreate(await gameFolder(gameId), "game.json", `game:${gameId}`, null));
+    const meta = await readFile(fid);
+    const next = { ...meta, ...updates, updatedAt: now() };
+    await writeFile(fid, next);
     return next;
   };
 
   const deleteGame = async (gameId) => {
-    // Delete all files with gameId appProperty (for backward compatibility)
-    const files = await listFiles({ gameId });
-    for (const file of files) {
-      await deleteFile(file.id);
-    }
-    
-    // Delete the game folder if it exists
-    const gameFolderId = folderCache.get(`game:${gameId}`);
-    if (gameFolderId) {
-      await deleteFile(gameFolderId);
-      folderCache.delete(`game:${gameId}`);
-      folderCache.delete(`cards:${gameId}`);
-    }
-    
-    fileCache.forEach((value, key) => {
-      if (key.includes(`:${gameId}:`)) fileCache.delete(key);
-    });
-    gameCache.delete(gameId);
+    const fid = folderIds.get(`game:${gameId}`);
+    if (fid) { await rmFile(fid); folderIds.delete(`game:${gameId}`); }
+    // Clean caches
+    for (const [k] of folderIds) { if (k.includes(gameId)) folderIds.delete(k); }
+    for (const [k] of fileIds) { if (k.includes(gameId)) fileIds.delete(k); }
   };
 
-  const listCards = async (gameId) => {
+  // --- Templates ---
+
+  const listTemplates = async (gameId) => {
+    const tf = await templatesFolder(gameId);
+    const files = await filesInFolder(tf);
+    const templates = [];
+    for (const f of files) {
+      if (!f.name.endsWith(".json")) continue;
+      const raw = await readFile(f.id);
+      const tpl = normalizeTemplate(raw);
+      templates.push(tpl);
+      fileIds.set(`tpl:${gameId}:${tpl.id}`, f.id);
+    }
+    return templates;
+  };
+
+  const getTemplate = async (gameId, templateId) => {
+    const tf = await templatesFolder(gameId);
+    const fid = await findOrCreate(tf, `${templateId}.json`, `tpl:${gameId}:${templateId}`, defaultTemplate());
+    return normalizeTemplate(await readFile(fid));
+  };
+
+  const saveTemplate = async (gameId, templateId, template) => {
+    const tf = await templatesFolder(gameId);
+    const fid = await findOrCreate(tf, `${templateId}.json`, `tpl:${gameId}:${templateId}`, template);
+    await writeFile(fid, template);
+    return template;
+  };
+
+  const createTemplate = async (gameId, name) => {
+    const tf = await templatesFolder(gameId);
+    const tpl = defaultTemplate();
+    const id = slugify(name) || `template-${Date.now()}`;
+    tpl.id = id;
+    tpl.name = name;
+    const fid = await mkFile(`${id}.json`, tpl, tf, { type: "template", gameId, templateId: id });
+    fileIds.set(`tpl:${gameId}:${id}`, fid);
+    return tpl;
+  };
+
+  const deleteTemplate = async (gameId, templateId) => {
+    const key = `tpl:${gameId}:${templateId}`;
+    const fid = fileIds.get(key);
+    if (fid) { await rmFile(fid); fileIds.delete(key); }
+  };
+
+  const copyTemplate = async (gameId, templateId) => {
+    const tpl = await getTemplate(gameId, templateId);
+    const templates = await listTemplates(gameId);
+    const name = `Template ${templates.length + 1}`;
+    const id = slugify(name) || `template-${Date.now()}`;
+    const copy = { ...tpl, id, name };
+    const tf = await templatesFolder(gameId);
+    const fid = await mkFile(`${id}.json`, copy, tf, { type: "template", gameId, templateId: id });
+    fileIds.set(`tpl:${gameId}:${id}`, fid);
+    return copy;
+  };
+
+  // --- Collections ---
+
+  const listCollections = async (gameId) => {
+    const cf = await collectionsFolder(gameId);
+    const folders = await foldersIn(cf);
+    const collections = [];
+    for (const f of folders) {
+      folderIds.set(`col:${gameId}:${f.name}`, f.id);
+      const files = await filesInFolder(f.id);
+      const cFile = files.find(x => x.name === "collection.json");
+      if (cFile) {
+        const col = await readFile(cFile.id);
+        if (col?.id) { collections.push(col); fileIds.set(`colmeta:${gameId}:${col.id}`, cFile.id); }
+      }
+    }
+    return collections;
+  };
+
+  const getCollection = async (gameId, collectionId) => {
+    const cf = await collectionFolder(gameId, collectionId);
+    const fid = await findOrCreate(cf, "collection.json", `colmeta:${gameId}:${collectionId}`, { id: collectionId, name: collectionId, templateId: "default" });
+    return await readFile(fid);
+  };
+
+  const createCollection = async (gameId, name, templateId) => {
+    const id = slugify(name) || `col-${Date.now()}`;
+    const col = { id, name, templateId };
+    const cf = await collectionFolder(gameId, id);
+    await mkFile("collection.json", col, cf, { type: "collection", gameId, collectionId: id });
+    await ensureFolder(cf, "cards", `cards:${gameId}:${id}`);
+    return col;
+  };
+
+  const updateCollection = async (gameId, collectionId, updates) => {
+    const key = `colmeta:${gameId}:${collectionId}`;
+    const cf = await collectionFolder(gameId, collectionId);
+    const fid = await findOrCreate(cf, "collection.json", key, { id: collectionId, name: collectionId, templateId: "default" });
+    const col = await readFile(fid);
+    const next = { ...col, ...updates, id: collectionId };
+    await writeFile(fid, next);
+    return next;
+  };
+
+  const deleteCollection = async (gameId, collectionId) => {
+    const fid = folderIds.get(`col:${gameId}:${collectionId}`);
+    if (fid) { await rmFile(fid); folderIds.delete(`col:${gameId}:${collectionId}`); }
+  };
+
+  // --- Cards ---
+
+  const listCards = async (gameId, collectionId) => {
+    const cf = await cardsFolder(gameId, collectionId);
+    const files = await filesInFolder(cf);
     const cards = [];
-    const seenCardIds = new Set();
-    
-    // Try to get cards from the cards folder (new structure)
-    const cardsFolderId = folderCache.get(`cards:${gameId}`);
-    if (cardsFolderId) {
-      const files = await listFilesInFolder(cardsFolderId);
-      for (const file of files) {
-        const card = normalizeCard(await getFileContent(file.id));
-        cards.push(card);
-        seenCardIds.add(card.id);
-        cacheFile("card", gameId, card.id, file.id);
-      }
-    } else {
-      // Check if the game folder exists
-      const gameFolderId = folderCache.get(`game:${gameId}`);
-      if (gameFolderId) {
-        // Try to find cards folder
-        const folders = await listFoldersInParent(gameFolderId);
-        const cardsFolder = folders.find((f) => f.name === "cards");
-        if (cardsFolder) {
-          folderCache.set(`cards:${gameId}`, cardsFolder.id);
-          const files = await listFilesInFolder(cardsFolder.id);
-          for (const file of files) {
-            const card = normalizeCard(await getFileContent(file.id));
-            cards.push(card);
-            seenCardIds.add(card.id);
-            cacheFile("card", gameId, card.id, file.id);
-          }
-        }
-      }
+    for (const f of files) {
+      if (!f.name.endsWith(".json")) continue;
+      const raw = await readFile(f.id);
+      const card = normalizeCard(raw);
+      cards.push(card);
+      fileIds.set(`card:${gameId}:${collectionId}:${card.id}`, f.id);
     }
-    
-    // Also check for legacy flat structure cards (backward compatibility)
-    const legacyFiles = await listFiles({ type: "card", gameId });
-    for (const file of legacyFiles) {
-      const card = normalizeCard(await getFileContent(file.id));
-      if (!seenCardIds.has(card.id)) {
-        cards.push(card);
-        seenCardIds.add(card.id);
-        cacheFile("card", gameId, card.id, file.id);
-      }
-    }
-    
     cards.sort((a, b) => a.name.localeCompare(b.name));
     return cards;
   };
 
-  const saveCard = async (gameId, cardId, payload) => {
-    const cards = await listCards(gameId);
-    const existing = new Set(cards.map((card) => card.id));
-    let id = cardId || slugify(payload.name || "card");
-    if (!cardId) {
-      let suffix = 1;
-      while (existing.has(id)) {
-        id = `${slugify(payload.name || "card")}-${suffix++}`;
-      }
-    }
-    const normalized = normalizeCard({ ...payload, id });
-    const fileId = await resolveFileId("card", gameId, id);
-    if (fileId) {
-      await updateFileContent(fileId, normalized);
-      cacheFile("card", gameId, id, fileId);
+  const getCard = async (gameId, collectionId, cardId) => {
+    const cf = await cardsFolder(gameId, collectionId);
+    const fid = await findOrCreate(cf, `${cardId}.json`, `card:${gameId}:${collectionId}:${cardId}`, null);
+    const raw = await readFile(fid);
+    if (!raw) throw new Error("Card not found.");
+    return normalizeCard(raw);
+  };
+
+  const saveCard = async (gameId, collectionId, cardId, card) => {
+    const normalized = normalizeCard({ ...card, id: cardId });
+    const cf = await cardsFolder(gameId, collectionId);
+    const key = `card:${gameId}:${collectionId}:${cardId}`;
+    const cached = fileIds.get(key);
+    if (cached) {
+      await writeFile(cached, normalized);
     } else {
-      const cardsFolderId = await ensureCardsFolder(gameId);
-      const createdId = await createFile({
-        name: `${id}.json`,
-        content: normalized,
-        appProperties: {
-          app: appTag,
-          type: "card",
-          gameId,
-          cardId: id
-        },
-        parentId: cardsFolderId
-      });
-      cacheFile("card", gameId, id, createdId);
+      const fid = await mkFile(`${cardId}.json`, normalized, cf, { type: "card", gameId, collectionId, cardId });
+      fileIds.set(key, fid);
     }
-    await touchGame(gameId);
     return normalized;
   };
 
-  const deleteCard = async (gameId, cardId) => {
-    const fileId = await resolveFileId("card", gameId, cardId);
-    if (fileId) {
-      await deleteFile(fileId);
-      fileCache.delete(fileKey("card", gameId, cardId));
-      await touchGame(gameId);
-    }
+  const deleteCard = async (gameId, collectionId, cardId) => {
+    const key = `card:${gameId}:${collectionId}:${cardId}`;
+    const fid = fileIds.get(key);
+    if (fid) { await rmFile(fid); fileIds.delete(key); }
   };
 
-  const loadTemplate = async (gameId) => {
-    const fileId = await resolveFileId("template", gameId);
-    if (!fileId) {
-      const content = defaultTemplate();
-      const gameFolderId = await ensureGameFolder(gameId);
-      const createdId = await createFile({
-        name: "template.json",
-        content,
-        appProperties: {
-          app: appTag,
-          type: "template",
-          gameId
-        },
-        parentId: gameFolderId
-      });
-      cacheFile("template", gameId, "", createdId);
-      return content;
-    }
-    const raw = await getFileContent(fileId);
-    // Normalize template to handle empty/invalid values
-    return normalizeTemplate(raw);
+  const copyCard = async (gameId, collectionId, cardId) => {
+    const card = await getCard(gameId, collectionId, cardId);
+    const cards = await listCards(gameId, collectionId);
+    const name = `New Card ${cards.length + 1}`;
+    const id = slugify(name) || `card-${Date.now()}`;
+    return await saveCard(gameId, collectionId, id, { ...card, id, name });
   };
 
-  const saveTemplate = async (gameId, template) => {
-    const fileId = await resolveFileId("template", gameId);
-    if (fileId) {
-      await updateFileContent(fileId, template);
-    } else {
-      const gameFolderId = await ensureGameFolder(gameId);
-      const createdId = await createFile({
-        name: "template.json",
-        content: template,
-        appProperties: {
-          app: appTag,
-          type: "template",
-          gameId
-        },
-        parentId: gameFolderId
-      });
-      cacheFile("template", gameId, "", createdId);
-    }
-    await touchGame(gameId);
-    return template;
+  // --- Fonts (global) ---
+
+  const fontsManifest = async () => {
+    const ff = await fontsFolder();
+    const fid = await findOrCreate(ff, "fonts.json", "fonts-manifest", {});
+    return { fid, data: await readFile(fid) };
   };
 
-  const getGame = async (gameId) => {
-    const meta = await readGame(gameId);
-    if (!meta) throw new Error("Game not found.");
-    return meta;
+  const listFonts = async () => {
+    try { return (await fontsManifest()).data; } catch { return {}; }
+  };
+
+  const addGoogleFont = async (name, slotName) => {
+    // Google Fonts fetching would need a proxy or be done client-side
+    // For now, store the font reference without the file
+    const { fid, data } = await fontsManifest();
+    const slot = slotName || name.toLowerCase().replace(/\s+/g, "-");
+    data[slot] = { name, file: "", source: "google" };
+    await writeFile(fid, data);
+    return { fonts: data };
+  };
+
+  const uploadFont = async (file, slotName) => {
+    // Font file upload to Drive would require binary upload
+    // For now, store the reference
+    const { fid, data } = await fontsManifest();
+    const slot = slotName || file.name.replace(/\.[^.]+$/, "");
+    data[slot] = { name: file.name, file: "", source: "upload" };
+    await writeFile(fid, data);
+    return { fonts: data };
+  };
+
+  const deleteFont = async (file) => {
+    const { fid, data } = await fontsManifest();
+    for (const [k, v] of Object.entries(data)) {
+      if (v.file === file) delete data[k];
+    }
+    await writeFile(fid, data);
+    return { fonts: data };
   };
 
   return {
-    init,
-    signIn,
-    signOut,
-    tryRestoreSession,
-    isAuthorized,
-    listGames,
-    createGame,
-    updateGame,
-    deleteGame,
-    listCards,
-    saveCard,
-    deleteCard,
-    loadTemplate,
-    saveTemplate,
-    getGame
+    init, signIn, signOut, tryRestoreSession, isAuthorized,
+    listGames, getGame, createGame, updateGame, deleteGame,
+    listTemplates, getTemplate, saveTemplate, createTemplate, deleteTemplate, copyTemplate,
+    listCollections, getCollection, createCollection, updateCollection, deleteCollection,
+    listCards, getCard, saveCard, deleteCard, copyCard,
+    listFonts, addGoogleFont, uploadFont, deleteFont,
   };
 };
