@@ -11,7 +11,6 @@ type ControlPanelProps = {
   value: unknown
   template: CardTemplate
   selectedNodeId?: string
-  gameId?: string
   onChange: (value: unknown) => void
 }
 
@@ -181,7 +180,7 @@ function ColorControl({ value, onChange }: { value: string; onChange: (v: unknow
   )
 }
 
-export default function ControlPanel({ property, value, template, selectedNodeId, gameId, onChange }: ControlPanelProps) {
+export default function ControlPanel({ property, value, template, selectedNodeId, onChange }: ControlPanelProps) {
   const meta = getFieldMeta(property, template, selectedNodeId)
 
   if (meta.type === 'number') {

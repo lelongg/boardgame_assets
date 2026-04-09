@@ -627,7 +627,6 @@ export default function CollectionsPage() {
                             template={selectedTemplate}
                             selectedNodeId={selectedNodeId}
                             selectedProperty={selectedProperty}
-                            gameId={gameId}
                             onSelectProperty={(prop) => {
                               setSelectedProperty(prop)
                               if (selectedNodeId) {

@@ -6,7 +6,6 @@ type PropertyPanelProps = {
   template: CardTemplate
   selectedNodeId: string
   selectedProperty: string | null
-  gameId?: string
   onSelectProperty: (property: string) => void
   onPropertyChange: (property: string, value: unknown) => void
 }
@@ -76,7 +75,6 @@ export default function PropertyPanel({
   template,
   selectedNodeId,
   selectedProperty,
-  gameId,
   onSelectProperty,
   onPropertyChange,
 }: PropertyPanelProps) {
@@ -118,7 +116,6 @@ export default function PropertyPanel({
             value={currentValue}
             template={template}
             selectedNodeId={selectedNodeId}
-            gameId={gameId}
             onChange={(value) => onPropertyChange(selectedProperty, value)}
           />
         </div>

@@ -591,7 +591,6 @@ export default function GameEditorPage() {
                       template={game.template}
                       selectedNodeId={selectedNodeId}
                       selectedProperty={selectedProperty}
-                      gameId={gameId}
                       onSelectProperty={(prop) => {
                         setSelectedProperty(prop)
                         if (selectedNodeId) {
