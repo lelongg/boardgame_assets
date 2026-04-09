@@ -312,7 +312,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
         const fontSize = item.fontSize ?? 32;
         const textX = rect.x + rect.width / 2;
         const textY = rect.y + rect.height / 2;
-        return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}">${escape(emoji)}</text>`;
+        return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" font-family="'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">${escape(emoji)}</text>`;
       }
 
       // Render text item (default) - type guard
@@ -442,7 +442,7 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
       const fontSize = item.fontSize ?? 32;
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2;
-      return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}">${escape(emoji)}</text>`;
+      return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" font-family="'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">${escape(emoji)}</text>`;
     }
     if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
     const value = item.fieldId === "name" ? emptyCard.name : (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";

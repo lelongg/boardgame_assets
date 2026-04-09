@@ -187,15 +187,25 @@ function ColorControl({ value, onChange }: { value: string; onChange: (v: unknow
   )
 }
 
-const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
-  { label: 'Symbols', emojis: ['⭐', '✨', '💎', '🔥', '⚡', '💀', '☠️', '🎯', '🛡️', '⚔️', '🗡️', '🏹', '💣', '🔮', '🧿', '♠️', '♥️', '♦️', '♣️', '🎲'] },
-  { label: 'Nature', emojis: ['🌟', '☀️', '🌙', '⛰️', '🌊', '🔱', '🌿', '🍀', '🌸', '🌺', '🍂', '❄️', '🐉', '🦅', '🐺', '🦁', '🐍', '🕷️', '🦇', '🐙'] },
-  { label: 'Objects', emojis: ['👑', '💰', '🪙', '📜', '🗝️', '🔑', '⚙️', '🧪', '🏺', '🪄', '📿', '🎭', '🏰', '⛵', '🚀', '🎪', '🏆', '🎖️', '🧭', '⏳'] },
-  { label: 'People', emojis: ['👤', '👥', '🧙', '🧝', '🧛', '🧟', '🤖', '👻', '👹', '🤴', '👸', '🦸', '🦹', '🧜', '🧞', '🧚', '💂', '🥷', '🧑‍🌾', '🧑‍🔬'] },
-  { label: 'Shapes', emojis: ['⬛', '⬜', '🔴', '🔵', '🟢', '🟡', '🟠', '🟣', '🟤', '⚪', '⚫', '🔶', '🔷', '🔸', '🔹', '▪️', '▫️', '◼️', '◻️', '💠'] },
-]
-
 function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown) => void }) {
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let picker: any
+    const init = async () => {
+      const mod = await import('emoji-picker-element')
+      const Picker = 'default' in mod ? (mod as any).default : mod.Picker ?? (mod as any)
+      picker = new Picker()
+      picker.style.width = '100%'
+      picker.addEventListener('emoji-click', (e: any) => {
+        onChange(e.detail.unicode)
+      })
+      pickerRef.current?.appendChild(picker)
+    }
+    init()
+    return () => { if (picker?.remove) picker.remove() }
+  }, [onChange])
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -203,28 +213,11 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Type or pick emoji"
+          placeholder="Type or paste emoji"
           className="flex-1"
         />
       </div>
-      <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-2">
-        {EMOJI_GROUPS.map((group) => (
-          <div key={group.label}>
-            <div className="text-xs text-muted-foreground mb-1">{group.label}</div>
-            <div className="flex flex-wrap gap-0.5">
-              {group.emojis.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => onChange(emoji)}
-                  className={`rounded p-1 text-lg hover:bg-accent/50 ${value === emoji ? 'bg-accent ring-1 ring-primary' : ''}`}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      <div ref={pickerRef} />
     </div>
   )
 }

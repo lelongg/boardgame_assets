@@ -334,7 +334,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       const fontSize = emojiItem.fontSize ?? 32;
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2;
-      itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}">${escape(emoji)}</text>`);
+      itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" font-family="'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif">${escape(emoji)}</text>`);
     }
   });
 

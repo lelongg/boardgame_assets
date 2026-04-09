@@ -40,6 +40,7 @@
     "@tiptap/starter-kit": "^3.22.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "emoji-picker-element": "^1.29.1",
     "hono": "^4.12.12",
     "lucide-react": "^0.564.0",
     "react": "^19.2.4",
