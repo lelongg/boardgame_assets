@@ -18,7 +18,6 @@ export default function SettingsPage() {
   const navigate = useNavigate()
   const [currentProvider, setCurrentProvider] = useState<string>(getProvider())
   const [serverReachable, setServerReachable] = useState<boolean | null>(null)
-  const [switchedMessage, setSwitchedMessage] = useState<string | null>(null)
 
   // Migration state
   const [migrateFrom, setMigrateFrom] = useState<BackendKey>('localFile')
@@ -58,7 +57,8 @@ export default function SettingsPage() {
     if (key === 'localFile' && serverReachable === false) return
     setProvider(key)
     setCurrentProvider(key)
-    setSwitchedMessage(`Switched to ${backend.name}. Reload to take effect.`)
+    // Navigate home to reinitialize storage with the new provider
+    navigate('/')
   }
 
   const loadFromGames = async (backendKey: BackendKey) => {
@@ -180,9 +180,6 @@ export default function SettingsPage() {
                 </div>
               )
             })}
-            {switchedMessage && (
-              <p className="text-sm text-muted-foreground pt-1">{switchedMessage}</p>
-            )}
           </CardContent>
         </Card>
 
