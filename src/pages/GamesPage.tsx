@@ -4,6 +4,7 @@ import { Pencil, Plus, Printer, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import ConfirmButton from '@/components/ConfirmButton'
+import ListItem from '@/components/ListItem'
 
 import { createStorage } from '../storage'
 
@@ -119,39 +120,35 @@ export default function GamesPage() {
           <CardContent className="space-y-4 overflow-y-auto max-h-[60vh]">
             <div className="space-y-2">
               {games.map((game) => (
-                <div
+                <ListItem
                   key={game.id}
-                  className={`rounded-lg border bg-card cursor-pointer ${expandedGame === game.id ? 'ring-2 ring-inset ring-primary' : ''}`}
+                  selected={expandedGame === game.id}
                   onClick={() => setExpandedGame(expandedGame === game.id ? null : game.id)}
+                  actions={<>
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}`)} title="Edit">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/print`)} title="Print all">
+                      <Printer className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/export/tts`)} title="Export for Tabletop Simulator">
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <ConfirmButton onConfirm={async () => {
+                      const prev = games
+                      setGames(games.filter(g => g.id !== game.id))
+                      setExpandedGame(null)
+                      try {
+                        await storage.deleteGame(game.id)
+                      } catch {
+                        setGames(prev)
+                        setStatus('Error deleting game.')
+                      }
+                    }} />
+                  </>}
                 >
-                  <div className="px-3 py-2.5 font-medium">
-                    {game.name}
-                  </div>
-                  {expandedGame === game.id && (
-                    <div className="flex gap-2 border-t mx-2 px-1 py-2" onClick={(e) => e.stopPropagation()}>
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}`)} title="Edit">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/print`)} title="Print all">
-                        <Printer className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/export/tts`)} title="Export for Tabletop Simulator">
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <ConfirmButton onConfirm={async () => {
-                        const prev = games
-                        setGames(games.filter(g => g.id !== game.id))
-                        setExpandedGame(null)
-                        try {
-                          await storage.deleteGame(game.id)
-                        } catch {
-                          setGames(prev)
-                          setStatus('Error deleting game.')
-                        }
-                      }} />
-                    </div>
-                  )}
-                </div>
+                  <span className="font-medium">{game.name}</span>
+                </ListItem>
               ))}
               {games.length === 0 && (
                 <p className="text-sm text-muted-foreground">No games yet. Create one below!</p>

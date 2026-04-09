@@ -13,6 +13,7 @@ import { createStorage } from '../storage'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
+import ListItem from '@/components/ListItem'
 
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
@@ -397,38 +398,33 @@ export default function GameEditorPage() {
                 </CardHeader>
                 <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
                   {cards.map((card) => (
-                    <div key={card.id} className={`rounded-lg border bg-card cursor-pointer ${
-                      selectedCard?.id === card.id ? 'ring-2 ring-inset ring-primary' : ''
-                    }`}>
-                      <button
-                        onClick={() => selectCard(storage, card.id)}
-                        className="w-full px-3 py-2.5 text-left text-sm font-medium"
-                      >
-                        {card.name}
-                      </button>
-                      {selectedCard?.id === card.id && (
-                        <div className="flex gap-2 border-t mx-2 px-1 py-2">
-                          <Button size="sm" variant="outline" onClick={handleSaveCard} disabled={!isCardDirty} title="Save">
-                            <Save className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={async () => {
-                            const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
-                            setCards(prev => [...prev, opt])
-                            setSelectedCard(opt)
-                            setSavedCardJson(JSON.stringify(opt))
-                            try {
-                              const copy = await storage.copyCard(gameId, collectionId, card.id)
-                              setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
-                              setSelectedCard(copy)
-                              setSavedCardJson(JSON.stringify(copy))
-                            } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
-                          }}>
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <ConfirmButton onConfirm={handleDeleteCard} />
-                        </div>
-                      )}
-                    </div>
+                    <ListItem
+                      key={card.id}
+                      selected={selectedCard?.id === card.id}
+                      onClick={() => selectCard(storage, card.id)}
+                      actions={<>
+                        <Button size="sm" variant="outline" onClick={handleSaveCard} disabled={!isCardDirty} title="Save">
+                          <Save className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={async () => {
+                          const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
+                          setCards(prev => [...prev, opt])
+                          setSelectedCard(opt)
+                          setSavedCardJson(JSON.stringify(opt))
+                          try {
+                            const copy = await storage.copyCard(gameId, collectionId, card.id)
+                            setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
+                            setSelectedCard(copy)
+                            setSavedCardJson(JSON.stringify(copy))
+                          } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
+                        }}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <ConfirmButton onConfirm={handleDeleteCard} />
+                      </>}
+                    >
+                      <span className="text-sm font-medium">{card.name}</span>
+                    </ListItem>
                   ))}
                 </CardContent>
               </Card>

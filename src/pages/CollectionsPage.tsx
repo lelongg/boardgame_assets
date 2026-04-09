@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, LayoutGrid, Layers, Printer } from 'lucide-react'
 import { createStorage } from '../storage'
 import ConfirmButton from '@/components/ConfirmButton'
+import ListItem from '@/components/ListItem'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import ZoomablePreview from '@/components/ZoomablePreview'
@@ -382,55 +383,51 @@ export default function CollectionsPage() {
               </CardHeader>
               <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
                 {collections.map((col) => (
-                  <div
+                  <ListItem
                     key={col.id}
-                    className={`rounded-lg border bg-card cursor-pointer ${expandedCollection === col.id ? 'ring-2 ring-inset ring-primary' : ''}`}
+                    selected={expandedCollection === col.id}
                     onClick={() => {
                       const next = expandedCollection === col.id ? null : col.id
                       setExpandedCollection(next)
                       if (gameId) { if (next) localStorage.setItem(`game:${gameId}:selectedCollection`, next); else localStorage.removeItem(`game:${gameId}:selectedCollection`) }
                     }}
+                    actions={<>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}/print`)} title="Print">
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                      <select
+                        className="rounded-md border bg-background px-2 py-1 text-sm"
+                        value={col.templateId}
+                        onChange={async (e) => {
+                          try {
+                            await storage.updateCollection(gameId, col.id, { templateId: e.target.value })
+                            await loadData(storage)
+                          } catch {
+                            setStatus('Error updating collection.')
+                          }
+                        }}
+                      >
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                      <ConfirmButton onConfirm={async () => {
+                        const prev = collections
+                        setCollections(collections.filter((c) => c.id !== col.id))
+                        setExpandedCollection(null)
+                        try { await storage.deleteCollection(gameId, col.id) }
+                        catch { setCollections(prev); setStatus('Error deleting collection.') }
+                      }} />
+                    </>}
                   >
-                    <div className="px-3 py-2.5">
-                      <span className="font-medium">{col.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {templates.find((t) => t.id === col.templateId)?.name ?? col.templateId}
-                      </span>
-                    </div>
-                    {expandedCollection === col.id && (
-                      <div className="flex gap-2 border-t mx-2 px-1 py-2" onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}/print`)} title="Print">
-                          <Printer className="h-4 w-4" />
-                        </Button>
-                        <select
-                          className="rounded-md border bg-background px-2 py-1 text-sm"
-                          value={col.templateId}
-                          onChange={async (e) => {
-                            try {
-                              await storage.updateCollection(gameId, col.id, { templateId: e.target.value })
-                              await loadData(storage)
-                            } catch {
-                              setStatus('Error updating collection.')
-                            }
-                          }}
-                        >
-                          {templates.map((t) => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
-                          ))}
-                        </select>
-                        <ConfirmButton onConfirm={async () => {
-                          const prev = collections
-                          setCollections(collections.filter((c) => c.id !== col.id))
-                          setExpandedCollection(null)
-                          try { await storage.deleteCollection(gameId, col.id) }
-                          catch { setCollections(prev); setStatus('Error deleting collection.') }
-                        }} />
-                      </div>
-                    )}
-                  </div>
+                    <span className="font-medium">{col.name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {templates.find((t) => t.id === col.templateId)?.name ?? col.templateId}
+                    </span>
+                  </ListItem>
                 ))}
                 {collections.length === 0 && (
                   <p className="text-sm text-muted-foreground">No collections yet.</p>
@@ -625,42 +622,38 @@ export default function CollectionsPage() {
                 </CardHeader>
                 <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
                   {templates.map((tpl) => (
-                    <div
+                    <ListItem
                       key={tpl.id}
-                      className={`rounded-lg border bg-card cursor-pointer ${selectedTemplateId === tpl.id ? 'ring-2 ring-inset ring-primary' : ''}`}
+                      selected={selectedTemplateId === tpl.id}
                       onClick={() => {
                         const next = selectedTemplateId === tpl.id ? null : tpl.id
                         setSelectedTemplateId(next)
                         setSelectedNodeId(null)
                         if (gameId) { if (next) localStorage.setItem(`game:${gameId}:selectedTemplate`, next); else localStorage.removeItem(`game:${gameId}:selectedTemplate`) }
                       }}
+                      actions={<>
+                        <Button size="sm" variant="outline" onClick={async () => {
+                          const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Template ${templates.length + 1}` }
+                          setTemplates(prev => [...prev, opt])
+                          try {
+                            const copy = await storage.copyTemplate(gameId, tpl.id)
+                            setTemplates(prev => prev.map(t => t.id === opt.id ? copy : t))
+                          } catch { setTemplates(prev => prev.filter(t => t.id !== opt.id)); setStatus('Error copying template.') }
+                        }}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <ConfirmButton onConfirm={async () => {
+                          const prev = templates
+                          setTemplates(templates.filter((t) => t.id !== tpl.id))
+                          if (selectedTemplateId === tpl.id) setSelectedTemplateId(null)
+                          try { await storage.deleteTemplate(gameId, tpl.id) }
+                          catch (err: any) { setTemplates(prev); setStatus(err.message || 'Error deleting template.') }
+                        }} />
+                      </>}
                     >
-                      <div className="px-3 py-2.5">
-                        <span className="font-medium">{tpl.name}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{tpl.width}×{tpl.height}</span>
-                      </div>
-                      {selectedTemplateId === tpl.id && (
-                        <div className="flex gap-2 border-t mx-2 px-1 py-2" onClick={(e) => e.stopPropagation()}>
-                          <Button size="sm" variant="outline" onClick={async () => {
-                            const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Template ${templates.length + 1}` }
-                            setTemplates(prev => [...prev, opt])
-                            try {
-                              const copy = await storage.copyTemplate(gameId, tpl.id)
-                              setTemplates(prev => prev.map(t => t.id === opt.id ? copy : t))
-                            } catch { setTemplates(prev => prev.filter(t => t.id !== opt.id)); setStatus('Error copying template.') }
-                          }}>
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <ConfirmButton onConfirm={async () => {
-                            const prev = templates
-                            setTemplates(templates.filter((t) => t.id !== tpl.id))
-                            if (selectedTemplateId === tpl.id) setSelectedTemplateId(null)
-                            try { await storage.deleteTemplate(gameId, tpl.id) }
-                            catch (err: any) { setTemplates(prev); setStatus(err.message || 'Error deleting template.') }
-                          }} />
-                        </div>
-                      )}
-                    </div>
+                      <span className="font-medium">{tpl.name}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{tpl.width}×{tpl.height}</span>
+                    </ListItem>
                   ))}
                   {templates.length === 0 && (
                     <p className="text-sm text-muted-foreground">No templates yet.</p>

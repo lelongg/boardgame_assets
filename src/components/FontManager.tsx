@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ConfirmButton from './ConfirmButton'
+import ListItem from './ListItem'
 
 type FontEntry = { name: string; file: string; source: 'upload' | 'google' }
 
@@ -106,21 +107,15 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
       )}
 
       {fontEntries.map(([key, font]) => (
-        <div
+        <ListItem
           key={key}
-          className={`rounded-lg border bg-card cursor-pointer ${selectedFont === key ? 'ring-2 ring-inset ring-primary' : ''}`}
+          selected={selectedFont === key}
           onClick={() => onSelectFont(selectedFont === key ? null : key)}
+          actions={<ConfirmButton onConfirm={() => handleDelete(key)} disabled={loading} />}
         >
-          <div className="px-3 py-2.5">
-            <span className="font-medium">{font.name}</span>
-            <span className="ml-2 text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
-          </div>
-          {selectedFont === key && (
-            <div className="flex gap-2 border-t mx-2 px-1 py-2" onClick={(e) => e.stopPropagation()}>
-              <ConfirmButton onConfirm={() => handleDelete(key)} disabled={loading} />
-            </div>
-          )}
-        </div>
+          <span className="font-medium">{font.name}</span>
+          <span className="ml-2 text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
+        </ListItem>
       ))}
 
       {showAddForm && (
