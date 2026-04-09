@@ -157,7 +157,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
         const hasChildren = isSection && ((node.obj as CardTemplateSection).children.length > 0 || (node.obj as CardTemplateSection).items.length > 0)
         const prefix = isSection ? (hasChildren ? (isCollapsed ? '▸' : '▾') : '▾') : '·'
         const iconClass = "h-3.5 w-3.5 inline-block opacity-60"
-        const sectionIcons: Record<string, React.ReactNode> = { column: <Columns3 className={iconClass} />, row: <Rows3 className={iconClass} />, stack: <Layers className={iconClass} /> }
+        const sectionIcons: Record<string, React.ReactNode> = { column: <Rows3 className={iconClass} />, row: <Columns3 className={iconClass} />, stack: <Layers className={iconClass} /> }
         const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} /> }
         const typeIcon = node.kind === 'section'
           ? sectionIcons[(node.obj as CardTemplateSection).layout] ?? null
