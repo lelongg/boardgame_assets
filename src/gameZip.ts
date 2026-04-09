@@ -109,12 +109,9 @@ export const importGameZip = async (
   for (const col of defaultCollections) await storage.deleteCollection(newGameId, col.id).catch(() => {})
   for (const tpl of defaultTemplates) await storage.deleteTemplate(newGameId, tpl.id).catch(() => {})
 
-  log('Importing templates...')
-  const templateFiles = zip.file(/^templates\/.*\.json$/)
-  for (const f of templateFiles) {
-    const tpl = JSON.parse(await f.async('text'))
-    await storage.saveTemplate(newGameId, tpl.id, tpl)
-  }
+  const oldGameId = gameMeta.id ?? ''
+  const rewriteUrls = (str: string): string =>
+    oldGameId ? str.replaceAll(`/api/games/${oldGameId}/`, `/api/games/${newGameId}/`) : str
 
   log('Importing fonts...')
   const fontsManifest = await readJson('fonts/fonts.json')
@@ -129,10 +126,8 @@ export const importGameZip = async (
     }
   }
 
-  // Import images first so URLs are available when cards reference them
   log('Importing images...')
   const imageEntries = zip.file(/^images\//)
-  const oldGameId = gameMeta.id ?? ''
   for (const f of imageEntries) {
     const blob = await f.async('blob')
     const fileName = f.name.replace('images/', '')
@@ -140,6 +135,13 @@ export const importGameZip = async (
     const mimeTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' }
     const file = new File([blob], fileName, { type: mimeTypes[ext] ?? 'application/octet-stream' })
     await storage.uploadImage(newGameId, file)
+  }
+
+  log('Importing templates...')
+  const templateFiles = zip.file(/^templates\/.*\.json$/)
+  for (const f of templateFiles) {
+    const tpl = JSON.parse(rewriteUrls(await f.async('text')))
+    await storage.saveTemplate(newGameId, tpl.id, tpl)
   }
 
   log('Importing collections and cards...')
@@ -152,15 +154,7 @@ export const importGameZip = async (
     const colDir = f.name.replace('/collection.json', '')
     const cardFiles = zip.file(new RegExp(`^${colDir}/cards/.*\\.json$`))
     for (const cf of cardFiles) {
-      const card = JSON.parse(await cf.async('text'))
-      // Rewrite image URLs to point to new game ID
-      if (card.fields && oldGameId) {
-        for (const [key, val] of Object.entries(card.fields)) {
-          if (typeof val === 'string' && val.includes(`/api/games/${oldGameId}/`)) {
-            card.fields[key] = (val as string).replace(`/api/games/${oldGameId}/`, `/api/games/${newGameId}/`)
-          }
-        }
-      }
+      const card = JSON.parse(rewriteUrls(await cf.async('text')))
       await storage.saveCard(newGameId, newColId, card.id, card)
     }
   }
