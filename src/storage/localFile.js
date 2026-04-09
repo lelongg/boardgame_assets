@@ -182,15 +182,15 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       if (!response.ok) throw new Error("Failed to delete card");
     },
 
-    // Fonts (global)
-    async listFonts() {
-      const response = await fetch(`${apiBase}/fonts`);
+    // Fonts (per-game)
+    async listFonts(gameId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/fonts`);
       if (!response.ok) throw new Error("Failed to list fonts");
       return await response.json();
     },
 
-    async addGoogleFont(name, slotName) {
-      const response = await fetch(`${apiBase}/fonts/google`, {
+    async addGoogleFont(gameId, name, slotName) {
+      const response = await fetch(`${apiBase}/games/${gameId}/fonts/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, slotName })
@@ -202,8 +202,8 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       return await response.json();
     },
 
-    async uploadFont(file, slotName) {
-      const response = await fetch(`${apiBase}/fonts/upload`, {
+    async uploadFont(gameId, file, slotName) {
+      const response = await fetch(`${apiBase}/games/${gameId}/fonts/upload`, {
         method: "POST",
         headers: {
           "Content-Disposition": `attachment; filename="${file.name}"`,
@@ -218,8 +218,8 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       return await response.json();
     },
 
-    async deleteFont(file) {
-      const response = await fetch(`${apiBase}/fonts/${file}`, { method: "DELETE" });
+    async deleteFont(gameId, file) {
+      const response = await fetch(`${apiBase}/games/${gameId}/fonts/${file}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to delete font");
       return await response.json();
     },
