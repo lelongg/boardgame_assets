@@ -121,8 +121,8 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
       </div>
       <div
         ref={containerRef}
-        className={`rounded-lg border bg-card p-3 shadow-inner overflow-hidden touch-none ${
-          unlocked ? 'cursor-grab active:cursor-grabbing' : ''
+        className={`rounded-lg border bg-card p-3 shadow-inner overflow-hidden ${
+          unlocked ? 'touch-none cursor-grab active:cursor-grabbing' : ''
         }`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
