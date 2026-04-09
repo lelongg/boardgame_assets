@@ -11,6 +11,17 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        sw: 'src/sw.ts',
+      },
+      output: {
+        entryFileNames: (chunk) => chunk.name === 'sw' ? 'sw.js' : 'assets/[name]-[hash].js',
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
