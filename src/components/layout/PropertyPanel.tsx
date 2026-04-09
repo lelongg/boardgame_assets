@@ -1,5 +1,5 @@
 import ControlPanel from './ControlPanel'
-import type { CardTemplate, CardTemplateSection } from '../../types'
+import type { CardTemplate } from '../../types'
 import { findSectionById, findItemById, getNodeKind } from './templateHelpers'
 
 type PropertyPanelProps = {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { CardTemplate, CardTemplateSection, CardTemplateItem, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem } from '../../types'
-import { findSectionById, findItemById, findNodeLocation, findParentSection, getNodeKind } from './templateHelpers'
+import { findSectionById, findNodeLocation, findParentSection, getNodeKind } from './templateHelpers'
 
 type TemplateActionsProps = {
   template: CardTemplate

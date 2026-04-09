@@ -22,10 +22,7 @@ type RenderOptions = {
   debug?: boolean;
 };
 
-type SelectedNode = {
-  type: "section" | "item";
-  id: string;
-};
+
 
 const escape = (value: unknown): string =>
   String(value)
