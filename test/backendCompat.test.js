@@ -364,7 +364,7 @@ function createMockFetchForLocalFile() {
       const found = Object.values(fonts).find((f) => f.file === file);
       if (!found) return notFound();
       // Return a fake blob response
-      const fakeBlob = new Blob(["fake-font-data"], { type: "font/woff2" });
+      const fakeBlob = Buffer.from("fake-font-data");
       return { ok: true, blob: async () => fakeBlob, status: 200 };
     }
 
@@ -381,7 +381,7 @@ function createMockFetchForLocalFile() {
     if ((m = url.match(/^\/api\/games\/([^/]+)\/images\/([^/]+)$/)) && method === "GET") {
       const [, gid, file] = m;
       if (data.images?.[gid]?.[file]) {
-        const fakeBlob = new Blob(["fake-image-data"], { type: "image/png" });
+        const fakeBlob = Buffer.from("fake-image-data");
         return { ok: true, blob: async () => fakeBlob, status: 200 };
       }
       return notFound();
@@ -427,93 +427,231 @@ describe("round-trip export/import", () => {
   it("preserves all game data through zip export and import", async () => {
     const srcStorage = createLocalFileStorage({ defaultTemplate });
 
-    // Create a game with data
+    // Create a game
     const game = await srcStorage.createGame("Round Trip Test");
     const gameId = game.id;
 
-    // Get the default template and modify it
+    // Upload fonts
+    const fontData = await srcStorage.addGoogleFont(gameId, "Roboto", "title");
+    const titleFontFile = fontData.fonts.title?.file ?? fontData.fonts.roboto?.file;
+
+    // Upload an image
+    const fakeImageFile = new File(["fake-png-data"], "hero.png", { type: "image/png" });
+    const imageUrl = await srcStorage.uploadImage(gameId, fakeImageFile);
+
+    // Build a template with all item types
     const templates = await srcStorage.listTemplates(gameId);
     const tpl = templates[0];
-    tpl.name = "Custom Template";
+    tpl.name = "Full Template";
     tpl.width = 800;
     tpl.height = 1200;
+    tpl.radius = 16;
+    tpl.bleed = 10;
+    tpl.root = {
+      id: "root", name: "Root", layout: "column", sizePct: 100, gap: 12, columns: 2, children: [
+        {
+          id: "header", name: "Header", layout: "row", sizePct: 30, gap: 8, columns: 2, children: [], items: [
+            { id: "title-item", name: "Title", type: "text", fieldId: "name", defaultValue: "Untitled",
+              values: ["Warrior", "Mage", "Rogue"],
+              fontSize: 32, align: "center", verticalAlign: "middle", font: "title", color: "#1a1a2e",
+              anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0.5, y: 0.5 } },
+              widthPct: 100, heightPct: 100 },
+            { id: "cost-item", name: "Cost", type: "text", fieldId: "cost", defaultValue: "0",
+              fontSize: 20, align: "right", verticalAlign: "top", font: "title", color: "#e94560",
+              anchor: { x: 1, y: 0 }, attach: { targetType: "item", targetId: "title-item", anchor: { x: 1, y: 0 } },
+              widthPct: 20, heightPct: 30 },
+          ],
+        },
+        {
+          id: "body", name: "Body", layout: "stack", sizePct: 70, gap: 0, columns: 2, children: [
+            {
+              id: "art-section", name: "Art Section", layout: "grid", sizePct: 60, gap: 4, columns: 3, children: [], items: [
+                { id: "art-item", name: "Artwork", type: "image", fieldId: "image", defaultValue: imageUrl,
+                  fit: "cover", cornerRadius: 12,
+                  anchor: { x: 0.5, y: 0 }, attach: { targetType: "section", targetId: "art-section", anchor: { x: 0.5, y: 0 } },
+                  widthPct: 100, heightPct: 80 },
+              ],
+            },
+          ],
+          items: [
+            { id: "border-item", name: "Border", type: "frame",
+              strokeWidth: 3, strokeColor: "#16213e", fillColor: "none", cornerRadius: 8,
+              anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } },
+              widthPct: 95, heightPct: 95 },
+            { id: "emoji-item", name: "Faction", type: "emoji", fieldId: "faction", emoji: "⚔️",
+              values: ["⚔️", "🛡️", "🔮", "🏹"], fontSize: 48,
+              anchor: { x: 0.5, y: 1 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 1 } },
+              widthPct: 15, heightPct: 10 },
+            { id: "desc-item", name: "Description", type: "text", fieldId: "description", defaultValue: "",
+              fontSize: 14, align: "left", verticalAlign: "top", color: "#333",
+              anchor: { x: 0, y: 0 }, attach: { targetType: "item", targetId: "art-item", anchor: { x: 0, y: 1 } },
+              widthPct: 90, heightPct: 30 },
+          ],
+        },
+      ],
+      items: [],
+    };
     await srcStorage.saveTemplate(gameId, tpl.id, tpl);
 
-    // Get the default collection
+    // Get the default collection and add cards
     const collections = await srcStorage.listCollections(gameId);
     const colId = collections[0].id;
 
-    // Add cards with field data
     await srcStorage.saveCard(gameId, colId, "card-1", {
-      id: "card-1", name: "Hero", fields: { cost: "5", description: "A brave hero" },
+      id: "card-1", name: "Warrior",
+      fields: { cost: "5", description: "<b>Brave</b> hero", image: imageUrl, faction: "⚔️" },
     });
     await srcStorage.saveCard(gameId, colId, "card-2", {
-      id: "card-2", name: "Villain", fields: { cost: "7", description: "An evil villain" },
+      id: "card-2", name: "Mage",
+      fields: { cost: "3", description: "*Wise* mage", faction: "🔮" },
     });
 
-    // Create a second collection
+    // Create second collection
     const col2 = await srcStorage.createCollection(gameId, "Expansion", tpl.id);
     await srcStorage.saveCard(gameId, col2.id, "card-3", {
-      id: "card-3", name: "Sidekick", fields: { cost: "2" },
+      id: "card-3", name: "Rogue",
+      fields: { cost: "4", faction: "🏹" },
     });
 
-    // Export
+    // ── Export ──────────────────────────────────────────────────────────
     const zipBlob = await exportGameZip(srcStorage, gameId);
     assert.ok(zipBlob.size > 0, "zip should not be empty");
-    // Convert Blob to ArrayBuffer for Node.js compatibility with JSZip
     const zipBuffer = await zipBlob.arrayBuffer();
 
-    // Import into a fresh backend (same mock, but creates a new game)
+    // ── Import ─────────────────────────────────────────────────────────
     const dstStorage = createLocalFileStorage({ defaultTemplate });
     const newGameId = await importGameZip(dstStorage, zipBuffer);
     assert.ok(newGameId, "import should return a game id");
 
-    // Verify game metadata
-    const importedGame = await dstStorage.getGame(newGameId);
-    assert.equal(importedGame.name, "Round Trip Test");
+    // ── Verify game metadata ───────────────────────────────────────────
+    const imp = await dstStorage.getGame(newGameId);
+    assert.equal(imp.name, "Round Trip Test");
 
-    // Verify templates
-    const importedTemplates = await dstStorage.listTemplates(newGameId);
-    assert.equal(importedTemplates.length, 1, "should have 1 template");
-    assert.equal(importedTemplates[0].name, "Custom Template");
-    assert.equal(importedTemplates[0].width, 800);
-    assert.equal(importedTemplates[0].height, 1200);
-    assert.ok(importedTemplates[0].root, "template should have root section");
-    assert.ok(importedTemplates[0].fonts, "template should have fonts");
+    // ── Verify template structure ──────────────────────────────────────
+    const impTemplates = await dstStorage.listTemplates(newGameId);
+    assert.equal(impTemplates.length, 1);
+    const impTpl = impTemplates[0];
+    assert.equal(impTpl.name, "Full Template");
+    assert.equal(impTpl.width, 800);
+    assert.equal(impTpl.height, 1200);
+    assert.equal(impTpl.radius, 16);
+    assert.equal(impTpl.bleed, 10);
 
-    // Verify collections
-    const importedCollections = await dstStorage.listCollections(newGameId);
-    assert.equal(importedCollections.length, 2, "should have 2 collections");
-    const colNames = importedCollections.map((c) => c.name).sort();
+    // Root section
+    assert.equal(impTpl.root.layout, "column");
+    assert.equal(impTpl.root.gap, 12);
+    assert.equal(impTpl.root.children.length, 2);
+
+    // Header section
+    const header = impTpl.root.children[0];
+    assert.equal(header.name, "Header");
+    assert.equal(header.layout, "row");
+    assert.equal(header.items.length, 2);
+
+    // Text item with all fields
+    const titleItem = header.items.find((i) => i.id === "title-item");
+    assert.ok(titleItem);
+    assert.equal(titleItem.type, "text");
+    assert.equal(titleItem.fieldId, "name");
+    assert.equal(titleItem.defaultValue, "Untitled");
+    assert.deepEqual(titleItem.values, ["Warrior", "Mage", "Rogue"]);
+    assert.equal(titleItem.fontSize, 32);
+    assert.equal(titleItem.align, "center");
+    assert.equal(titleItem.verticalAlign, "middle");
+    assert.equal(titleItem.font, "title");
+    assert.equal(titleItem.color, "#1a1a2e");
+    assert.deepEqual(titleItem.anchor, { x: 0.5, y: 0.5 });
+    assert.equal(titleItem.attach.targetType, "section");
+    assert.equal(titleItem.attach.targetId, "header");
+
+    // Cost item with attach to another item
+    const costItem = header.items.find((i) => i.id === "cost-item");
+    assert.ok(costItem);
+    assert.equal(costItem.attach.targetType, "item");
+    assert.equal(costItem.attach.targetId, "title-item");
+
+    // Body section
+    const body = impTpl.root.children[1];
+    assert.equal(body.layout, "stack");
+    assert.equal(body.children.length, 1);
+    assert.equal(body.items.length, 3);
+
+    // Grid sub-section
+    const artSection = body.children[0];
+    assert.equal(artSection.layout, "grid");
+    assert.equal(artSection.columns, 3);
+
+    // Image item
+    const artItem = artSection.items.find((i) => i.id === "art-item");
+    assert.ok(artItem);
+    assert.equal(artItem.type, "image");
+    assert.equal(artItem.fit, "cover");
+    assert.equal(artItem.cornerRadius, 12);
+    // Image URL should be rewritten to new game ID
+    assert.ok(artItem.defaultValue.includes(`/api/games/${newGameId}/images/`), "image URL should reference new game");
+
+    // Frame item
+    const borderItem = body.items.find((i) => i.id === "border-item");
+    assert.ok(borderItem);
+    assert.equal(borderItem.type, "frame");
+    assert.equal(borderItem.strokeWidth, 3);
+    assert.equal(borderItem.strokeColor, "#16213e");
+    assert.equal(borderItem.fillColor, "none");
+    assert.equal(borderItem.cornerRadius, 8);
+
+    // Emoji item
+    const emojiItem = body.items.find((i) => i.id === "emoji-item");
+    assert.ok(emojiItem);
+    assert.equal(emojiItem.type, "emoji");
+    assert.equal(emojiItem.fieldId, "faction");
+    assert.equal(emojiItem.emoji, "⚔️");
+    assert.deepEqual(emojiItem.values, ["⚔️", "🛡️", "🔮", "🏹"]);
+    assert.equal(emojiItem.fontSize, 48);
+
+    // Description item attached to another item
+    const descItem = body.items.find((i) => i.id === "desc-item");
+    assert.ok(descItem);
+    assert.equal(descItem.attach.targetType, "item");
+    assert.equal(descItem.attach.targetId, "art-item");
+
+    // ── Verify collections ─────────────────────────────────────────────
+    const impCols = await dstStorage.listCollections(newGameId);
+    assert.equal(impCols.length, 2);
+    const colNames = impCols.map((c) => c.name).sort();
     assert.deepEqual(colNames, ["Default", "Expansion"]);
-
-    // All collections should reference the template
-    for (const col of importedCollections) {
-      assert.equal(col.templateId, tpl.id, `collection ${col.name} should reference template`);
+    for (const col of impCols) {
+      assert.equal(col.templateId, tpl.id);
     }
 
-    // Verify cards in first collection
-    const defaultCol = importedCollections.find((c) => c.name === "Default");
-    const defaultCards = await dstStorage.listCards(newGameId, defaultCol.id);
-    assert.equal(defaultCards.length, 2, "Default collection should have 2 cards");
-    const hero = defaultCards.find((c) => c.name === "Hero");
-    assert.ok(hero, "Hero card should exist");
-    assert.equal(hero.fields.cost, "5");
-    assert.equal(hero.fields.description, "A brave hero");
-    const villain = defaultCards.find((c) => c.name === "Villain");
-    assert.ok(villain, "Villain card should exist");
-    assert.equal(villain.fields.cost, "7");
+    // ── Verify cards ───────────────────────────────────────────────────
+    const defCol = impCols.find((c) => c.name === "Default");
+    const defCards = await dstStorage.listCards(newGameId, defCol.id);
+    assert.equal(defCards.length, 2);
 
-    // Verify cards in second collection
-    const expCol = importedCollections.find((c) => c.name === "Expansion");
+    const warrior = defCards.find((c) => c.name === "Warrior");
+    assert.ok(warrior);
+    assert.equal(warrior.fields.cost, "5");
+    assert.equal(warrior.fields.description, "<b>Brave</b> hero");
+    assert.equal(warrior.fields.faction, "⚔️");
+    // Image URL should be rewritten
+    assert.ok(warrior.fields.image.includes(`/api/games/${newGameId}/images/`));
+
+    const mage = defCards.find((c) => c.name === "Mage");
+    assert.ok(mage);
+    assert.equal(mage.fields.cost, "3");
+    assert.equal(mage.fields.faction, "🔮");
+
+    const expCol = impCols.find((c) => c.name === "Expansion");
     const expCards = await dstStorage.listCards(newGameId, expCol.id);
-    assert.equal(expCards.length, 1, "Expansion collection should have 1 card");
-    assert.equal(expCards[0].name, "Sidekick");
-    assert.equal(expCards[0].fields.cost, "2");
+    assert.equal(expCards.length, 1);
+    assert.equal(expCards[0].name, "Rogue");
+    assert.equal(expCards[0].fields.faction, "🏹");
 
-    // Verify fonts
-    const importedFonts = await dstStorage.listFonts(newGameId);
-    assert.ok(typeof importedFonts === "object" && !Array.isArray(importedFonts), "fonts should be an object");
+    // ── Verify fonts ───────────────────────────────────────────────────
+    const impFonts = await dstStorage.listFonts(newGameId);
+    assert.ok(typeof impFonts === "object" && !Array.isArray(impFonts));
+    const fontSlots = Object.keys(impFonts);
+    assert.ok(fontSlots.length >= 1, "should have at least 1 font slot");
   });
 
   it("preserves card field data with special characters", async () => {
