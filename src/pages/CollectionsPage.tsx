@@ -10,6 +10,7 @@ import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/templateHelpers'
+import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
 
 export default function CollectionsPage() {
@@ -294,44 +295,41 @@ export default function CollectionsPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b bg-background px-4 py-2 md:px-7">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          {editingName ? (
-            <input
-              autoFocus
-              className="text-lg font-semibold bg-transparent border-b border-primary outline-none"
-              defaultValue={game.name}
-              onBlur={async (e) => {
-                const name = e.target.value.trim()
-                setEditingName(false)
-                if (!name || name === game.name) return
-                try {
-                  await storage.updateGame(gameId, { name })
-                  setGame({ ...game, name })
-                } catch {
-                  setStatus('Error renaming game.')
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                if (e.key === 'Escape') setEditingName(false)
-              }}
-            />
-          ) : (
-            <h1
-              className="text-lg font-semibold cursor-pointer hover:text-muted-foreground transition-colors"
-              onClick={() => setEditingName(true)}
-            >{game.name}</h1>
-          )}
-          <div className="ml-auto text-sm text-muted-foreground">{status}</div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-4 md:px-7 md:py-6">
+    <PageLayout
+      header={<>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        {editingName ? (
+          <input
+            autoFocus
+            className="text-lg font-semibold bg-transparent border-b border-primary outline-none"
+            defaultValue={game.name}
+            onBlur={async (e) => {
+              const name = e.target.value.trim()
+              setEditingName(false)
+              if (!name || name === game.name) return
+              try {
+                await storage.updateGame(gameId, { name })
+                setGame({ ...game, name })
+              } catch {
+                setStatus('Error renaming game.')
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              if (e.key === 'Escape') setEditingName(false)
+            }}
+          />
+        ) : (
+          <h1
+            className="text-lg font-semibold cursor-pointer hover:text-muted-foreground transition-colors"
+            onClick={() => setEditingName(true)}
+          >{game.name}</h1>
+        )}
+      </>}
+      status={status}
+    >
         <Tabs defaultValue={localStorage.getItem(`game:${gameId}:tab`) || 'collections'} onValueChange={(v) => localStorage.setItem(`game:${gameId}:tab`, v)} className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="collections">Collections</TabsTrigger>
@@ -705,7 +703,6 @@ export default function CollectionsPage() {
             </div>
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+    </PageLayout>
   )
 }

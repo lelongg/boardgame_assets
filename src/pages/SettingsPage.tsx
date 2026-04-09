@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import PageLayout from '@/components/PageLayout'
 import { getProvider, setProvider, createStorage } from '../storage'
 
 const BACKENDS = [
@@ -133,17 +134,16 @@ export default function SettingsPage() {
   const isBackendDisabled = (key: string) => key === 'localFile' && serverReachable === false
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b bg-background px-4 py-2 md:px-7">
-        <div className="flex items-center gap-3">
-          <Button size="sm" variant="ghost" onClick={() => navigate(-1)} title="Back">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-lg font-semibold">Settings</h1>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-2xl px-4 py-6 space-y-6">
+    <PageLayout
+      header={<>
+        <Button size="sm" variant="ghost" onClick={() => navigate(-1)} title="Back">
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="text-lg font-semibold">Settings</h1>
+      </>}
+      maxWidth="max-w-2xl"
+    >
+      <div className="space-y-6">
 
         {/* Storage Backend Picker */}
         <Card>
@@ -255,7 +255,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-      </main>
-    </div>
+      </div>
+    </PageLayout>
   )
 }

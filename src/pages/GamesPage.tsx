@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
+import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
 
 export default function GamesPage() {
@@ -74,29 +75,27 @@ export default function GamesPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b bg-background px-4 py-2 md:px-7">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">Boardgame Studio</h1>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-sm text-muted-foreground hidden sm:inline">{status}</span>
-            <Button size="sm" variant="outline" onClick={() => navigate('/settings')}>
-              Settings
+    <PageLayout
+      header={<>
+        <h1 className="text-lg font-semibold">Boardgame Studio</h1>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-sm text-muted-foreground hidden sm:inline">{status}</span>
+          <Button size="sm" variant="outline" onClick={() => navigate('/settings')}>
+            Settings
+          </Button>
+          {!isAuthorized ? (
+            <Button size="sm" variant="outline" onClick={handleConnectDrive}>
+              Connect Drive
             </Button>
-            {!isAuthorized ? (
-              <Button size="sm" variant="outline" onClick={handleConnectDrive}>
-                Connect Drive
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" onClick={handleDisconnect}>
-                Disconnect
-              </Button>
-            )}
-          </div>
+          ) : (
+            <Button size="sm" variant="outline" onClick={handleDisconnect}>
+              Disconnect
+            </Button>
+          )}
         </div>
-      </header>
-
-      <main className="mx-auto max-w-4xl px-7 py-6">
+      </>}
+      maxWidth="max-w-4xl"
+    >
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>Games</CardTitle>
@@ -143,7 +142,6 @@ export default function GamesPage() {
             </div>
           </CardContent>
         </Card>
-      </main>
-    </div>
+    </PageLayout>
   )
 }
