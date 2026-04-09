@@ -16,6 +16,7 @@ export default function AnchorGrid({ value, onChange }: AnchorGridProps) {
         const active = Math.abs(pt.x - value.x) < 0.01 && Math.abs(pt.y - value.y) < 0.01
         return (
           <button
+            type="button"
             key={`${pt.x}-${pt.y}`}
             onClick={() => onChange(pt)}
             className={`h-7 w-7 rounded border text-xs transition-colors ${
