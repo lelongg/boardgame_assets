@@ -139,15 +139,19 @@ export const importGameZip = async (
 
   log('Importing templates...')
   const templateFiles = zip.file(/^templates\/.*\.json$/)
+  log(`Found ${templateFiles.length} template(s)`)
   for (const f of templateFiles) {
     const tpl = JSON.parse(rewriteUrls(await f.async('text')))
+    log(`Saving template: ${tpl.id} (${tpl.name})`)
     await storage.saveTemplate(newGameId, tpl.id, tpl)
   }
 
   log('Importing collections and cards...')
   const collectionFiles = zip.file(/^collections\/[^/]+\/collection\.json$/)
+  log(`Found ${collectionFiles.length} collection(s)`)
   for (const f of collectionFiles) {
     const col = JSON.parse(await f.async('text'))
+    log(`Creating collection: ${col.id} (${col.name}) → template: ${col.templateId}`)
     const newCol = await storage.createCollection(newGameId, col.name, col.templateId)
     const newColId = newCol.id
 
