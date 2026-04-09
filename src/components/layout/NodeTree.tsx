@@ -68,9 +68,13 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
 
   const selectedNode = selectedNodeId ? allNodes.find(n => n.id === selectedNodeId) : null
   const isSelectedSection = selectedNode?.kind === 'section'
-  const descendantIds = isSelectedSection ? getDescendantSectionIds(selectedNodeId!) : []
-  const canCollapse = descendantIds.length > 0
-  const allDescendantsCollapsed = canCollapse && descendantIds.every(id => collapsed.has(id))
+  const selectedSectionObj = isSelectedSection ? selectedNode!.obj as CardTemplateSection : null
+  const hasChildren = isSelectedSection && selectedSectionObj != null && (selectedSectionObj.children.length > 0 || selectedSectionObj.items.length > 0)
+  const descendantSectionIds = isSelectedSection ? getDescendantSectionIds(selectedNodeId!) : []
+  // IDs to toggle: descendant sections + the selected section itself
+  const collapseIds = isSelectedSection ? [...descendantSectionIds, selectedNodeId!] : []
+  const canCollapse = hasChildren
+  const allDescendantsCollapsed = canCollapse && collapseIds.every(id => collapsed.has(id))
 
   const getDropPosition = (e: React.DragEvent, nodeId: string): DropIndicator['position'] => {
     const el = nodeRefs.current.get(nodeId)
@@ -92,9 +96,9 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
               onClick={() => updateCollapsed(prev => {
                 const next = new Set(prev)
                 if (allDescendantsCollapsed) {
-                  descendantIds.forEach(id => next.delete(id))
+                  collapseIds.forEach(id => next.delete(id))
                 } else {
-                  descendantIds.forEach(id => next.add(id))
+                  collapseIds.forEach(id => next.add(id))
                 }
                 return next
               })}
