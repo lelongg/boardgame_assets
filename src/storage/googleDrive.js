@@ -162,6 +162,33 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const rmFile = async (fid) => { await drv(`${DRIVE_API}/files/${fid}`, { method: "DELETE" }); };
 
+  const mkBinaryFile = async (name, mimeType, data, parentId, props = {}) => {
+    const b = `b-${Math.random().toString(16).slice(2)}`;
+    const meta = { name, mimeType, appProperties: { app: appTag, ...props }, ...(parentId ? { parents: [parentId] } : {}) };
+    const metaBlob = new Blob([JSON.stringify(meta)], { type: "application/json; charset=UTF-8" });
+    const body = new Blob([
+      `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
+      metaBlob,
+      `\r\n--${b}\r\nContent-Type: ${mimeType}\r\n\r\n`,
+      data,
+      `\r\n--${b}--`
+    ]);
+    const r = await (await drv(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, {
+      method: "POST", headers: { "Content-Type": `multipart/related; boundary=${b}` }, body
+    })).json();
+    return r.id;
+  };
+
+  const readBinaryAsDataUrl = async (fid) => {
+    const resp = await drv(`${DRIVE_API}/files/${fid}?alt=media`);
+    const blob = await resp.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  };
+
   // --- Folder resolution ---
   // Structure: root / <gameId> / { game.json, templates/, collections/<colId>/{collection.json, cards/}, images/ }
   // Global: root / fonts / { fonts.json, *.woff2 }
@@ -184,6 +211,7 @@ export const createGoogleDriveStorage = (options = {}) => {
   const collectionsFolder = async (gameId) => ensureFolder(await gameFolder(gameId), "collections", `cols:${gameId}`);
   const collectionFolder = async (gameId, colId) => ensureFolder(await collectionsFolder(gameId), colId, `col:${gameId}:${colId}`, { type: "collection", collectionId: colId });
   const cardsFolder = async (gameId, colId) => ensureFolder(await collectionFolder(gameId, colId), "cards", `cards:${gameId}:${colId}`);
+  const imagesFolder = async (gameId) => ensureFolder(await gameFolder(gameId), "images", `imgs:${gameId}`);
   const fontsFolder = () => ensureFolder(rootParent(), "fonts", "fonts", { type: "fonts-folder" });
 
   // --- File helpers ---
@@ -469,6 +497,17 @@ export const createGoogleDriveStorage = (options = {}) => {
     return { fonts: data };
   };
 
+  // --- Images ---
+
+  const uploadImage = async (gameId, file) => {
+    const imgFolder = await imagesFolder(gameId);
+    const mimeType = file.type || "application/octet-stream";
+    const data = await file.arrayBuffer();
+    const fid = await mkBinaryFile(file.name, mimeType, data, imgFolder, { type: "image", gameId });
+    // Return a data URI since Drive files need auth to access
+    return await readBinaryAsDataUrl(fid);
+  };
+
   return {
     init, signIn, signOut, tryRestoreSession, isAuthorized,
     listGames, getGame, createGame, updateGame, deleteGame,
@@ -476,5 +515,6 @@ export const createGoogleDriveStorage = (options = {}) => {
     listCollections, getCollection, createCollection, updateCollection, deleteCollection,
     listCards, getCard, saveCard, deleteCard, copyCard,
     listFonts, addGoogleFont, uploadFont, deleteFont,
+    uploadImage,
   };
 };

@@ -502,16 +502,12 @@ export default function GameEditorPage() {
                                                 const file = input.files?.[0]
                                                 if (!file) return
                                                 try {
-                                                  setStatus('Processing image...')
-                                                  const dataUrl = await new Promise<string>((resolve) => {
-                                                    const reader = new FileReader()
-                                                    reader.onload = () => resolve(reader.result as string)
-                                                    reader.readAsDataURL(file)
-                                                  })
-                                                  setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldId]: dataUrl } }))
-                                                  setStatus('Image added.')
+                                                  setStatus('Uploading image...')
+                                                  const url = await storage.uploadImage(gameId, file)
+                                                  setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldId]: url } }))
+                                                  setStatus('Image uploaded.')
                                                 } catch {
-                                                  setStatus('Error processing image.')
+                                                  setStatus('Error uploading image.')
                                                 }
                                               }
                                               input.click()

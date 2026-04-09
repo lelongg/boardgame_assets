@@ -222,6 +222,18 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       const response = await fetch(`${apiBase}/fonts/${file}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to delete font");
       return await response.json();
+    },
+
+    // Images
+    async uploadImage(gameId, file) {
+      const response = await fetch(`${apiBase}/games/${gameId}/images/upload`, {
+        method: "POST",
+        headers: { "Content-Disposition": `attachment; filename="${file.name}"` },
+        body: await file.arrayBuffer(),
+      });
+      if (!response.ok) throw new Error("Failed to upload image");
+      const data = await response.json();
+      return data.url;
     }
   };
 };
