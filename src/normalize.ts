@@ -132,7 +132,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         align: safeEnum(obj.align, ["left", "center", "right"] as const, "center" as const),
         verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
         font: obj.font !== undefined && obj.font !== null && obj.font !== "" ? safeString(obj.font, "body") : undefined,
-        color: obj.color !== undefined && obj.color !== null && obj.color !== '' ? safeString(obj.color, "#000000") : undefined
+        color: safeString(obj.color, "#000000")
     };
     return textItem;
 };
