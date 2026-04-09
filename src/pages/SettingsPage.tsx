@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import PageLayout from '@/components/PageLayout'
 import { getProvider, setProvider, createStorageFor } from '../storage'
+import { exportGameZip, importGameZip } from '../gameZip'
 
 const BACKENDS = [
   { key: 'localFile', name: 'Local Disk', description: 'Requires the dev server running' },
@@ -106,30 +107,10 @@ export default function SettingsPage() {
 
       let copied = 0
       for (const gameId of selectedGames) {
-        const game = await srcStorage.getGame(gameId)
-        if (!game) continue
-
-        setMigrationStatus(`Copying "${game.name}"... (${copied + 1}/${selectedGames.size})`)
-
-        const newGame = await dstStorage.createGame(game.name)
-        const newGameId = newGame.id
-
-        // Copy templates
-        const templates = await srcStorage.listTemplates(gameId)
-        for (const tpl of templates) {
-          await dstStorage.saveTemplate(newGameId, tpl.id, tpl)
-        }
-
-        // Copy collections and their cards
-        const collections = await srcStorage.listCollections(gameId)
-        for (const col of collections) {
-          const newCol = await dstStorage.createCollection(newGameId, col.name, col.templateId)
-          const cards = await srcStorage.listCards(gameId, col.id)
-          for (const card of cards) {
-            await dstStorage.saveCard(newGameId, newCol.id, card.id, card)
-          }
-        }
-
+        setMigrationStatus(`Exporting game ${copied + 1}/${selectedGames.size}...`)
+        const zipBlob = await exportGameZip(srcStorage, gameId, setMigrationStatus)
+        setMigrationStatus(`Importing game ${copied + 1}/${selectedGames.size}...`)
+        await importGameZip(dstStorage, zipBlob, setMigrationStatus)
         copied++
       }
 
