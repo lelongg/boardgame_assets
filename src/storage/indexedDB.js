@@ -1,0 +1,601 @@
+/**
+ * IndexedDB browser storage backend.
+ * Stores all data locally for offline/serverless use.
+ */
+
+import { putAsset, deleteAsset, listAssets } from "./assetCache.js";
+import { normalizeCard, normalizeTemplate } from "../normalizeExport.js";
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+
+const slugify = (v) =>
+  v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+const now = () => new Date().toISOString();
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const hashArrayBuffer = async (buf) => {
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12);
+};
+
+// ── Database ───────────────────────────────────────────────────────────────
+
+const DB_NAME = "boardgame-assets";
+const DB_VERSION = 2;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+
+      // "assets" already exists from v1 — only create new stores
+      if (!db.objectStoreNames.contains("games")) {
+        db.createObjectStore("games");
+      }
+      if (!db.objectStoreNames.contains("templates")) {
+        db.createObjectStore("templates");
+      }
+      if (!db.objectStoreNames.contains("collections")) {
+        db.createObjectStore("collections");
+      }
+      if (!db.objectStoreNames.contains("cards")) {
+        db.createObjectStore("cards");
+      }
+      // Keep "assets" store if present (created in v1)
+      if (!db.objectStoreNames.contains("assets")) {
+        db.createObjectStore("assets");
+      }
+    };
+
+    request.onsuccess = (event) => resolve(event.target.result);
+    request.onerror = (event) => reject(event.target.error);
+  });
+}
+
+// ── Low-level IDB helpers ──────────────────────────────────────────────────
+
+function idbGet(db, storeName, key) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readonly");
+    const req = tx.objectStore(storeName).get(key);
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function idbPut(db, storeName, key, value) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    const req = tx.objectStore(storeName).put(value, key);
+    req.onsuccess = () => resolve();
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function idbDelete(db, storeName, key) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    const req = tx.objectStore(storeName).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
+ * Get all keys (and optionally values) in a store whose compound key starts
+ * with the given prefix components.
+ * e.g. prefix = [gameId] fetches all [gameId, *] keys.
+ */
+function idbGetAllByPrefix(db, storeName, prefix) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readonly");
+    const store = tx.objectStore(storeName);
+    // Build a range from [gameId] to [gameId, '\uffff', '\uffff', ...]
+    const lower = prefix;
+    const upper = [...prefix, "\uffff"];
+    const range = IDBKeyRange.bound(lower, upper);
+    const results = [];
+    const req = store.openCursor(range);
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        results.push({ key: cursor.key, value: cursor.value });
+        cursor.continue();
+      } else {
+        resolve(results);
+      }
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function idbDeleteByPrefix(db, storeName, prefix) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    const lower = prefix;
+    const upper = [...prefix, "\uffff"];
+    const range = IDBKeyRange.bound(lower, upper);
+    const req = store.openCursor(range);
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// ── Font manifest helpers ──────────────────────────────────────────────────
+
+const fontsKey = (gameId) => `${gameId}:fonts`;
+
+async function getFontManifest(db, gameId) {
+  return (await idbGet(db, "games", fontsKey(gameId))) ?? [];
+}
+
+async function saveFontManifest(db, gameId, manifest) {
+  await idbPut(db, "games", fontsKey(gameId), manifest);
+}
+
+// ── Factory ────────────────────────────────────────────────────────────────
+
+export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
+  return {
+    // ── Lifecycle ──────────────────────────────────────────────────────────
+
+    async init() {},
+    async tryRestoreSession() { return true; },
+    isAuthorized() { return true; },
+    async signIn() {},
+    async signOut() {},
+
+    // ── Games ──────────────────────────────────────────────────────────────
+
+    async listGames() {
+      const db = await openDB();
+      try {
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction("games", "readonly");
+          const store = tx.objectStore("games");
+          // Only return entries whose key is a plain string (not "gameId:fonts")
+          const results = [];
+          const req = store.openCursor();
+          req.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor) {
+              // Skip font manifests (keys like "gameId:fonts")
+              if (typeof cursor.key === "string" && !cursor.key.includes(":")) {
+                results.push(cursor.value);
+              }
+              cursor.continue();
+            } else {
+              // Sort by creation date
+              results.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+              resolve(results);
+            }
+          };
+          req.onerror = (e) => reject(e.target.error);
+        });
+      } finally {
+        db.close();
+      }
+    },
+
+    async getGame(gameId) {
+      const db = await openDB();
+      try {
+        const game = await idbGet(db, "games", gameId);
+        if (!game) throw new Error(`Game not found: ${gameId}`);
+        return game;
+      } finally {
+        db.close();
+      }
+    },
+
+    async createGame(name) {
+      const db = await openDB();
+      try {
+        const gameId = slugify(name) + "-" + uid();
+        const game = {
+          id: gameId,
+          name,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        await idbPut(db, "games", gameId, game);
+
+        // Create a default template
+        const templateId = "default";
+        const template = normalizeTemplate(
+          defaultTemplate ? defaultTemplate() : { id: templateId, name: "Default" }
+        );
+        template.id = templateId;
+        await idbPut(db, "templates", [gameId, templateId], template);
+
+        // Create a default collection
+        const collectionId = "default";
+        const collection = {
+          id: collectionId,
+          name: "Default",
+          templateId,
+          createdAt: now(),
+        };
+        await idbPut(db, "collections", [gameId, collectionId], collection);
+
+        return game;
+      } finally {
+        db.close();
+      }
+    },
+
+    async updateGame(gameId, updates) {
+      const db = await openDB();
+      try {
+        const game = await idbGet(db, "games", gameId);
+        if (!game) throw new Error(`Game not found: ${gameId}`);
+        const updated = { ...game, ...updates, id: gameId, updatedAt: now() };
+        await idbPut(db, "games", gameId, updated);
+        return updated;
+      } finally {
+        db.close();
+      }
+    },
+
+    async deleteGame(gameId) {
+      const db = await openDB();
+      try {
+        // Delete game record and font manifest
+        await idbDelete(db, "games", gameId);
+        await idbDelete(db, "games", fontsKey(gameId));
+
+        // Delete all templates, collections, cards for this game
+        await idbDeleteByPrefix(db, "templates", [gameId]);
+        await idbDeleteByPrefix(db, "collections", [gameId]);
+        await idbDeleteByPrefix(db, "cards", [gameId]);
+
+        // Delete all assets for this game
+        const prefix = `/api/games/${gameId}/`;
+        const assetKeys = await listAssets(prefix);
+        for (const key of assetKeys) {
+          await deleteAsset(key);
+        }
+      } finally {
+        db.close();
+      }
+    },
+
+    // ── Templates ──────────────────────────────────────────────────────────
+
+    async listTemplates(gameId) {
+      const db = await openDB();
+      try {
+        const entries = await idbGetAllByPrefix(db, "templates", [gameId]);
+        return entries.map((e) => e.value);
+      } finally {
+        db.close();
+      }
+    },
+
+    async getTemplate(gameId, templateId) {
+      const db = await openDB();
+      try {
+        const template = await idbGet(db, "templates", [gameId, templateId]);
+        if (!template) throw new Error(`Template not found: ${templateId}`);
+        return template;
+      } finally {
+        db.close();
+      }
+    },
+
+    async saveTemplate(gameId, templateId, template) {
+      const db = await openDB();
+      try {
+        const normalized = normalizeTemplate({ ...template, id: templateId });
+        await idbPut(db, "templates", [gameId, templateId], normalized);
+        return normalized;
+      } finally {
+        db.close();
+      }
+    },
+
+    async createTemplate(gameId, name) {
+      const db = await openDB();
+      try {
+        const templateId = slugify(name) + "-" + uid();
+        const template = normalizeTemplate(
+          defaultTemplate
+            ? { ...defaultTemplate(), id: templateId, name }
+            : { id: templateId, name }
+        );
+        await idbPut(db, "templates", [gameId, templateId], template);
+        return template;
+      } finally {
+        db.close();
+      }
+    },
+
+    async copyTemplate(gameId, templateId) {
+      const db = await openDB();
+      try {
+        const source = await idbGet(db, "templates", [gameId, templateId]);
+        if (!source) throw new Error(`Template not found: ${templateId}`);
+        const newId = slugify(source.name) + "-" + uid();
+        const copy = normalizeTemplate({ ...source, id: newId, name: `${source.name} (copy)` });
+        await idbPut(db, "templates", [gameId, newId], copy);
+        return copy;
+      } finally {
+        db.close();
+      }
+    },
+
+    async deleteTemplate(gameId, templateId) {
+      const db = await openDB();
+      try {
+        // Check if any collection uses this template
+        const collections = await idbGetAllByPrefix(db, "collections", [gameId]);
+        const inUse = collections.some((e) => e.value.templateId === templateId);
+        if (inUse) {
+          throw new Error("Cannot delete template that is in use by a collection");
+        }
+        await idbDelete(db, "templates", [gameId, templateId]);
+      } finally {
+        db.close();
+      }
+    },
+
+    // ── Collections ────────────────────────────────────────────────────────
+
+    async listCollections(gameId) {
+      const db = await openDB();
+      try {
+        const entries = await idbGetAllByPrefix(db, "collections", [gameId]);
+        return entries.map((e) => e.value);
+      } finally {
+        db.close();
+      }
+    },
+
+    async getCollection(gameId, collectionId) {
+      const db = await openDB();
+      try {
+        const col = await idbGet(db, "collections", [gameId, collectionId]);
+        if (!col) throw new Error(`Collection not found: ${collectionId}`);
+        return col;
+      } finally {
+        db.close();
+      }
+    },
+
+    async createCollection(gameId, name, templateId) {
+      const db = await openDB();
+      try {
+        const collectionId = slugify(name) + "-" + uid();
+        const collection = {
+          id: collectionId,
+          name,
+          templateId,
+          createdAt: now(),
+        };
+        await idbPut(db, "collections", [gameId, collectionId], collection);
+        return collection;
+      } finally {
+        db.close();
+      }
+    },
+
+    async updateCollection(gameId, collectionId, updates) {
+      const db = await openDB();
+      try {
+        const col = await idbGet(db, "collections", [gameId, collectionId]);
+        if (!col) throw new Error(`Collection not found: ${collectionId}`);
+        const updated = { ...col, ...updates, id: collectionId, updatedAt: now() };
+        await idbPut(db, "collections", [gameId, collectionId], updated);
+        return updated;
+      } finally {
+        db.close();
+      }
+    },
+
+    async deleteCollection(gameId, collectionId) {
+      const db = await openDB();
+      try {
+        await idbDelete(db, "collections", [gameId, collectionId]);
+        // Delete all cards in this collection
+        await idbDeleteByPrefix(db, "cards", [gameId, collectionId]);
+      } finally {
+        db.close();
+      }
+    },
+
+    // ── Cards ──────────────────────────────────────────────────────────────
+
+    async listCards(gameId, collectionId) {
+      const db = await openDB();
+      try {
+        const entries = await idbGetAllByPrefix(db, "cards", [gameId, collectionId]);
+        return entries.map((e) => e.value);
+      } finally {
+        db.close();
+      }
+    },
+
+    async getCard(gameId, collectionId, cardId) {
+      const db = await openDB();
+      try {
+        const card = await idbGet(db, "cards", [gameId, collectionId, cardId]);
+        if (!card) throw new Error(`Card not found: ${cardId}`);
+        return card;
+      } finally {
+        db.close();
+      }
+    },
+
+    async saveCard(gameId, collectionId, cardId, card) {
+      const db = await openDB();
+      try {
+        const id = cardId || uid();
+        const normalized = normalizeCard({ ...card, id });
+        await idbPut(db, "cards", [gameId, collectionId, id], normalized);
+        return normalized;
+      } finally {
+        db.close();
+      }
+    },
+
+    async copyCard(gameId, collectionId, cardId) {
+      const db = await openDB();
+      try {
+        const source = await idbGet(db, "cards", [gameId, collectionId, cardId]);
+        if (!source) throw new Error(`Card not found: ${cardId}`);
+        const newId = uid();
+        const copy = normalizeCard({ ...source, id: newId, name: `${source.name} (copy)` });
+        await idbPut(db, "cards", [gameId, collectionId, newId], copy);
+        return copy;
+      } finally {
+        db.close();
+      }
+    },
+
+    async deleteCard(gameId, collectionId, cardId) {
+      const db = await openDB();
+      try {
+        await idbDelete(db, "cards", [gameId, collectionId, cardId]);
+      } finally {
+        db.close();
+      }
+    },
+
+    // ── Fonts ──────────────────────────────────────────────────────────────
+
+    async listFonts(gameId) {
+      const db = await openDB();
+      try {
+        return await getFontManifest(db, gameId);
+      } finally {
+        db.close();
+      }
+    },
+
+    async addGoogleFont(gameId, name, slotName) {
+      // Fetch the CSS from Google Fonts to get the woff2 URL
+      const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(name)}`;
+      const cssResp = await fetch(cssUrl);
+      if (!cssResp.ok) throw new Error(`Failed to fetch Google Font CSS for "${name}"`);
+      const css = await cssResp.text();
+
+      // Extract the first woff2 URL
+      const match = css.match(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+\.woff2)\)/);
+      if (!match) throw new Error(`No woff2 URL found in Google Font CSS for "${name}"`);
+      const woff2Url = match[1];
+
+      // Download the font binary
+      const fontResp = await fetch(woff2Url);
+      if (!fontResp.ok) throw new Error(`Failed to download font binary for "${name}"`);
+      const buf = await fontResp.arrayBuffer();
+      const hash = await hashArrayBuffer(buf);
+      const fileName = `${hash}.woff2`;
+      const assetPath = `/api/games/${gameId}/fonts/${fileName}`;
+
+      await putAsset(assetPath, new Blob([buf], { type: "font/woff2" }), "font/woff2");
+
+      const db = await openDB();
+      try {
+        const manifest = await getFontManifest(db, gameId);
+        const entry = {
+          name,
+          slotName: slotName || slugify(name),
+          file: fileName,
+          source: "google",
+          url: assetPath,
+        };
+        // Replace existing entry for this slot or append
+        const idx = manifest.findIndex((f) => f.slotName === entry.slotName);
+        if (idx >= 0) {
+          manifest[idx] = entry;
+        } else {
+          manifest.push(entry);
+        }
+        await saveFontManifest(db, gameId, manifest);
+        return manifest;
+      } finally {
+        db.close();
+      }
+    },
+
+    async uploadFont(gameId, file, slotName) {
+      const buf = await file.arrayBuffer();
+      const hash = await hashArrayBuffer(buf);
+      const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : "";
+      const fileName = `${hash}${ext}`;
+      const mimeType = file.type || "font/woff2";
+      const assetPath = `/api/games/${gameId}/fonts/${fileName}`;
+
+      await putAsset(assetPath, new Blob([buf], { type: mimeType }), mimeType);
+
+      const db = await openDB();
+      try {
+        const manifest = await getFontManifest(db, gameId);
+        const resolvedSlot = slotName || slugify(file.name.replace(/\.[^.]+$/, ""));
+        const entry = {
+          name: file.name.replace(/\.[^.]+$/, ""),
+          slotName: resolvedSlot,
+          file: fileName,
+          source: "upload",
+          url: assetPath,
+        };
+        const idx = manifest.findIndex((f) => f.slotName === resolvedSlot);
+        if (idx >= 0) {
+          manifest[idx] = entry;
+        } else {
+          manifest.push(entry);
+        }
+        await saveFontManifest(db, gameId, manifest);
+        return manifest;
+      } finally {
+        db.close();
+      }
+    },
+
+    async deleteFont(gameId, file) {
+      const assetPath = `/api/games/${gameId}/fonts/${file}`;
+      await deleteAsset(assetPath);
+
+      const db = await openDB();
+      try {
+        const manifest = await getFontManifest(db, gameId);
+        const updated = manifest.filter((f) => f.file !== file);
+        await saveFontManifest(db, gameId, updated);
+        return updated;
+      } finally {
+        db.close();
+      }
+    },
+
+    // ── Images ─────────────────────────────────────────────────────────────
+
+    async uploadImage(gameId, file) {
+      const buf = await file.arrayBuffer();
+      const hash = await hashArrayBuffer(buf);
+      const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : "";
+      const fileName = `${hash}${ext}`;
+      const mimeType = file.type || "application/octet-stream";
+      const assetPath = `/api/games/${gameId}/images/${fileName}`;
+
+      await putAsset(assetPath, new Blob([buf], { type: mimeType }), mimeType);
+
+      return assetPath;
+    },
+  };
+};
