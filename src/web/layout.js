@@ -1,6 +1,4 @@
-import type { CardTemplate } from "./types";
-
-export const defaultTemplate = (): CardTemplate => ({
+export const defaultLayout = () => ({
   version: 2,
   id: "default",
   name: "Default",
@@ -8,10 +6,6 @@ export const defaultTemplate = (): CardTemplate => ({
   height: 1050,
   radius: 28,
   bleed: 18,
-  fonts: {
-    title: { name: "Fraunces", file: "", source: "google" as const },
-    body: { name: "Space Grotesk", file: "", source: "google" as const }
-  },
   root: {
     id: "root",
     name: "Root",
@@ -78,7 +72,7 @@ export const defaultTemplate = (): CardTemplate => ({
             attach: {
               targetType: "section",
               targetId: "body",
-              anchor: { x: 0.5, y: 0 }
+              anchor: { x: 0.5, y: 0.1 }
             },
             widthPct: 70,
             heightPct: 50,

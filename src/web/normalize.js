@@ -44,7 +44,7 @@ const normalizeAnchorPoint = (anchor) => {
     };
 };
 /**
- * Normalize a card template item to ensure all fields have valid values.
+ * Normalize a card layout item to ensure all fields have valid values.
  */
 const normalizeItem = (item) => {
     const obj = item && typeof item === "object" ? item : {};
@@ -110,7 +110,7 @@ const normalizeItem = (item) => {
     return textItem;
 };
 /**
- * Normalize a card template section recursively.
+ * Normalize a card layout section recursively.
  */
 const normalizeSection = (section) => {
     const obj = section && typeof section === "object" ? section : {};
@@ -136,11 +136,11 @@ const normalizeSection = (section) => {
     };
 };
 /**
- * Normalize a card template to ensure all fields have valid values.
+ * Normalize a card layout to ensure all fields have valid values.
  * This protects against empty strings, null, or undefined values in JSON files.
  */
-export const normalizeTemplate = (template) => {
-    const obj = template && typeof template === "object" ? template : {};
+export const normalizeLayout = (layout) => {
+    const obj = layout && typeof layout === "object" ? layout : {};
     return {
         version: 2,
         id: safeString(obj.id, "default"),

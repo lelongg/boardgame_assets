@@ -46,8 +46,8 @@ const findSectionById = (section, id) => {
 
 // Test for adding item as sibling
 test("createItem should add item as sibling when another item is selected", () => {
-  // Setup: Create a template with a section containing two items
-  const template = {
+  // Setup: Create a layout with a section containing two items
+  const layout = {
     root: {
       id: "root",
       name: "Root",
@@ -72,7 +72,7 @@ test("createItem should add item as sibling when another item is selected", () =
   const activeNode = { type: "item", id: "item-1" };
 
   // Find the location of the selected item
-  const location = findNodeLocation(template.root, activeNode);
+  const location = findNodeLocation(layout.root, activeNode);
   assert.ok(location, "Should find the item location");
   assert.equal(location.index, 0, "Item 1 should be at index 0");
 
@@ -87,15 +87,15 @@ test("createItem should add item as sibling when another item is selected", () =
   location.list.splice(location.index + 1, 0, newItem);
 
   // Verify the new item was added as a sibling
-  assert.equal(template.root.items.length, 3, "Should have 3 items");
-  assert.equal(template.root.items[0].id, "item-1", "First item should be item-1");
-  assert.equal(template.root.items[1].id, "item-new", "Second item should be the new item");
-  assert.equal(template.root.items[2].id, "item-2", "Third item should be item-2");
+  assert.equal(layout.root.items.length, 3, "Should have 3 items");
+  assert.equal(layout.root.items[0].id, "item-1", "First item should be item-1");
+  assert.equal(layout.root.items[1].id, "item-new", "Second item should be the new item");
+  assert.equal(layout.root.items[2].id, "item-2", "Third item should be item-2");
 });
 
 test("createItem should add item to section when section is selected", () => {
-  // Setup: Create a template with a section
-  const template = {
+  // Setup: Create a layout with a section
+  const layout = {
     root: {
       id: "root",
       name: "Root",
@@ -109,7 +109,7 @@ test("createItem should add item to section when section is selected", () => {
   const activeNode = { type: "section", id: "root" };
 
   // Find the section
-  const section = findSectionById(template.root, activeNode.id);
+  const section = findSectionById(layout.root, activeNode.id);
   assert.ok(section, "Should find the section");
 
   // Create a new item
@@ -123,13 +123,13 @@ test("createItem should add item to section when section is selected", () => {
   section.items.push(newItem);
 
   // Verify the new item was added to the section
-  assert.equal(template.root.items.length, 1, "Should have 1 item");
-  assert.equal(template.root.items[0].id, "item-new", "First item should be the new item");
+  assert.equal(layout.root.items.length, 1, "Should have 1 item");
+  assert.equal(layout.root.items[0].id, "item-new", "First item should be the new item");
 });
 
 test("createItem should add item at end when item in nested section is selected", () => {
-  // Setup: Create a template with nested sections
-  const template = {
+  // Setup: Create a layout with nested sections
+  const layout = {
     root: {
       id: "root",
       name: "Root",
@@ -157,7 +157,7 @@ test("createItem should add item at end when item in nested section is selected"
   const activeNode = { type: "item", id: "item-1" };
 
   // Find the location of the selected item
-  const location = findNodeLocation(template.root, activeNode);
+  const location = findNodeLocation(layout.root, activeNode);
   assert.ok(location, "Should find the item location");
   assert.equal(location.index, 0, "Item 1 should be at index 0");
 
@@ -172,7 +172,7 @@ test("createItem should add item at end when item in nested section is selected"
   location.list.splice(location.index + 1, 0, newItem);
 
   // Verify the new item was added as a sibling in the nested section
-  const section1 = template.root.children[0];
+  const section1 = layout.root.children[0];
   assert.equal(section1.items.length, 2, "Section 1 should have 2 items");
   assert.equal(section1.items[0].id, "item-1", "First item should be item-1");
   assert.equal(section1.items[1].id, "item-new", "Second item should be the new item");

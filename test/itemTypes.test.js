@@ -11,7 +11,7 @@ test("text item renders correctly", () => {
     }
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -48,7 +48,7 @@ test("text item renders correctly", () => {
     }
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("<text"), "SVG should contain a text element");
   assert.ok(svg.includes("Test description"), "SVG should contain the field value");
   assert.ok(svg.includes('font-size="24"'), "SVG should have correct font size");
@@ -61,7 +61,7 @@ test("frame item renders correctly", () => {
     fields: {}
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -98,7 +98,7 @@ test("frame item renders correctly", () => {
     }
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes('<rect'), "SVG should contain a rect element");
   assert.ok(svg.includes('stroke="#ff0000"'), "SVG should have correct stroke color");
   assert.ok(svg.includes('stroke-width="3"'), "SVG should have correct stroke width");
@@ -114,7 +114,7 @@ test("image item renders correctly", () => {
     }
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -150,7 +150,7 @@ test("image item renders correctly", () => {
     }
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("<image"), "SVG should contain an image element");
   assert.ok(svg.includes("https://example.com/image.jpg"), "SVG should have correct image URL");
   assert.ok(svg.includes("clipPath"), "SVG should have clipPath for rounded corners");
@@ -166,7 +166,7 @@ test("legacy item without type renders as text", () => {
     }
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -203,7 +203,7 @@ test("legacy item without type renders as text", () => {
     }
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("<text"), "SVG should contain a text element");
   assert.ok(svg.includes("Legacy Title"), "SVG should contain the field value");
   assert.ok(svg.includes('font-size="32"'), "SVG should have correct font size");
@@ -216,7 +216,7 @@ test("image item without URL does not render", () => {
     fields: {}
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -251,6 +251,6 @@ test("image item without URL does not render", () => {
     }
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(!svg.includes("<image"), "SVG should not contain an image element when field is missing");
 });

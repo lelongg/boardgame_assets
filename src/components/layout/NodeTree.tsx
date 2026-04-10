@@ -1,10 +1,10 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile } from 'lucide-react'
-import { flattenNodes } from './templateHelpers'
-import type { CardTemplateSection } from '../../types'
+import { flattenNodes } from './layoutHelpers'
+import type { CardLayoutSection } from '../../types'
 
 type NodeTreeProps = {
-  root: CardTemplateSection
+  root: CardLayoutSection
   selectedNodeId: string | null
   onSelectNode: (id: string) => void
   onDrop: (dragId: string, dragKind: 'section' | 'item', dropTargetId: string, position: 'before' | 'after' | 'inside') => void
@@ -68,7 +68,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
 
   const selectedNode = selectedNodeId ? allNodes.find(n => n.id === selectedNodeId) : null
   const isSelectedSection = selectedNode?.kind === 'section'
-  const selectedSectionObj = isSelectedSection ? selectedNode!.obj as CardTemplateSection : null
+  const selectedSectionObj = isSelectedSection ? selectedNode!.obj as CardLayoutSection : null
   const hasChildren = isSelectedSection && selectedSectionObj != null && (selectedSectionObj.children.length > 0 || selectedSectionObj.items.length > 0)
   const descendantSectionIds = isSelectedSection ? getDescendantSectionIds(selectedNodeId!) : []
   // IDs to toggle: descendant sections + the selected section itself
@@ -155,13 +155,13 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
         const isRoot = node.id === root.id
         const isSection = node.kind === 'section'
         const isCollapsed = collapsed.has(node.id)
-        const hasChildren = isSection && ((node.obj as CardTemplateSection).children.length > 0 || (node.obj as CardTemplateSection).items.length > 0)
+        const hasChildren = isSection && ((node.obj as CardLayoutSection).children.length > 0 || (node.obj as CardLayoutSection).items.length > 0)
         const prefix = isSection ? (hasChildren ? (isCollapsed ? '▸' : '▾') : '▾') : '·'
         const iconClass = "h-3.5 w-3.5 inline-block opacity-60"
         const sectionIcons: Record<string, React.ReactNode> = { column: <Rows3 className={iconClass} />, row: <Columns3 className={iconClass} />, stack: <Layers className={iconClass} />, grid: <Grid3X3 className={iconClass} /> }
         const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} />, emoji: <Smile className={iconClass} /> }
         const typeIcon = node.kind === 'section'
-          ? sectionIcons[(node.obj as CardTemplateSection).layout] ?? null
+          ? sectionIcons[(node.obj as CardLayoutSection).layout] ?? null
           : itemIcons[(node.obj as any).type ?? 'text'] ?? null
 
         const isDropTarget = dropIndicator?.targetId === node.id

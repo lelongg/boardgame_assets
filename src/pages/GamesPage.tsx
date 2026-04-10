@@ -25,6 +25,9 @@ export default function GamesPage() {
       setStatus('Loading games...')
       const gameList = await s.listGames()
       setGames(gameList)
+      if (gameList.length > 0 && !expandedGame) {
+        setExpandedGame(gameList[0].id)
+      }
       setStatus(`Loaded ${gameList.length} games.`)
     } catch (error) {
       setStatus('Error loading games.')

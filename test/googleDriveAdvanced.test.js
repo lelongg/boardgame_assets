@@ -124,8 +124,8 @@ const createComprehensiveMock = () => {
         if (query.includes("type") && query.includes("game")) {
           return file.type === "game";
         }
-        if (query.includes("type") && query.includes("template")) {
-          return file.type === "template";
+        if (query.includes("type") && query.includes("layout")) {
+          return file.type === "layout";
         }
         if (query.includes("type") && query.includes("card")) {
           // Check if it's for a specific game
@@ -252,7 +252,7 @@ test("Google Drive storage createGame", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -260,7 +260,7 @@ test("Google Drive storage createGame", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -280,7 +280,7 @@ test("Google Drive storage updateGame", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -288,7 +288,7 @@ test("Google Drive storage updateGame", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -309,7 +309,7 @@ test("Google Drive storage deleteGame", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -317,7 +317,7 @@ test("Google Drive storage deleteGame", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -340,7 +340,7 @@ test("Google Drive storage saveCard", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -348,7 +348,7 @@ test("Google Drive storage saveCard", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -374,7 +374,7 @@ test("Google Drive storage saveCard updates existing card", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -382,7 +382,7 @@ test("Google Drive storage saveCard updates existing card", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -418,7 +418,7 @@ test("Google Drive storage delete operations", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -426,7 +426,7 @@ test("Google Drive storage delete operations", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -439,17 +439,17 @@ test("Google Drive storage delete operations", async () => {
   // complex mock state management. These operations are tested in integration.
 });
 
-test("Google Drive storage template operations", async () => {
+test("Google Drive storage layout operations", async () => {
   createComprehensiveMock();
 
   const { createGoogleDriveStorage } = await import(
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
-    name: "Default Template",
+    name: "Default Layout",
     width: 750,
     height: 1050,
     root: { id: "root", children: [], items: [] },
@@ -457,7 +457,7 @@ test("Google Drive storage template operations", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -465,7 +465,7 @@ test("Google Drive storage template operations", async () => {
 
   const game = await storage.createGame("Test Game");
 
-  // Note: loadTemplate and saveTemplate trigger touchGame which requires
+  // Note: loadLayout and saveLayout trigger touchGame which requires
   // complex mock state management. These operations are tested in integration.
   assert.ok(game.id);
 });
@@ -477,7 +477,7 @@ test("Google Drive storage getGame", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -485,7 +485,7 @@ test("Google Drive storage getGame", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -507,7 +507,7 @@ test("Google Drive storage getGame throws error for non-existent game", async ()
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -515,7 +515,7 @@ test("Google Drive storage getGame throws error for non-existent game", async ()
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -534,7 +534,7 @@ test("Google Drive storage caching works correctly", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -542,7 +542,7 @@ test("Google Drive storage caching works correctly", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -567,7 +567,7 @@ test("Google Drive storage handles card with special characters in name", async 
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] },
@@ -575,7 +575,7 @@ test("Google Drive storage handles card with special characters in name", async 
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();

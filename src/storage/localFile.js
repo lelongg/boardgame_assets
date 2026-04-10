@@ -5,7 +5,7 @@
 
 const apiBase = "/api";
 
-export const createLocalFileStorage = ({ defaultTemplate }) => {
+export const createLocalFileStorage = ({ defaultLayout }) => {
   return {
     async init() {},
     async tryRestoreSession() { return true; },
@@ -51,50 +51,50 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       if (!response.ok) throw new Error("Failed to delete game");
     },
 
-    // Templates
-    async listTemplates(gameId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/templates`);
-      if (!response.ok) throw new Error("Failed to list templates");
+    // Layouts
+    async listLayouts(gameId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts`);
+      if (!response.ok) throw new Error("Failed to list layouts");
       return await response.json();
     },
 
-    async getTemplate(gameId, templateId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/templates/${templateId}`);
-      if (!response.ok) throw new Error("Failed to get template");
+    async getLayout(gameId, layoutId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts/${layoutId}`);
+      if (!response.ok) throw new Error("Failed to get layout");
       return await response.json();
     },
 
-    async saveTemplate(gameId, templateId, template) {
-      const response = await fetch(`${apiBase}/games/${gameId}/templates/${templateId}`, {
+    async saveLayout(gameId, layoutId, layout) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts/${layoutId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(template)
+        body: JSON.stringify(layout)
       });
-      if (!response.ok) throw new Error("Failed to save template");
+      if (!response.ok) throw new Error("Failed to save layout");
       return await response.json();
     },
 
-    async createTemplate(gameId, name) {
-      const response = await fetch(`${apiBase}/games/${gameId}/templates`, {
+    async createLayout(gameId, name) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name })
       });
-      if (!response.ok) throw new Error("Failed to create template");
+      if (!response.ok) throw new Error("Failed to create layout");
       return await response.json();
     },
 
-    async copyTemplate(gameId, templateId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/templates/${templateId}/copy`, { method: "POST" });
-      if (!response.ok) throw new Error("Failed to copy template");
+    async copyLayout(gameId, layoutId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts/${layoutId}/copy`, { method: "POST" });
+      if (!response.ok) throw new Error("Failed to copy layout");
       return await response.json();
     },
 
-    async deleteTemplate(gameId, templateId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/templates/${templateId}`, { method: "DELETE" });
+    async deleteLayout(gameId, layoutId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts/${layoutId}`, { method: "DELETE" });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
-        throw new Error(body?.error || "Failed to delete template");
+        throw new Error(body?.error || "Failed to delete layout");
       }
     },
 
@@ -111,11 +111,11 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       return await response.json();
     },
 
-    async createCollection(gameId, name, templateId) {
+    async createCollection(gameId, name, layoutId) {
       const response = await fetch(`${apiBase}/games/${gameId}/collections`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, templateId })
+        body: JSON.stringify({ name, layoutId })
       });
       if (!response.ok) throw new Error("Failed to create collection");
       return await response.json();

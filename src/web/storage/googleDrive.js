@@ -2,7 +2,7 @@ const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
-import { normalizeCard, normalizeTemplate } from "../normalizeExport.js";
+import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 
 const loadGoogleScript = () =>
   new Promise((resolve, reject) => {
@@ -34,13 +34,13 @@ export const createGoogleDriveStorage = (options = {}) => {
   const clientId = options.clientId ?? "";
   const appTag = options.appTag ?? "boardgame-assets";
   const folderId = options.folderId ? String(options.folderId) : "";
-  const defaultTemplate = options.defaultTemplate;
+  const defaultLayout = options.defaultLayout;
 
   // Check if client ID is properly configured (but don't throw yet)
   const isConfigured = clientId && !clientId.includes("YOUR_GOOGLE_CLIENT_ID");
   
-  if (typeof defaultTemplate !== "function") {
-    throw new Error("Missing default template factory.");
+  if (typeof defaultLayout !== "function") {
+    throw new Error("Missing default layout factory.");
   }
 
   const TOKEN_STORAGE_KEY = "boardgame_assets_google_token";
@@ -393,14 +393,14 @@ export const createGoogleDriveStorage = (options = {}) => {
           return gameFile.id;
         }
       }
-    } else if (type === "template") {
+    } else if (type === "layout") {
       const gameFolderId = folderCache.get(`game:${gameId}`);
       if (gameFolderId) {
         const files = await listFilesInFolder(gameFolderId);
-        const templateFile = files.find((f) => f.name === "template.json");
-        if (templateFile) {
-          cacheFile(type, gameId, cardId, templateFile.id);
-          return templateFile.id;
+        const layoutFile = files.find((f) => f.name === "layout.json");
+        if (layoutFile) {
+          cacheFile(type, gameId, cardId, layoutFile.id);
+          return layoutFile.id;
         }
       }
     } else if (type === "card") {
@@ -535,20 +535,20 @@ export const createGoogleDriveStorage = (options = {}) => {
     const now = toIsoNow();
     const meta = { id, name, createdAt: now, updatedAt: now };
     await writeGame(meta);
-    const templateFileId = await resolveFileId("template", id);
-    if (!templateFileId) {
+    const layoutFileId = await resolveFileId("layout", id);
+    if (!layoutFileId) {
       const gameFolderId = await ensureGameFolder(id);
       const createdId = await createFile({
-        name: "template.json",
-        content: defaultTemplate(),
+        name: "layout.json",
+        content: defaultLayout(),
         appProperties: {
           app: appTag,
-          type: "template",
+          type: "layout",
           gameId: id
         },
         parentId: gameFolderId
       });
-      cacheFile("template", id, "", createdId);
+      cacheFile("layout", id, "", createdId);
     }
     return meta;
   };
@@ -674,49 +674,49 @@ export const createGoogleDriveStorage = (options = {}) => {
     }
   };
 
-  const loadTemplate = async (gameId) => {
-    const fileId = await resolveFileId("template", gameId);
+  const loadLayout = async (gameId) => {
+    const fileId = await resolveFileId("layout", gameId);
     if (!fileId) {
-      const content = defaultTemplate();
+      const content = defaultLayout();
       const gameFolderId = await ensureGameFolder(gameId);
       const createdId = await createFile({
-        name: "template.json",
+        name: "layout.json",
         content,
         appProperties: {
           app: appTag,
-          type: "template",
+          type: "layout",
           gameId
         },
         parentId: gameFolderId
       });
-      cacheFile("template", gameId, "", createdId);
+      cacheFile("layout", gameId, "", createdId);
       return content;
     }
     const raw = await getFileContent(fileId);
-    // Normalize template to handle empty/invalid values
-    return normalizeTemplate(raw);
+    // Normalize layout to handle empty/invalid values
+    return normalizeLayout(raw);
   };
 
-  const saveTemplate = async (gameId, template) => {
-    const fileId = await resolveFileId("template", gameId);
+  const saveLayout = async (gameId, layout) => {
+    const fileId = await resolveFileId("layout", gameId);
     if (fileId) {
-      await updateFileContent(fileId, template);
+      await updateFileContent(fileId, layout);
     } else {
       const gameFolderId = await ensureGameFolder(gameId);
       const createdId = await createFile({
-        name: "template.json",
-        content: template,
+        name: "layout.json",
+        content: layout,
         appProperties: {
           app: appTag,
-          type: "template",
+          type: "layout",
           gameId
         },
         parentId: gameFolderId
       });
-      cacheFile("template", gameId, "", createdId);
+      cacheFile("layout", gameId, "", createdId);
     }
     await touchGame(gameId);
-    return template;
+    return layout;
   };
 
   const getGame = async (gameId) => {
@@ -738,8 +738,8 @@ export const createGoogleDriveStorage = (options = {}) => {
     listCards,
     saveCard,
     deleteCard,
-    loadTemplate,
-    saveTemplate,
+    loadLayout,
+    saveLayout,
     getGame
   };
 };

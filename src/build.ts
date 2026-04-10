@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { cards } from "./data/cards.js";
 import { renderCardSvg } from "./render/cardSvg.js";
-import { defaultTemplate } from "./template.js";
+import { defaultLayout } from "./layout.js";
 import { theme } from "./theme.js";
 
 const outputDir = path.resolve("output");
@@ -10,10 +10,10 @@ fs.mkdirSync(outputDir, { recursive: true });
 
 const cardFiles: { id: string; file: string }[] = [];
 
-const template = defaultTemplate();
+const layout = defaultLayout();
 
 for (const card of cards) {
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   const fileName = `${card.id}.svg`;
   fs.writeFileSync(path.join(outputDir, fileName), svg, "utf8");
   cardFiles.push({ id: card.id, file: fileName });
@@ -57,7 +57,7 @@ const html = `<!doctype html>
       .grid {
         display: grid;
         gap: 24px;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        grid-layout-columns: repeat(auto-fit, minmax(260px, 1fr));
         padding: 20px 24px 48px;
       }
       .card {

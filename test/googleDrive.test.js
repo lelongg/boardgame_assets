@@ -123,7 +123,7 @@ test("Google Drive storage initialization", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     version: 2,
     id: "default",
     name: "Default",
@@ -145,7 +145,7 @@ test("Google Drive storage initialization", async () => {
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
     appTag: "test-app",
-    defaultTemplate,
+    defaultLayout,
   });
 
   assert.ok(storage, "Storage should be created");
@@ -175,12 +175,12 @@ test("Google Drive storage initialization without client ID shows error on signI
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   // Storage creation should not throw
   const storage1 = createGoogleDriveStorage({
     clientId: "",
-    defaultTemplate,
+    defaultLayout,
   });
   
   assert.ok(storage1, "Storage should be created without error");
@@ -198,7 +198,7 @@ test("Google Drive storage initialization without client ID shows error on signI
   // Same for placeholder client ID
   const storage2 = createGoogleDriveStorage({
     clientId: "YOUR_GOOGLE_CLIENT_ID",
-    defaultTemplate,
+    defaultLayout,
   });
   
   assert.ok(storage2, "Storage should be created with placeholder client ID");
@@ -214,7 +214,7 @@ test("Google Drive storage initialization without client ID shows error on signI
   );
 });
 
-test("Google Drive storage initialization without defaultTemplate throws error", async () => {
+test("Google Drive storage initialization without defaultLayout throws error", async () => {
   createMockGoogleDrive();
 
   const { createGoogleDriveStorage } = await import(
@@ -226,7 +226,7 @@ test("Google Drive storage initialization without defaultTemplate throws error",
       createGoogleDriveStorage({
         clientId: "test_client_id",
       }),
-    /Missing default template factory/
+    /Missing default layout factory/
   );
 });
 
@@ -237,11 +237,11 @@ test("Google Drive storage init loads Google script", async (t) => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -255,11 +255,11 @@ test("Google Drive storage sign in requests token", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -275,11 +275,11 @@ test("Google Drive storage token storage and restoration", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -306,11 +306,11 @@ test("Google Drive storage sign out clears token", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -335,7 +335,7 @@ test("Google Drive storage tryRestoreSession with valid token", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   // Store a valid token
   const tokenKey = "boardgame_assets_google_token";
@@ -349,7 +349,7 @@ test("Google Drive storage tryRestoreSession with valid token", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   const restored = await storage.tryRestoreSession();
@@ -364,7 +364,7 @@ test("Google Drive storage tryRestoreSession with expired token", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   // Store an expired token
   const tokenKey = "boardgame_assets_google_token";
@@ -378,7 +378,7 @@ test("Google Drive storage tryRestoreSession with expired token", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   const restored = await storage.tryRestoreSession();
@@ -388,7 +388,7 @@ test("Google Drive storage tryRestoreSession with expired token", async () => {
 test("Google Drive storage slugify helper", async () => {
   const { mockFetch } = createMockGoogleDrive();
 
-  // Track created files (games and templates)
+  // Track created files (games and layouts)
   const createdFiles = [];
 
   // Override fetch to handle file operations
@@ -427,8 +427,8 @@ test("Google Drive storage slugify helper", async () => {
         if (query.includes("type") && query.includes("game")) {
           return file.type === "game";
         }
-        if (query.includes("type") && query.includes("template")) {
-          return file.type === "template";
+        if (query.includes("type") && query.includes("layout")) {
+          return file.type === "layout";
         }
         return true;
       });
@@ -518,7 +518,7 @@ test("Google Drive storage slugify helper", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ 
+  const defaultLayout = () => ({ 
     id: "default",
     version: 2,
     root: { id: "root", children: [], items: [] }
@@ -526,7 +526,7 @@ test("Google Drive storage slugify helper", async () => {
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -580,11 +580,11 @@ test("Google Drive storage listGames", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();
@@ -610,11 +610,11 @@ test("Google Drive storage fetch error handling", async () => {
     "../src/web/storage/googleDrive.js"
   );
 
-  const defaultTemplate = () => ({ id: "default" });
+  const defaultLayout = () => ({ id: "default" });
 
   const storage = createGoogleDriveStorage({
     clientId: "test_client_id",
-    defaultTemplate,
+    defaultLayout,
   });
 
   await storage.init();

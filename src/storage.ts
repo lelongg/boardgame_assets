@@ -1,6 +1,6 @@
 import { HardDrive, Database, Cloud, Server, type LucideIcon } from "lucide-react";
 import { config } from "./config";
-import { defaultTemplate } from "./template";
+import { defaultLayout } from "./layout";
 import { createGoogleDriveStorage } from "./storage/googleDrive";
 import { createLocalFileStorage } from "./storage/localFile";
 import { createIndexedDBStorage } from "./storage/indexedDB";
@@ -40,7 +40,7 @@ export const createStorageFor = async (providerKey: string) => {
   if (providerKey === 's3') {
     try { providerConfig = JSON.parse(localStorage.getItem('boardgame_assets_s3_config') ?? '{}'); } catch { /* skip */ }
   }
-  const storage = factory({ ...providerConfig, defaultTemplate });
+  const storage = factory({ ...providerConfig, defaultLayout });
 
   if (storage.init) {
     await storage.init();

@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import type { CardTemplate, CardTemplateSection, CardTemplateItem, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateEmojiItem } from '../../types'
-import { findSectionById, findNodeLocation, findParentSection, getNodeKind } from './templateHelpers'
+import type { CardLayout, CardLayoutSection, CardLayoutItem, CardLayoutTextItem, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutEmojiItem } from '../../types'
+import { findSectionById, findNodeLocation, findParentSection, getNodeKind } from './layoutHelpers'
 
-type TemplateActionsProps = {
-  template: CardTemplate
+type LayoutActionsProps = {
+  layout: CardLayout
   selectedNodeId: string | null
-  onTemplateChange: (template: CardTemplate) => void
+  onLayoutChange: (layout: CardLayout) => void
   onSelectNode: (id: string | null) => void
 }
 
-const newSection = (): CardTemplateSection => ({
+const newSection = (): CardLayoutSection => ({
   id: crypto.randomUUID(),
   name: 'New Section',
   layout: 'stack',
@@ -20,7 +20,7 @@ const newSection = (): CardTemplateSection => ({
   items: [],
 })
 
-const newTextItem = (sectionId: string): CardTemplateTextItem => ({
+const newTextItem = (sectionId: string): CardLayoutTextItem => ({
   type: 'text',
   id: crypto.randomUUID(),
   name: 'New Text',
@@ -33,7 +33,7 @@ const newTextItem = (sectionId: string): CardTemplateTextItem => ({
   align: 'left',
 })
 
-const newFrameItem = (sectionId: string): CardTemplateFrameItem => ({
+const newFrameItem = (sectionId: string): CardLayoutFrameItem => ({
   type: 'frame',
   id: crypto.randomUUID(),
   name: 'New Frame',
@@ -45,7 +45,7 @@ const newFrameItem = (sectionId: string): CardTemplateFrameItem => ({
   cornerRadius: 8,
 })
 
-const newImageItem = (sectionId: string): CardTemplateImageItem => ({
+const newImageItem = (sectionId: string): CardLayoutImageItem => ({
   type: 'image',
   id: crypto.randomUUID(),
   name: 'New Image',
@@ -58,7 +58,7 @@ const newImageItem = (sectionId: string): CardTemplateImageItem => ({
   cornerRadius: 0,
 })
 
-const newEmojiItem = (sectionId: string): CardTemplateEmojiItem => ({
+const newEmojiItem = (sectionId: string): CardLayoutEmojiItem => ({
   type: 'emoji',
   id: crypto.randomUUID(),
   name: 'Emoji',
@@ -70,15 +70,15 @@ const newEmojiItem = (sectionId: string): CardTemplateEmojiItem => ({
   fontSize: 32,
 })
 
-export default function TemplateActions({ template, selectedNodeId, onTemplateChange, onSelectNode }: TemplateActionsProps) {
+export default function LayoutActions({ layout, selectedNodeId, onLayoutChange, onSelectNode }: LayoutActionsProps) {
   const [showItemType, setShowItemType] = useState(false)
 
-  const selectedKind = selectedNodeId ? getNodeKind(template.root, selectedNodeId) : null
-  const isRoot = selectedNodeId === template.root.id
+  const selectedKind = selectedNodeId ? getNodeKind(layout.root, selectedNodeId) : null
+  const isRoot = selectedNodeId === layout.root.id
   const canAddSection = !selectedKind || selectedKind === 'section'
   const canAddItem = !selectedKind || selectedKind === 'section'
 
-  const clone = (): CardTemplate => JSON.parse(JSON.stringify(template))
+  const clone = (): CardLayout => JSON.parse(JSON.stringify(layout))
 
   const handleAddSection = () => {
     const t = clone()
@@ -87,7 +87,7 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
     if (!parent) return
     const section = newSection()
     parent.children.push(section)
-    onTemplateChange(t)
+    onLayoutChange(t)
     onSelectNode(section.id)
   }
 
@@ -105,7 +105,7 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
     const parent = findSectionById(t.root, parentId)
     if (!parent) return
 
-    let item: CardTemplateItem
+    let item: CardLayoutItem
     if (itemType === 'frame') item = newFrameItem(parentId)
     else if (itemType === 'image') item = newImageItem(parentId)
     else if (itemType === 'emoji') item = newEmojiItem(parentId)
@@ -122,7 +122,7 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
       parent.items.push(item)
     }
 
-    onTemplateChange(t)
+    onLayoutChange(t)
     onSelectNode(item.id)
     setShowItemType(false)
   }
@@ -134,7 +134,7 @@ export default function TemplateActions({ template, selectedNodeId, onTemplateCh
     const loc = findNodeLocation(t.root, selectedNodeId, selectedKind)
     if (!loc) return
     loc.list.splice(loc.index, 1)
-    onTemplateChange(t)
+    onLayoutChange(t)
     onSelectNode(null)
   }
 

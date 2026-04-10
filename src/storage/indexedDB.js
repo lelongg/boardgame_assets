@@ -4,7 +4,7 @@
  */
 
 import { putAsset, deleteAsset, listAssets } from "./assetCache.js";
-import { normalizeCard, normalizeTemplate } from "../normalizeExport.js";
+import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -39,8 +39,8 @@ function openDB() {
       if (!db.objectStoreNames.contains("games")) {
         db.createObjectStore("games");
       }
-      if (!db.objectStoreNames.contains("templates")) {
-        db.createObjectStore("templates");
+      if (!db.objectStoreNames.contains("layouts")) {
+        db.createObjectStore("layouts");
       }
       if (!db.objectStoreNames.contains("collections")) {
         db.createObjectStore("collections");
@@ -151,7 +151,7 @@ async function saveFontManifest(db, gameId, manifest) {
 
 // ── Factory ────────────────────────────────────────────────────────────────
 
-export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
+export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
   return {
     // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -216,20 +216,20 @@ export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
         };
         await idbPut(db, "games", gameId, game);
 
-        // Create a default template
-        const templateId = "default";
-        const template = normalizeTemplate(
-          defaultTemplate ? defaultTemplate() : { id: templateId, name: "Default" }
+        // Create a default layout
+        const layoutId = "default";
+        const layout = normalizeLayout(
+          defaultLayout ? defaultLayout() : { id: layoutId, name: "Default" }
         );
-        template.id = templateId;
-        await idbPut(db, "templates", [gameId, templateId], template);
+        layout.id = layoutId;
+        await idbPut(db, "layouts", [gameId, layoutId], layout);
 
         // Create a default collection
         const collectionId = "default";
         const collection = {
           id: collectionId,
           name: "Default",
-          templateId,
+          layoutId,
           createdAt: now(),
         };
         await idbPut(db, "collections", [gameId, collectionId], collection);
@@ -260,8 +260,8 @@ export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
         await idbDelete(db, "games", gameId);
         await idbDelete(db, "games", fontsKey(gameId));
 
-        // Delete all templates, collections, cards for this game
-        await idbDeleteByPrefix(db, "templates", [gameId]);
+        // Delete all layouts, collections, cards for this game
+        await idbDeleteByPrefix(db, "layouts", [gameId]);
         await idbDeleteByPrefix(db, "collections", [gameId]);
         await idbDeleteByPrefix(db, "cards", [gameId]);
 
@@ -276,80 +276,80 @@ export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
       }
     },
 
-    // ── Templates ──────────────────────────────────────────────────────────
+    // ── Layouts ──────────────────────────────────────────────────────────
 
-    async listTemplates(gameId) {
+    async listLayouts(gameId) {
       const db = await openDB();
       try {
-        const entries = await idbGetAllByPrefix(db, "templates", [gameId]);
+        const entries = await idbGetAllByPrefix(db, "layouts", [gameId]);
         return entries.map((e) => e.value);
       } finally {
         db.close();
       }
     },
 
-    async getTemplate(gameId, templateId) {
+    async getLayout(gameId, layoutId) {
       const db = await openDB();
       try {
-        const template = await idbGet(db, "templates", [gameId, templateId]);
-        if (!template) throw new Error(`Template not found: ${templateId}`);
-        return template;
+        const layout = await idbGet(db, "layouts", [gameId, layoutId]);
+        if (!layout) throw new Error(`Layout not found: ${layoutId}`);
+        return layout;
       } finally {
         db.close();
       }
     },
 
-    async saveTemplate(gameId, templateId, template) {
+    async saveLayout(gameId, layoutId, layout) {
       const db = await openDB();
       try {
-        const normalized = normalizeTemplate({ ...template, id: templateId });
-        await idbPut(db, "templates", [gameId, templateId], normalized);
+        const normalized = normalizeLayout({ ...layout, id: layoutId });
+        await idbPut(db, "layouts", [gameId, layoutId], normalized);
         return normalized;
       } finally {
         db.close();
       }
     },
 
-    async createTemplate(gameId, name) {
+    async createLayout(gameId, name) {
       const db = await openDB();
       try {
-        const templateId = slugify(name) + "-" + uid();
-        const template = normalizeTemplate(
-          defaultTemplate
-            ? { ...defaultTemplate(), id: templateId, name }
-            : { id: templateId, name }
+        const layoutId = slugify(name) + "-" + uid();
+        const layout = normalizeLayout(
+          defaultLayout
+            ? { ...defaultLayout(), id: layoutId, name }
+            : { id: layoutId, name }
         );
-        await idbPut(db, "templates", [gameId, templateId], template);
-        return template;
+        await idbPut(db, "layouts", [gameId, layoutId], layout);
+        return layout;
       } finally {
         db.close();
       }
     },
 
-    async copyTemplate(gameId, templateId) {
+    async copyLayout(gameId, layoutId) {
       const db = await openDB();
       try {
-        const source = await idbGet(db, "templates", [gameId, templateId]);
-        if (!source) throw new Error(`Template not found: ${templateId}`);
+        const source = await idbGet(db, "layouts", [gameId, layoutId]);
+        if (!source) throw new Error(`Layout not found: ${layoutId}`);
         const newId = slugify(source.name) + "-" + uid();
-        const copy = normalizeTemplate({ ...source, id: newId, name: `${source.name} (copy)` });
-        await idbPut(db, "templates", [gameId, newId], copy);
+        const copy = normalizeLayout({ ...source, id: newId, name: `${source.name} (copy)` });
+        await idbPut(db, "layouts", [gameId, newId], copy);
         return copy;
       } finally {
         db.close();
       }
     },
 
-    async deleteTemplate(gameId, templateId) {
+    async deleteLayout(gameId, layoutId) {
       const db = await openDB();
       try {
-        // Check if any collection uses this template
+        // Check if any collection uses this layout
         const collections = await idbGetAllByPrefix(db, "collections", [gameId]);
-        const inUse = collections.some((e) => e.value.templateId === templateId);
+        const inUse = collections.some((e) => e.value.layoutId === layoutId);
         if (inUse) {
-          throw new Error("Cannot delete template that is in use by a collection");
+          throw new Error("Cannot delete layout that is in use by a collection");
         }
-        await idbDelete(db, "templates", [gameId, templateId]);
+        await idbDelete(db, "layouts", [gameId, layoutId]);
       } finally {
         db.close();
       }
@@ -378,14 +378,14 @@ export const createIndexedDBStorage = ({ defaultTemplate } = {}) => {
       }
     },
 
-    async createCollection(gameId, name, templateId) {
+    async createCollection(gameId, name, layoutId) {
       const db = await openDB();
       try {
         const collectionId = slugify(name) + "-" + uid();
         const collection = {
           id: collectionId,
           name,
-          templateId,
+          layoutId,
           createdAt: now(),
         };
         await idbPut(db, "collections", [gameId, collectionId], collection);

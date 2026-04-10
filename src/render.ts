@@ -1,5 +1,5 @@
 import { theme } from "./theme.js";
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection } from "./types.js";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection } from "./types.js";
 
 type Rect = {
   x: number;
@@ -14,7 +14,7 @@ type LayoutResult = {
 };
 
 type ItemPlacement = {
-  item: CardTemplateItem;
+  item: CardLayoutItem;
   sectionId: string;
 };
 
@@ -100,7 +100,7 @@ const anchorPosition = (rect: Rect, anchor: AnchorPoint): { x: number; y: number
   y: rect.y + rect.height * anchor.y
 });
 
-const layoutSections = (section: CardTemplateSection, rect: Rect, result: LayoutResult): void => {
+const layoutSections = (section: CardLayoutSection, rect: Rect, result: LayoutResult): void => {
   result.sections.set(section.id, rect);
 
   if (!section.children.length) return;
@@ -157,12 +157,12 @@ const layoutSections = (section: CardTemplateSection, rect: Rect, result: Layout
   });
 };
 
-const collectItemPlacements = (section: CardTemplateSection, result: LayoutResult, list: ItemPlacement[]): void => {
+const collectItemPlacements = (section: CardLayoutSection, result: LayoutResult, list: ItemPlacement[]): void => {
   section.items.forEach((item) => list.push({ item, sectionId: section.id }));
   section.children.forEach((child) => collectItemPlacements(child, result, list));
 };
 
-const placeItem = (item: CardTemplateItem, sectionRect: Rect, targetRect: Rect): Rect => {
+const placeItem = (item: CardLayoutItem, sectionRect: Rect, targetRect: Rect): Rect => {
   const sizeWidth = sectionRect.width * (item.widthPct / 100);
   const sizeHeight = sectionRect.height * (item.heightPct / 100);
   const target = anchorPosition(targetRect, item.attach.anchor);
@@ -175,9 +175,9 @@ const placeItem = (item: CardTemplateItem, sectionRect: Rect, targetRect: Rect):
   };
 };
 
-const layoutItems = (template: CardTemplate, result: LayoutResult): void => {
+const layoutItems = (layout: CardLayout, result: LayoutResult): void => {
   const placements: ItemPlacement[] = [];
-  collectItemPlacements(template.root, result, placements);
+  collectItemPlacements(layout.root, result, placements);
 
   const placementMap = new Map();
   placements.forEach((placement) => placementMap.set(placement.item.id, placement));
@@ -217,31 +217,31 @@ const layoutItems = (template: CardTemplate, result: LayoutResult): void => {
   });
 };
 
-export const computeLayout = (template: CardTemplate): LayoutResult => {
+export const computeLayout = (layout: CardLayout): LayoutResult => {
   const result = {
     sections: new Map(),
     items: new Map()
   };
 
   const rootRect = {
-    x: template.bleed,
-    y: template.bleed,
-    width: template.width - template.bleed * 2,
-    height: template.height - template.bleed * 2
+    x: layout.bleed,
+    y: layout.bleed,
+    width: layout.width - layout.bleed * 2,
+    height: layout.height - layout.bleed * 2
   };
 
-  layoutSections(template.root, rootRect, result);
-  layoutItems(template, result);
+  layoutSections(layout.root, rootRect, result);
+  layoutItems(layout, result);
 
   return result;
 };
 
-const collectItems = (section: CardTemplateSection, list: CardTemplateItem[]): void => {
+const collectItems = (section: CardLayoutSection, list: CardLayoutItem[]): void => {
   list.push(...section.items);
   section.children.forEach((child) => collectItems(child, list));
 };
 
-const findSection = (section: CardTemplateSection, id: string): CardTemplateSection | null => {
+const findSection = (section: CardLayoutSection, id: string): CardLayoutSection | null => {
   if (section.id === id) return section;
   for (const child of section.children) {
     const found = findSection(child, id);
@@ -250,7 +250,7 @@ const findSection = (section: CardTemplateSection, id: string): CardTemplateSect
   return null;
 };
 
-const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | null => {
+const findItem = (section: CardLayoutSection, id: string): CardLayoutItem | null => {
   const item = section.items.find((candidate) => candidate.id === id);
   if (item) return item;
   for (const child of section.children) {
@@ -260,13 +260,13 @@ const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | 
   return null;
 };
 
-export const renderCardSvg = (card: CardData, template: CardTemplate, options: RenderOptions = {}): string => {
+export const renderCardSvg = (card: CardData, layout: CardLayout, options: RenderOptions = {}): string => {
   const { palette } = theme;
-  const { width, height, radius } = template;
-  const fontSlots = Object.keys(template.fonts ?? {});
-  const layout = computeLayout(template);
-  const items: CardTemplateItem[] = [];
-  collectItems(template.root, items);
+  const { width, height, radius } = layout;
+  const fontSlots = Object.keys(layout.fonts ?? {});
+  const layout = computeLayout(layout);
+  const items: CardLayoutItem[] = [];
+  collectItems(layout.root, items);
 
   const renderedItems = items
     .map((item) => {
@@ -319,8 +319,8 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
       const value = item.fieldId === "name" ? card.name : (item.fieldId ? card.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
       if (!value) return "";
-      const slotName = item.font && template.fonts?.[item.font] ? item.font : fontSlots[0];
-      const fontSlot = template.fonts?.[slotName];
+      const slotName = item.font && layout.fonts?.[item.font] ? item.font : fontSlots[0];
+      const fontSlot = layout.fonts?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
       const fontSize = item.fontSize ?? 20;
       const align = item.align ?? "center";
@@ -396,21 +396,21 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
 </svg>`;
 };
 
-export const renderTemplateSvg = (template: CardTemplate, options: {
+export const renderLayoutSvg = (layout: CardLayout, options: {
   showSections?: boolean;
   showItems?: boolean;
   selectedNodeId?: string | null;
 } = {}): string => {
   const { showSections = true, showItems = true, selectedNodeId = null } = options;
   const { palette } = theme;
-  const { width, height, radius } = template;
-  const fontSlots = Object.keys(template.fonts ?? {});
-  const layout = computeLayout(template);
+  const { width, height, radius } = layout;
+  const fontSlots = Object.keys(layout.fonts ?? {});
+  const layout = computeLayout(layout);
 
   // Render card content using empty card (defaults will show)
   const emptyCard: CardData = { id: '', name: 'Card Name', fields: {} };
-  const items: CardTemplateItem[] = [];
-  collectItems(template.root, items);
+  const items: CardLayoutItem[] = [];
+  collectItems(layout.root, items);
 
   const renderedContent = items.map((item) => {
     const rect = layout.items.get(item.id);
@@ -447,8 +447,8 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
     if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
     const value = item.fieldId === "name" ? emptyCard.name : (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
     if (!value) return "";
-    const slotName = item.font && template.fonts?.[item.font] ? item.font : fontSlots[0];
-    const fontSlot = template.fonts?.[slotName];
+    const slotName = item.font && layout.fonts?.[item.font] ? item.font : fontSlots[0];
+    const fontSlot = layout.fonts?.[slotName];
     const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
     const fontSize = item.fontSize ?? 20;
     const align = item.align ?? "left";
@@ -501,10 +501,10 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
 </svg>`;
 };
 
-/** Fetch template fonts and embed them as base64 @font-face rules into the SVG.
+/** Fetch layout fonts and embed them as base64 @font-face rules into the SVG.
  *  Blob SVGs displayed via <img> can't access the page's @font-face rules. */
-export const embedFontsInSvg = async (svg: string, template: CardTemplate, gameId: string): Promise<string> => {
-  const fonts = template.fonts;
+export const embedFontsInSvg = async (svg: string, layout: CardLayout, gameId: string): Promise<string> => {
+  const fonts = layout.fonts;
   if (!fonts) return svg;
   const rules: string[] = [];
   for (const slot of Object.values(fonts)) {

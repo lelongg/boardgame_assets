@@ -1,7 +1,7 @@
-import type { CardTemplate } from "../types";
+import type { CardLayout } from "../types";
 
 export interface IndexedDBStorageOptions {
-  defaultTemplate?: () => CardTemplate;
+  defaultLayout?: () => CardLayout;
   [key: string]: any;
 }
 

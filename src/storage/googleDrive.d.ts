@@ -1,10 +1,10 @@
-import type { CardTemplate } from "../types";
+import type { CardLayout } from "../types";
 
 export interface StorageOptions {
   clientId?: string;
   appTag?: string;
   folderId?: string;
-  defaultTemplate?: () => CardTemplate;
+  defaultLayout?: () => CardLayout;
 }
 
 export interface Storage {

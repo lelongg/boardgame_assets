@@ -16,10 +16,10 @@ export const exportGameZip = async (
   const game = await storage.getGame(gameId)
   zip.file('game.json', JSON.stringify(game, null, 2))
 
-  log('Exporting templates...')
-  const templates = await storage.listTemplates(gameId)
-  for (const tpl of templates) {
-    zip.file(`templates/${tpl.id}.json`, JSON.stringify(tpl, null, 2))
+  log('Exporting layouts...')
+  const layouts = await storage.listLayouts(gameId)
+  for (const tpl of layouts) {
+    zip.file(`layouts/${tpl.id}.json`, JSON.stringify(tpl, null, 2))
   }
 
   log('Exporting fonts...')
@@ -55,7 +55,7 @@ export const exportGameZip = async (
       }
     }
   }
-  // Also scan template default values
+  // Also scan layout default values
   const scanItems = (section: any) => {
     for (const item of section.items ?? []) {
       const val = item.defaultValue ?? ''
@@ -64,7 +64,7 @@ export const exportGameZip = async (
     }
     for (const child of section.children ?? []) scanItems(child)
   }
-  for (const tpl of templates) scanItems(tpl.root)
+  for (const tpl of layouts) scanItems(tpl.root)
 
   for (const file of imageFiles) {
     try {
@@ -103,11 +103,11 @@ export const importGameZip = async (
   const newGame = await storage.createGame(gameMeta.name)
   const newGameId = newGame.id
 
-  // Delete the default template and collection that createGame made
-  const defaultTemplates = await storage.listTemplates(newGameId)
+  // Delete the default layout and collection that createGame made
+  const defaultLayouts = await storage.listLayouts(newGameId)
   const defaultCollections = await storage.listCollections(newGameId)
   for (const col of defaultCollections) await storage.deleteCollection(newGameId, col.id).catch(() => {})
-  for (const tpl of defaultTemplates) await storage.deleteTemplate(newGameId, tpl.id).catch(() => {})
+  for (const tpl of defaultLayouts) await storage.deleteLayout(newGameId, tpl.id).catch(() => {})
 
   const oldGameId = gameMeta.id ?? ''
   const rewriteUrls = (str: string): string =>
@@ -139,13 +139,13 @@ export const importGameZip = async (
     await storage.uploadImage(newGameId, file)
   }
 
-  log('Importing templates...')
-  const templateFiles = zip.file(/^templates\/.*\.json$/)
-  log(`Found ${templateFiles.length} template(s)`)
-  for (const f of templateFiles) {
+  log('Importing layouts...')
+  const layoutFiles = zip.file(/^layouts\/.*\.json$/)
+  log(`Found ${layoutFiles.length} layout(s)`)
+  for (const f of layoutFiles) {
     const tpl = JSON.parse(rewriteUrls(await f.async('text')))
-    log(`Saving template: ${tpl.id} (${tpl.name})`)
-    await storage.saveTemplate(newGameId, tpl.id, tpl)
+    log(`Saving layout: ${tpl.id} (${tpl.name})`)
+    await storage.saveLayout(newGameId, tpl.id, tpl)
   }
 
   log('Importing collections and cards...')
@@ -153,8 +153,8 @@ export const importGameZip = async (
   log(`Found ${collectionFiles.length} collection(s)`)
   for (const f of collectionFiles) {
     const col = JSON.parse(await f.async('text'))
-    log(`Creating collection: ${col.id} (${col.name}) → template: ${col.templateId}`)
-    const newCol = await storage.createCollection(newGameId, col.name, col.templateId)
+    log(`Creating collection: ${col.id} (${col.name}) → layout: ${col.layoutId}`)
+    const newCol = await storage.createCollection(newGameId, col.name, col.layoutId)
     const newColId = newCol.id
 
     const colDir = f.name.replace('/collection.json', '')

@@ -6,13 +6,13 @@ import AnchorGrid from './AnchorGrid'
 import ListItem from '@/components/ListItem'
 import LoadingImg from '@/components/LoadingImg'
 import ConfirmButton from '@/components/ConfirmButton'
-import { findParentSection, findItemById, getNodeKind } from './templateHelpers'
-import type { CardTemplate } from '../../types'
+import { findParentSection, findItemById, getNodeKind } from './layoutHelpers'
+import type { CardLayout } from '../../types'
 
 type ControlPanelProps = {
   property: string
   value: unknown
-  template: CardTemplate
+  layout: CardLayout
   selectedNodeId?: string
   onChange: (value: unknown) => void
 }
@@ -25,7 +25,7 @@ type FieldMeta = {
   options?: { value: string; label: string }[]
 }
 
-const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?: string): FieldMeta => {
+const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: string): FieldMeta => {
   switch (property) {
     case 'width': return { type: 'number', min: 50, max: 2000, step: 1 }
     case 'height': return { type: 'number', min: 50, max: 2000, step: 1 }
@@ -55,7 +55,7 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
       { value: 'middle', label: 'Middle' },
       { value: 'bottom', label: 'Bottom' },
     ]}
-    case 'font': return { type: 'select', options: Object.entries(template.fonts ?? {}).map(([key, slot]) => ({
+    case 'font': return { type: 'select', options: Object.entries(layout.fonts ?? {}).map(([key, slot]) => ({
       value: key,
       label: `${key} (${slot.name})`,
     }))}
@@ -66,8 +66,8 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
     ]}
     case 'attachTargetId': {
       if (!selectedNodeId) return { type: 'select', options: [] }
-      const kind = getNodeKind(template.root, selectedNodeId)
-      const parent = kind ? findParentSection(template.root, selectedNodeId, kind) : null
+      const kind = getNodeKind(layout.root, selectedNodeId)
+      const parent = kind ? findParentSection(layout.root, selectedNodeId, kind) : null
       const siblings = parent
         ? [...parent.items.filter((i) => i.id !== selectedNodeId).map((i) => ({ id: i.id, name: i.name, kind: 'item' as const })),
            { id: parent.id, name: parent.name, kind: 'section' as const }]
@@ -82,7 +82,7 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
     case 'fillColor': return { type: 'color' }
     case 'defaultValue': {
       if (selectedNodeId) {
-        const item = findItemById(template.root, selectedNodeId)
+        const item = findItemById(layout.root, selectedNodeId)
         if (item && (item as any).type === 'image') return { type: 'image-upload' }
       }
       return { type: 'text' }
@@ -237,10 +237,10 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown
   )
 }
 
-function ValuesEditor({ value, onChange, template, selectedNodeId }: { value: unknown; onChange: (v: unknown) => void; template: CardTemplate; selectedNodeId?: string }) {
+function ValuesEditor({ value, onChange, layout, selectedNodeId }: { value: unknown; onChange: (v: unknown) => void; layout: CardLayout; selectedNodeId?: string }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const arr: string[] = Array.isArray(value) ? value : []
-  const node = selectedNodeId ? findItemById(template.root, selectedNodeId) : null
+  const node = selectedNodeId ? findItemById(layout.root, selectedNodeId) : null
   const itemType = (node as any)?.type ?? 'text'
 
   const updateAt = (i: number, v: string) => {
@@ -281,8 +281,8 @@ function ValuesEditor({ value, onChange, template, selectedNodeId }: { value: un
   )
 }
 
-export default function ControlPanel({ property, value, template, selectedNodeId, onChange }: ControlPanelProps) {
-  const meta = getFieldMeta(property, template, selectedNodeId)
+export default function ControlPanel({ property, value, layout, selectedNodeId, onChange }: ControlPanelProps) {
+  const meta = getFieldMeta(property, layout, selectedNodeId)
 
   if (meta.type === 'number') {
     const numVal = Number(value ?? 0)
@@ -376,7 +376,7 @@ export default function ControlPanel({ property, value, template, selectedNodeId
   }
 
   if (meta.type === 'values') {
-    return <ValuesEditor value={value} onChange={onChange} template={template} selectedNodeId={selectedNodeId} />
+    return <ValuesEditor value={value} onChange={onChange} layout={layout} selectedNodeId={selectedNodeId} />
   }
 
   if (meta.type === 'anchor') {

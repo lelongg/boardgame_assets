@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateEmojiItem } from "../types.js";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutTextItem, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutEmojiItem } from "../types.js";
 import { theme } from "../theme.js";
 
 const DEBUG_FONT = "'Space Grotesk', sans-serif";
@@ -89,7 +89,7 @@ const anchorPosition = (rect: Rect, anchor: AnchorPoint) => ({
   y: rect.y + rect.height * anchor.y
 });
 
-const layoutSections = (section: CardTemplateSection, rect: Rect, result: LayoutResult) => {
+const layoutSections = (section: CardLayoutSection, rect: Rect, result: LayoutResult) => {
   result.sections.set(section.id, rect);
 
   if (!section.children.length) return;
@@ -147,15 +147,15 @@ const layoutSections = (section: CardTemplateSection, rect: Rect, result: Layout
 };
 
 const collectItemPlacements = (
-  section: CardTemplateSection,
+  section: CardLayoutSection,
   result: LayoutResult,
-  list: { item: CardTemplateItem; sectionId: string }[]
+  list: { item: CardLayoutItem; sectionId: string }[]
 ) => {
   section.items.forEach((item) => list.push({ item, sectionId: section.id }));
   section.children.forEach((child) => collectItemPlacements(child, result, list));
 };
 
-const placeItem = (item: CardTemplateItem, sectionRect: Rect, targetRect: Rect): Rect => {
+const placeItem = (item: CardLayoutItem, sectionRect: Rect, targetRect: Rect): Rect => {
   const sizeWidth = sectionRect.width * (item.widthPct / 100);
   const sizeHeight = sectionRect.height * (item.heightPct / 100);
   const target = anchorPosition(targetRect, item.attach.anchor);
@@ -168,11 +168,11 @@ const placeItem = (item: CardTemplateItem, sectionRect: Rect, targetRect: Rect):
   };
 };
 
-const layoutItems = (template: CardTemplate, result: LayoutResult) => {
-  const placements: { item: CardTemplateItem; sectionId: string }[] = [];
-  collectItemPlacements(template.root, result, placements);
+const layoutItems = (layout: CardLayout, result: LayoutResult) => {
+  const placements: { item: CardLayoutItem; sectionId: string }[] = [];
+  collectItemPlacements(layout.root, result, placements);
 
-  const placementMap = new Map<string, { item: CardTemplateItem; sectionId: string }>();
+  const placementMap = new Map<string, { item: CardLayoutItem; sectionId: string }>();
   placements.forEach((placement) => placementMap.set(placement.item.id, placement));
 
   const resolveItem = (itemId: string, chain: Set<string>): Rect | null => {
@@ -210,31 +210,31 @@ const layoutItems = (template: CardTemplate, result: LayoutResult) => {
   });
 };
 
-const computeLayout = (template: CardTemplate): LayoutResult => {
+const computeLayout = (layout: CardLayout): LayoutResult => {
   const result: LayoutResult = {
     sections: new Map(),
     items: new Map()
   };
 
   const rootRect: Rect = {
-    x: template.bleed,
-    y: template.bleed,
-    width: template.width - template.bleed * 2,
-    height: template.height - template.bleed * 2
+    x: layout.bleed,
+    y: layout.bleed,
+    width: layout.width - layout.bleed * 2,
+    height: layout.height - layout.bleed * 2
   };
 
-  layoutSections(template.root, rootRect, result);
-  layoutItems(template, result);
+  layoutSections(layout.root, rootRect, result);
+  layoutItems(layout, result);
 
   return result;
 };
 
-const collectItems = (section: CardTemplateSection, list: CardTemplateItem[]) => {
+const collectItems = (section: CardLayoutSection, list: CardLayoutItem[]) => {
   list.push(...section.items);
   section.children.forEach((child) => collectItems(child, list));
 };
 
-const findSection = (section: CardTemplateSection, id: string): CardTemplateSection | null => {
+const findSection = (section: CardLayoutSection, id: string): CardLayoutSection | null => {
   if (section.id === id) return section;
   for (const child of section.children) {
     const found = findSection(child, id);
@@ -243,7 +243,7 @@ const findSection = (section: CardTemplateSection, id: string): CardTemplateSect
   return null;
 };
 
-const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | null => {
+const findItem = (section: CardLayoutSection, id: string): CardLayoutItem | null => {
   const item = section.items.find((candidate) => candidate.id === id);
   if (item) return item;
   for (const child of section.children) {
@@ -253,31 +253,31 @@ const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | 
   return null;
 };
 
-export const renderCardSvg = (card: CardData, template: CardTemplate, options: RenderOptions = {}): string => {
+export const renderCardSvg = (card: CardData, layout: CardLayout, options: RenderOptions = {}): string => {
   const { palette } = theme;
-  const { width, height, radius } = template;
-  const layout = computeLayout(template);
-  const fontSlots = Object.keys(template.fonts ?? {});
-  const items: CardTemplateItem[] = [];
-  collectItems(template.root, items);
+  const { width, height, radius } = layout;
+  const computed = computeLayout(layout);
+  const fontSlots = Object.keys(layout.fonts ?? {});
+  const items: CardLayoutItem[] = [];
+  collectItems(layout.root, items);
 
   // Collect clip paths for images with rounded corners (to avoid duplicates in defs)
   const clipPaths: string[] = [];
   const itemElements: string[] = [];
 
   items.forEach((item) => {
-    const rect = layout.items.get(item.id);
+    const rect = computed.items.get(item.id);
     if (!rect) return;
-    
+
     // Handle different item types (default to text for backward compatibility)
     const itemType = item.type ?? "text";
     
     if (itemType === "text") {
-      const textItem = item as CardTemplateTextItem;
+      const textItem = item as CardLayoutTextItem;
       const value = textItem.fieldId === "name" ? card.name : (textItem.fieldId ? card.fields[textItem.fieldId] : null) ?? textItem.defaultValue ?? "";
       if (!value) return;
-      const slotName = textItem.font && template.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
-      const fontSlot = template.fonts?.[slotName];
+      const slotName = textItem.font && layout.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
+      const fontSlot = layout.fonts?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
       const align = textItem.align ?? "center";
       const vAlign = textItem.verticalAlign ?? "middle";
@@ -296,7 +296,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     }
     
     if (itemType === "frame") {
-      const frameItem = item as CardTemplateFrameItem;
+      const frameItem = item as CardLayoutFrameItem;
       const strokeWidth = frameItem.strokeWidth ?? 2;
       const strokeColor = frameItem.strokeColor ?? palette.ink;
       const fillColor = frameItem.fillColor ?? "none";
@@ -305,7 +305,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     }
     
     if (itemType === "image") {
-      const imageItem = item as CardTemplateImageItem;
+      const imageItem = item as CardLayoutImageItem;
       const imageUrl = (imageItem.fieldId ? card.fields[imageItem.fieldId] : null) ?? imageItem.defaultValue ?? "";
       if (!imageUrl) return;
       const cornerRadius = imageItem.cornerRadius ?? 0;
@@ -329,7 +329,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     }
 
     if (itemType === "emoji") {
-      const emojiItem = item as CardTemplateEmojiItem;
+      const emojiItem = item as CardLayoutEmojiItem;
       const emoji = (emojiItem.fieldId ? card.fields[emojiItem.fieldId] : null) || emojiItem.emoji || "⭐";
       const fontSize = emojiItem.fontSize ?? 32;
       const textX = rect.x + rect.width / 2;
@@ -343,8 +343,8 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
   const usedSlots = new Set<string>();
   items.forEach((item) => {
     if ((item.type ?? "text") === "text") {
-      const textItem = item as CardTemplateTextItem;
-      const slotName = textItem.font && template.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
+      const textItem = item as CardLayoutTextItem;
+      const slotName = textItem.font && layout.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
       if (slotName) usedSlots.add(slotName);
     }
   });
@@ -372,24 +372,24 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
 </svg>`;
 };
 
-type TemplateSvgOptions = {
+type LayoutSvgOptions = {
   showWireframes?: boolean;
   selectedNodeId?: string | null;
 };
 
-export const renderTemplateSvg = (template: CardTemplate, options: TemplateSvgOptions = {}): string => {
+export const renderLayoutSvg = (layout: CardLayout, options: LayoutSvgOptions = {}): string => {
   const { showWireframes = true, selectedNodeId = null } = options;
   const { palette } = theme;
-  const { width, height, radius } = template;
-  const layout = computeLayout(template);
+  const { width, height, radius } = layout;
+  const computed = computeLayout(layout);
 
   const selectedColor = "#2563eb";
 
-  const sectionRects = Array.from(layout.sections.entries())
+  const sectionRects = Array.from(computed.sections.entries())
     .map(([id, rect]) => {
       const isSelected = id === selectedNodeId;
       if (!showWireframes && !isSelected) return "";
-      const section = findSection(template.root, id);
+      const section = findSection(layout.root, id);
       const label = section ? section.name || section.id : id;
       const stroke = isSelected ? selectedColor : palette.muted;
       const strokeWidth = isSelected ? 2.5 : 1;
@@ -399,11 +399,11 @@ export const renderTemplateSvg = (template: CardTemplate, options: TemplateSvgOp
     })
     .join("");
 
-  const itemRects = Array.from(layout.items.entries())
+  const itemRects = Array.from(computed.items.entries())
     .map(([id, rect]) => {
       const isSelected = id === selectedNodeId;
       if (!showWireframes && !isSelected) return "";
-      const item = findItem(template.root, id);
+      const item = findItem(layout.root, id);
       const stroke = isSelected ? selectedColor : palette.ink;
       const strokeWidth = isSelected ? 2.5 : 1;
       return `

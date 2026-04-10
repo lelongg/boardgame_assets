@@ -11,7 +11,7 @@ import {
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { putAsset, deleteAsset } from "./assetCache.js";
-import { normalizeCard, normalizeTemplate } from "../normalizeExport.js";
+import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ const hashArrayBuffer = async (buf) => {
 
 export const createS3Storage = (options = {}) => {
   const {
-    defaultTemplate,
+    defaultLayout,
     bucket,
     region = "us-east-1",
     accessKeyId,
@@ -151,8 +151,8 @@ export const createS3Storage = (options = {}) => {
   // ── Key builders ────────────────────────────────────────────────────────
 
   const gameKey = (gameId) => `${prefix}/${gameId}/game.json`;
-  const templateKey = (gameId, templateId) =>
-    `${prefix}/${gameId}/templates/${templateId}.json`;
+  const layoutKey = (gameId, layoutId) =>
+    `${prefix}/${gameId}/layouts/${layoutId}.json`;
   const collectionKey = (gameId, collectionId) =>
     `${prefix}/${gameId}/collections/${collectionId}/collection.json`;
   const cardKey = (gameId, collectionId, cardId) =>
@@ -221,20 +221,20 @@ export const createS3Storage = (options = {}) => {
       };
       await putJson(gameKey(gameId), game);
 
-      // Create a default template
-      const templateId = "default";
-      const template = normalizeTemplate(
-        defaultTemplate ? defaultTemplate() : { id: templateId, name: "Default" }
+      // Create a default layout
+      const layoutId = "default";
+      const layout = normalizeLayout(
+        defaultLayout ? defaultLayout() : { id: layoutId, name: "Default" }
       );
-      template.id = templateId;
-      await putJson(templateKey(gameId, templateId), template);
+      layout.id = layoutId;
+      await putJson(layoutKey(gameId, layoutId), layout);
 
       // Create a default collection
       const collectionId = "default";
       const collection = {
         id: collectionId,
         name: "Default",
-        templateId,
+        layoutId,
         createdAt: now(),
       };
       await putJson(collectionKey(gameId, collectionId), collection);
@@ -253,58 +253,58 @@ export const createS3Storage = (options = {}) => {
       await deleteAllWithPrefix(`${prefix}/${gameId}/`);
     },
 
-    // ── Templates ──────────────────────────────────────────────────────────
+    // ── Layouts ──────────────────────────────────────────────────────────
 
-    async listTemplates(gameId) {
-      const keys = await listKeys(`${prefix}/${gameId}/templates/`);
-      const templates = [];
+    async listLayouts(gameId) {
+      const keys = await listKeys(`${prefix}/${gameId}/layouts/`);
+      const layouts = [];
       for (const key of keys) {
         if (!key.endsWith(".json")) continue;
         try {
           const tpl = await getJson(key);
-          templates.push(tpl);
+          layouts.push(tpl);
         } catch {
           // corrupt file — skip
         }
       }
-      return templates;
+      return layouts;
     },
 
-    async getTemplate(gameId, templateId) {
-      return await getJson(templateKey(gameId, templateId));
+    async getLayout(gameId, layoutId) {
+      return await getJson(layoutKey(gameId, layoutId));
     },
 
-    async saveTemplate(gameId, templateId, template) {
-      const normalized = normalizeTemplate({ ...template, id: templateId });
-      await putJson(templateKey(gameId, templateId), normalized);
+    async saveLayout(gameId, layoutId, layout) {
+      const normalized = normalizeLayout({ ...layout, id: layoutId });
+      await putJson(layoutKey(gameId, layoutId), normalized);
       return normalized;
     },
 
-    async createTemplate(gameId, name) {
-      const templateId = slugify(name) + "-" + uid();
-      const template = normalizeTemplate(
-        defaultTemplate
-          ? { ...defaultTemplate(), id: templateId, name }
-          : { id: templateId, name }
+    async createLayout(gameId, name) {
+      const layoutId = slugify(name) + "-" + uid();
+      const layout = normalizeLayout(
+        defaultLayout
+          ? { ...defaultLayout(), id: layoutId, name }
+          : { id: layoutId, name }
       );
-      await putJson(templateKey(gameId, templateId), template);
-      return template;
+      await putJson(layoutKey(gameId, layoutId), layout);
+      return layout;
     },
 
-    async copyTemplate(gameId, templateId) {
-      const source = await getJson(templateKey(gameId, templateId));
+    async copyLayout(gameId, layoutId) {
+      const source = await getJson(layoutKey(gameId, layoutId));
       const newId = slugify(source.name) + "-" + uid();
-      const copy = normalizeTemplate({
+      const copy = normalizeLayout({
         ...source,
         id: newId,
         name: `${source.name} (copy)`,
       });
-      await putJson(templateKey(gameId, newId), copy);
+      await putJson(layoutKey(gameId, newId), copy);
       return copy;
     },
 
-    async deleteTemplate(gameId, templateId) {
-      await deleteObject(templateKey(gameId, templateId));
+    async deleteLayout(gameId, layoutId) {
+      await deleteObject(layoutKey(gameId, layoutId));
     },
 
     // ── Collections ────────────────────────────────────────────────────────
@@ -335,12 +335,12 @@ export const createS3Storage = (options = {}) => {
       return await getJson(collectionKey(gameId, collectionId));
     },
 
-    async createCollection(gameId, name, templateId) {
+    async createCollection(gameId, name, layoutId) {
       const collectionId = slugify(name) + "-" + uid();
       const collection = {
         id: collectionId,
         name,
-        templateId,
+        layoutId,
         createdAt: now(),
       };
       await putJson(collectionKey(gameId, collectionId), collection);

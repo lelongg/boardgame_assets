@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { createStorage } from '../storage'
 import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
-import type { CardData, CardTemplate } from '../types'
+import type { CardData, CardLayout } from '../types'
 
-type CardWithTemplate = { card: CardData; template: CardTemplate; collectionName: string }
+type CardWithLayout = { card: CardData; layout: CardLayout; collectionName: string }
 
 export default function PrintPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId?: string }>()
-  const [entries, setEntries] = useState<CardWithTemplate[]>([])
+  const [entries, setEntries] = useState<CardWithLayout[]>([])
   const [svgs, setSvgs] = useState<string[]>([])
   const [status, setStatus] = useState('Loading...')
   const [cols, setCols] = useState(3)
@@ -23,14 +23,14 @@ export default function PrintPage() {
           ? [await s.getCollection(gameId, collectionId)]
           : await s.listCollections(gameId)
 
-        const all: CardWithTemplate[] = []
+        const all: CardWithLayout[] = []
         for (const col of collections) {
           const [tpl, cards] = await Promise.all([
-            s.getTemplate(gameId, col.templateId),
+            s.getLayout(gameId, col.layoutId),
             s.listCards(gameId, col.id),
           ])
           for (const card of cards) {
-            all.push({ card, template: tpl, collectionName: col.name })
+            all.push({ card, layout: tpl, collectionName: col.name })
           }
         }
 
@@ -51,10 +51,10 @@ export default function PrintPage() {
 
     const render = async () => {
       const rendered: string[] = []
-      for (const { card, template } of entries) {
+      for (const { card, layout } of entries) {
         if (cancelled) return
-        let svg = renderCardSvg(card, template)
-        svg = await embedFontsInSvg(svg, template, gameId!)
+        let svg = renderCardSvg(card, layout)
+        svg = await embedFontsInSvg(svg, layout, gameId!)
         svg = await embedImagesInSvg(svg)
         rendered.push(svg)
       }

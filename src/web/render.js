@@ -97,9 +97,9 @@ const placeItem = (item, sectionRect, targetRect) => {
   };
 };
 
-const layoutItems = (template, result) => {
+const layoutItems = (layout, result) => {
   const placements = [];
-  collectItemPlacements(template.root, result, placements);
+  collectItemPlacements(layout.root, result, placements);
 
   const placementMap = new Map();
   placements.forEach((placement) => placementMap.set(placement.item.id, placement));
@@ -139,21 +139,21 @@ const layoutItems = (template, result) => {
   });
 };
 
-const computeLayout = (template) => {
+const computeLayout = (layout) => {
   const result = {
     sections: new Map(),
     items: new Map()
   };
 
   const rootRect = {
-    x: template.bleed,
-    y: template.bleed,
-    width: template.width - template.bleed * 2,
-    height: template.height - template.bleed * 2
+    x: layout.bleed,
+    y: layout.bleed,
+    width: layout.width - layout.bleed * 2,
+    height: layout.height - layout.bleed * 2
   };
 
-  layoutSections(template.root, rootRect, result);
-  layoutItems(template, result);
+  layoutSections(layout.root, rootRect, result);
+  layoutItems(layout, result);
 
   return result;
 };
@@ -182,13 +182,13 @@ const findItem = (section, id) => {
   return null;
 };
 
-export const renderCardSvg = (card, template, options = {}) => {
+export const renderCardSvg = (card, layout, options = {}) => {
   const { palette } = theme;
   const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
-  const { width, height, radius } = template;
-  const layout = computeLayout(template);
+  const { width, height, radius } = layout;
+  const layout = computeLayout(layout);
   const items = [];
-  collectItems(template.root, items);
+  collectItems(layout.root, items);
 
   const renderedItems = items
     .map((item) => {
@@ -294,14 +294,14 @@ export const renderCardSvg = (card, template, options = {}) => {
 </svg>`;
 };
 
-export const renderTemplateSvg = (template, selectedNode = null) => {
+export const renderLayoutSvg = (layout, selectedNode = null) => {
   const { palette } = theme;
-  const { width, height, radius } = template;
-  const layout = computeLayout(template);
+  const { width, height, radius } = layout;
+  const layout = computeLayout(layout);
 
   const sectionRects = Array.from(layout.sections.entries())
     .map(([id, rect]) => {
-      const section = findSection(template.root, id);
+      const section = findSection(layout.root, id);
       const isSelected = selectedNode && selectedNode.type === "section" && selectedNode.id === id;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.muted;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";
@@ -321,7 +321,7 @@ export const renderTemplateSvg = (template, selectedNode = null) => {
 
   const itemRects = Array.from(layout.items.entries())
     .map(([id, rect]) => {
-      const item = findItem(template.root, id);
+      const item = findItem(layout.root, id);
       const isSelected = selectedNode && selectedNode.type === "item" && selectedNode.id === id;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.ink;
       const strokeWidth = isSelected ? SELECTION_STROKE_WIDTH : "1";

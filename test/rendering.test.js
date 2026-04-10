@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { renderCardSvg, renderTemplateSvg } from "../src/render/cardSvg.ts";
+import { renderCardSvg, renderLayoutSvg } from "../src/render/cardSvg.ts";
 
 test("renderCardSvg generates valid SVG", () => {
   const card = {
@@ -9,7 +9,7 @@ test("renderCardSvg generates valid SVG", () => {
     fields: {},
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -29,7 +29,7 @@ test("renderCardSvg generates valid SVG", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("<svg"), "Should contain SVG opening tag");
   assert.ok(svg.includes("</svg>"), "Should contain SVG closing tag");
   assert.ok(svg.includes('width="750"'), "Should have correct width");
@@ -46,7 +46,7 @@ test("renderCardSvg with nested sections", () => {
     },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -121,7 +121,7 @@ test("renderCardSvg with nested sections", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("Card Title"), "Should contain title text");
   assert.ok(svg.includes("Card Description"), "Should contain description text");
   assert.ok(svg.includes('font-size="32"'), "Should have title font size");
@@ -139,7 +139,7 @@ test("renderCardSvg with multiple items in same section", () => {
     },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -211,7 +211,7 @@ test("renderCardSvg with multiple items in same section", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("Value 1"), "Should contain first value");
   assert.ok(svg.includes("Value 2"), "Should contain second value");
   assert.ok(svg.includes("Value 3"), "Should contain third value");
@@ -224,7 +224,7 @@ test("renderCardSvg with frame item", () => {
     fields: {},
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -262,7 +262,7 @@ test("renderCardSvg with frame item", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("<rect"), "Should contain rect element");
   assert.ok(svg.includes('stroke-width="4"'), "Should have correct stroke width");
   assert.ok(svg.includes('stroke="#000000"'), "Should have correct stroke color");
@@ -278,7 +278,7 @@ test("renderCardSvg with image item", () => {
     },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -315,7 +315,7 @@ test("renderCardSvg with image item", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("<image"), "Should contain image element");
   assert.ok(
     svg.includes("https://example.com/image.jpg"),
@@ -331,7 +331,7 @@ test("renderCardSvg with text alignment left", () => {
     fields: { text: "Left aligned" },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -369,7 +369,7 @@ test("renderCardSvg with text alignment left", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes('text-anchor="start"'), "Should have start text anchor");
 });
 
@@ -380,7 +380,7 @@ test("renderCardSvg with text alignment center", () => {
     fields: { text: "Center aligned" },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -418,7 +418,7 @@ test("renderCardSvg with text alignment center", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes('text-anchor="middle"'), "Should have middle text anchor");
 });
 
@@ -429,7 +429,7 @@ test("renderCardSvg with text alignment right", () => {
     fields: { text: "Right aligned" },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -467,7 +467,7 @@ test("renderCardSvg with text alignment right", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes('text-anchor="end"'), "Should have end text anchor");
 });
 
@@ -478,7 +478,7 @@ test("renderCardSvg with row layout", () => {
     fields: { text1: "Left", text2: "Right" },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -553,7 +553,7 @@ test("renderCardSvg with row layout", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("Left"), "Should contain left text");
   assert.ok(svg.includes("Right"), "Should contain right text");
 });
@@ -565,7 +565,7 @@ test("renderCardSvg with column layout", () => {
     fields: { text1: "Top", text2: "Bottom" },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -640,13 +640,13 @@ test("renderCardSvg with column layout", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("Top"), "Should contain top text");
   assert.ok(svg.includes("Bottom"), "Should contain bottom text");
 });
 
-test("renderTemplateSvg generates valid SVG", () => {
-  const template = {
+test("renderLayoutSvg generates valid SVG", () => {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -666,7 +666,7 @@ test("renderTemplateSvg generates valid SVG", () => {
     },
   };
 
-  const svg = renderTemplateSvg(template);
+  const svg = renderLayoutSvg(layout);
   assert.ok(svg.includes("<svg"), "Should contain SVG opening tag");
   assert.ok(svg.includes("</svg>"), "Should contain SVG closing tag");
   assert.ok(svg.includes('width="750"'), "Should have correct width");
@@ -682,7 +682,7 @@ test("renderCardSvg escapes special characters in text", () => {
     },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -720,7 +720,7 @@ test("renderCardSvg escapes special characters in text", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("&lt;special&gt;"), "Should escape < and >");
   assert.ok(svg.includes("&quot;"), "Should escape quotes");
   assert.ok(svg.includes("&amp;"), "Should escape ampersands");
@@ -734,7 +734,7 @@ test("renderCardSvg with empty fields", () => {
     fields: {},
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -772,19 +772,19 @@ test("renderCardSvg with empty fields", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("<svg"), "Should generate SVG even with missing fields");
   assert.ok(svg.includes("</svg>"), "Should close SVG properly");
 });
 
-test("renderCardSvg uses font names from template.fonts", () => {
+test("renderCardSvg uses font names from layout.fonts", () => {
   const card = {
     id: "test",
     name: "Test Card",
     fields: { text: "Hello" },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -821,8 +821,8 @@ test("renderCardSvg uses font names from template.fonts", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
-  assert.ok(svg.includes("Cinzel"), "Should use font name from template.fonts");
+  const svg = renderCardSvg(card, layout);
+  assert.ok(svg.includes("Cinzel"), "Should use font name from layout.fonts");
   assert.ok(!svg.includes("Fraunces"), "Should not use hardcoded theme font");
 });
 
@@ -833,7 +833,7 @@ test("renderCardSvg falls back to first font slot for unknown slot", () => {
     fields: { text: "Hello" },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -869,7 +869,7 @@ test("renderCardSvg falls back to first font slot for unknown slot", () => {
     },
   };
 
-  const svg = renderCardSvg(card, template);
+  const svg = renderCardSvg(card, layout);
   assert.ok(svg.includes("Cinzel"), "Should fall back to first font slot");
 });
 
@@ -880,7 +880,7 @@ test("renderCardSvg embeds fonts when fontData provided", () => {
     fields: { text: "Hello" },
   };
 
-  const template = {
+  const layout = {
     version: 2,
     id: "test",
     name: "Test",
@@ -920,7 +920,7 @@ test("renderCardSvg embeds fonts when fontData provided", () => {
     title: { name: "TestFont", data: Buffer.from("fake-font-data") },
   };
 
-  const svg = renderCardSvg(card, template, { fonts: fontData });
+  const svg = renderCardSvg(card, layout, { fonts: fontData });
   assert.ok(svg.includes("@font-face"), "Should contain @font-face rule");
   assert.ok(svg.includes("TestFont"), "Should reference font name");
   assert.ok(svg.includes("data:font/woff2;base64,"), "Should contain base64 data URI");

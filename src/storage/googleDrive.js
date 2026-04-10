@@ -2,7 +2,7 @@ const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
-import { normalizeCard, normalizeTemplate } from "../normalizeExport.js";
+import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 import { putAsset, deleteAsset, listAssets } from "./assetCache.js";
 
 const loadGoogleScript = () =>
@@ -25,10 +25,10 @@ export const createGoogleDriveStorage = (options = {}) => {
   const clientId = options.clientId ?? "";
   const appTag = options.appTag ?? "boardgame-assets";
   const rootFolderId = options.folderId ? String(options.folderId) : "";
-  const defaultTemplate = options.defaultTemplate;
+  const defaultLayout = options.defaultLayout;
   const isConfigured = clientId && clientId.length > 10 && clientId.includes(".");
 
-  if (typeof defaultTemplate !== "function") throw new Error("Missing default template factory.");
+  if (typeof defaultLayout !== "function") throw new Error("Missing default layout factory.");
 
   const TOKEN_KEY = "boardgame_assets_google_token";
   let tokenClient = null;
@@ -227,7 +227,7 @@ export const createGoogleDriveStorage = (options = {}) => {
 
 
   // --- Folder resolution ---
-  // Structure: root / <gameId> / { game.json, templates/, collections/<colId>/{collection.json, cards/}, images/ }
+  // Structure: root / <gameId> / { game.json, layouts/, collections/<colId>/{collection.json, cards/}, images/ }
   // Global: root / fonts / { fonts.json, *.woff2 }
 
   const ensureFolder = async (parentId, name, cacheKey, props = {}) => {
@@ -244,7 +244,7 @@ export const createGoogleDriveStorage = (options = {}) => {
   const rootParent = () => rootFolderId || "root";
 
   const gameFolder = (gameId) => ensureFolder(rootParent(), gameId, `game:${gameId}`, { type: "game-folder", gameId });
-  const templatesFolder = async (gameId) => ensureFolder(await gameFolder(gameId), "templates", `tpl:${gameId}`);
+  const layoutsFolder = async (gameId) => ensureFolder(await gameFolder(gameId), "layouts", `tpl:${gameId}`);
   const collectionsFolder = async (gameId) => ensureFolder(await gameFolder(gameId), "collections", `cols:${gameId}`);
   const collectionFolder = async (gameId, colId) => ensureFolder(await collectionsFolder(gameId), colId, `col:${gameId}:${colId}`, { type: "collection", collectionId: colId });
   const cardsFolder = async (gameId, colId) => ensureFolder(await collectionFolder(gameId, colId), "cards", `cards:${gameId}:${colId}`);
@@ -312,13 +312,13 @@ export const createGoogleDriveStorage = (options = {}) => {
     const meta = { id, name, createdAt: now(), updatedAt: now() };
     const gf = await gameFolder(id);
     await mkFile("game.json", meta, gf, { type: "game", gameId: id });
-    // Create default template
-    const tf = await templatesFolder(id);
-    const tpl = defaultTemplate();
-    await mkFile(`${tpl.id}.json`, tpl, tf, { type: "template", gameId: id, templateId: tpl.id });
+    // Create default layout
+    const tf = await layoutsFolder(id);
+    const tpl = defaultLayout();
+    await mkFile(`${tpl.id}.json`, tpl, tf, { type: "layout", gameId: id, layoutId: tpl.id });
     // Create default collection
     const cf = await collectionFolder(id, "default");
-    await mkFile("collection.json", { id: "default", name: "Default", templateId: tpl.id }, cf, { type: "collection", gameId: id });
+    await mkFile("collection.json", { id: "default", name: "Default", layoutId: tpl.id }, cf, { type: "collection", gameId: id });
     await ensureFolder(cf, "cards", `cards:${id}:default`);
     return meta;
   };
@@ -339,60 +339,60 @@ export const createGoogleDriveStorage = (options = {}) => {
     for (const [k] of fileIds) { if (k.includes(gameId)) fileIds.delete(k); }
   };
 
-  // --- Templates ---
+  // --- Layouts ---
 
-  const listTemplates = async (gameId) => {
-    const tf = await templatesFolder(gameId);
+  const listLayouts = async (gameId) => {
+    const tf = await layoutsFolder(gameId);
     const files = await filesInFolder(tf);
-    const templates = [];
+    const layouts = [];
     for (const f of files) {
       if (!f.name.endsWith(".json")) continue;
       const raw = await readFile(f.id);
-      const tpl = normalizeTemplate(raw);
-      templates.push(tpl);
+      const tpl = normalizeLayout(raw);
+      layouts.push(tpl);
       fileIds.set(`tpl:${gameId}:${tpl.id}`, f.id);
     }
-    return templates;
+    return layouts;
   };
 
-  const getTemplate = async (gameId, templateId) => {
-    const tf = await templatesFolder(gameId);
-    const fid = await findOrCreate(tf, `${templateId}.json`, `tpl:${gameId}:${templateId}`, defaultTemplate());
-    return normalizeTemplate(await readFile(fid));
+  const getLayout = async (gameId, layoutId) => {
+    const tf = await layoutsFolder(gameId);
+    const fid = await findOrCreate(tf, `${layoutId}.json`, `tpl:${gameId}:${layoutId}`, defaultLayout());
+    return normalizeLayout(await readFile(fid));
   };
 
-  const saveTemplate = async (gameId, templateId, template) => {
-    const tf = await templatesFolder(gameId);
-    const fid = await findOrCreate(tf, `${templateId}.json`, `tpl:${gameId}:${templateId}`, template);
-    await writeFile(fid, template);
-    return template;
+  const saveLayout = async (gameId, layoutId, layout) => {
+    const tf = await layoutsFolder(gameId);
+    const fid = await findOrCreate(tf, `${layoutId}.json`, `tpl:${gameId}:${layoutId}`, layout);
+    await writeFile(fid, layout);
+    return layout;
   };
 
-  const createTemplate = async (gameId, name) => {
-    const tf = await templatesFolder(gameId);
-    const tpl = defaultTemplate();
-    const id = slugify(name) || `template-${Date.now()}`;
+  const createLayout = async (gameId, name) => {
+    const tf = await layoutsFolder(gameId);
+    const tpl = defaultLayout();
+    const id = slugify(name) || `layout-${Date.now()}`;
     tpl.id = id;
     tpl.name = name;
-    const fid = await mkFile(`${id}.json`, tpl, tf, { type: "template", gameId, templateId: id });
+    const fid = await mkFile(`${id}.json`, tpl, tf, { type: "layout", gameId, layoutId: id });
     fileIds.set(`tpl:${gameId}:${id}`, fid);
     return tpl;
   };
 
-  const deleteTemplate = async (gameId, templateId) => {
-    const key = `tpl:${gameId}:${templateId}`;
+  const deleteLayout = async (gameId, layoutId) => {
+    const key = `tpl:${gameId}:${layoutId}`;
     const fid = fileIds.get(key);
     if (fid) { await rmFile(fid); fileIds.delete(key); }
   };
 
-  const copyTemplate = async (gameId, templateId) => {
-    const tpl = await getTemplate(gameId, templateId);
-    const templates = await listTemplates(gameId);
-    const name = `Template ${templates.length + 1}`;
-    const id = slugify(name) || `template-${Date.now()}`;
+  const copyLayout = async (gameId, layoutId) => {
+    const tpl = await getLayout(gameId, layoutId);
+    const layouts = await listLayouts(gameId);
+    const name = `Layout ${layouts.length + 1}`;
+    const id = slugify(name) || `layout-${Date.now()}`;
     const copy = { ...tpl, id, name };
-    const tf = await templatesFolder(gameId);
-    const fid = await mkFile(`${id}.json`, copy, tf, { type: "template", gameId, templateId: id });
+    const tf = await layoutsFolder(gameId);
+    const fid = await mkFile(`${id}.json`, copy, tf, { type: "layout", gameId, layoutId: id });
     fileIds.set(`tpl:${gameId}:${id}`, fid);
     return copy;
   };
@@ -417,13 +417,13 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const getCollection = async (gameId, collectionId) => {
     const cf = await collectionFolder(gameId, collectionId);
-    const fid = await findOrCreate(cf, "collection.json", `colmeta:${gameId}:${collectionId}`, { id: collectionId, name: collectionId, templateId: "default" });
+    const fid = await findOrCreate(cf, "collection.json", `colmeta:${gameId}:${collectionId}`, { id: collectionId, name: collectionId, layoutId: "default" });
     return await readFile(fid);
   };
 
-  const createCollection = async (gameId, name, templateId) => {
+  const createCollection = async (gameId, name, layoutId) => {
     const id = slugify(name) || `col-${Date.now()}`;
-    const col = { id, name, templateId };
+    const col = { id, name, layoutId };
     const cf = await collectionFolder(gameId, id);
     await mkFile("collection.json", col, cf, { type: "collection", gameId, collectionId: id });
     await ensureFolder(cf, "cards", `cards:${gameId}:${id}`);
@@ -433,7 +433,7 @@ export const createGoogleDriveStorage = (options = {}) => {
   const updateCollection = async (gameId, collectionId, updates) => {
     const key = `colmeta:${gameId}:${collectionId}`;
     const cf = await collectionFolder(gameId, collectionId);
-    const fid = await findOrCreate(cf, "collection.json", key, { id: collectionId, name: collectionId, templateId: "default" });
+    const fid = await findOrCreate(cf, "collection.json", key, { id: collectionId, name: collectionId, layoutId: "default" });
     const col = await readFile(fid);
     const next = { ...col, ...updates, id: collectionId };
     await writeFile(fid, next);
@@ -570,7 +570,7 @@ export const createGoogleDriveStorage = (options = {}) => {
   return {
     init, signIn, signOut, tryRestoreSession, isAuthorized,
     listGames, getGame, createGame, updateGame, deleteGame,
-    listTemplates, getTemplate, saveTemplate, createTemplate, deleteTemplate, copyTemplate,
+    listLayouts, getLayout, saveLayout, createLayout, deleteLayout, copyLayout,
     listCollections, getCollection, createCollection, updateCollection, deleteCollection,
     listCards, getCard, saveCard, deleteCard, copyCard,
     listFonts, addGoogleFont, uploadFont, deleteFont,

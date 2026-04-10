@@ -1,5 +1,5 @@
 import { config } from "./config.js";
-import { defaultTemplate } from "./template.js";
+import { defaultLayout } from "./layout.js";
 import { createGoogleDriveStorage } from "./storage/googleDrive.js";
 import { createLocalFileStorage } from "./storage/localFile.js";
 
@@ -19,5 +19,5 @@ export const createStorage = () => {
     throw new Error(`Unknown storage provider: ${providerKey}`);
   }
   const providerConfig = config?.storage?.[providerKey] ?? {};
-  return factory({ ...providerConfig, defaultTemplate });
+  return factory({ ...providerConfig, defaultLayout });
 };

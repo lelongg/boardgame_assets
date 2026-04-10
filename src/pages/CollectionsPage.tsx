@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, PlusCircle, LayoutGrid, Layers, Printer } from 'lucide-react'
+import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, LayoutGrid, Layers, Printer } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import ZoomablePreview from '@/components/ZoomablePreview'
-import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/templateHelpers'
+import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/layoutHelpers'
 import LoadingImg from '@/components/LoadingImg'
 import PageLayout from '@/components/PageLayout'
 import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from '@/components/FontManager'
@@ -21,7 +21,7 @@ export default function CollectionsPage() {
   const { storage, status, setStatus } = useStorage()
   const [game, setGame] = useState<any>(null)
   const [collections, setCollections] = useState<any[]>([])
-  const [templates, setTemplates] = useState<any[]>([])
+  const [layouts, setLayouts] = useState<any[]>([])
   const [expandedCollection, setExpandedCollection] = useState<string | null>(() => {
     try { return localStorage.getItem(`game:${gameId}:selectedCollection`) } catch { return null }
   })
@@ -33,8 +33,8 @@ export default function CollectionsPage() {
   const [showBigPreview, setShowBigPreview] = useState(false)
   const [cardPreviews, setCardPreviews] = useState<Record<string, string>>({})
   const carouselRefs = useRef<Map<string, HTMLElement>>(new Map())
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(() => {
-    try { return localStorage.getItem(`game:${gameId}:selectedTemplate`) } catch { return null }
+  const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(() => {
+    try { return localStorage.getItem(`game:${gameId}:selectedLayout`) } catch { return null }
   })
   const [showSections, setShowSections] = useState(true)
   const [showItemWires, setShowItemWires] = useState(true)
@@ -48,42 +48,42 @@ export default function CollectionsPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
   const [propertyByType, setPropertyByType] = useState<Record<string, string>>({})
-  const [templatePreview, setTemplatePreview] = useState<string>('')
-  const [templateHitAreas, setTemplateHitAreas] = useState<{ id: string; x: number; y: number; width: number; height: number }[]>([])
+  const [layoutPreview, setLayoutPreview] = useState<string>('')
+  const [layoutHitAreas, setLayoutHitAreas] = useState<{ id: string; x: number; y: number; width: number; height: number }[]>([])
 
-  const selectedTemplate = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) : null
+  const selectedLayout = selectedLayoutId ? layouts.find(t => t.id === selectedLayoutId) : null
 
   useEffect(() => {
     if (!storage || !gameId) return
     loadData(storage)
   }, [storage, gameId])
 
-  // Template preview
+  // Layout preview
   useEffect(() => {
-    if (!selectedTemplate) { setTemplatePreview(''); return }
+    if (!selectedLayout) { setLayoutPreview(''); return }
     const updatePreview = async () => {
-      const { renderTemplateSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
-      let svg = renderTemplateSvg(selectedTemplate, { showSections, showItems: showItemWires, selectedNodeId })
-      svg = await embedFontsInSvg(svg, selectedTemplate, gameId!)
+      const { renderLayoutSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
+      let svg = renderLayoutSvg(selectedLayout, { showSections, showItems: showItemWires, selectedNodeId })
+      svg = await embedFontsInSvg(svg, selectedLayout, gameId!)
       svg = await embedImagesInSvg(svg)
-      const layout = computeLayout(selectedTemplate)
+      const layout = computeLayout(selectedLayout)
       const areas = [
         ...Array.from(layout.sections.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
         ...Array.from(layout.items.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
       ]
-      setTemplateHitAreas(areas)
+      setLayoutHitAreas(areas)
       const blob = new Blob([svg], { type: 'image/svg+xml' })
       const url = URL.createObjectURL(blob)
-      setTemplatePreview(prev => { if (prev) URL.revokeObjectURL(prev); return url })
+      setLayoutPreview(prev => { if (prev) URL.revokeObjectURL(prev); return url })
     }
     updatePreview()
-  }, [selectedTemplate, showSections, showItemWires, selectedNodeId])
+  }, [selectedLayout, showSections, showItemWires, selectedNodeId])
 
   // Render card previews client-side
   useEffect(() => {
-    if (!collectionCards.length || !expandedCollection || !templates.length) { setCardPreviews({}); return }
+    if (!collectionCards.length || !expandedCollection || !layouts.length) { setCardPreviews({}); return }
     const col = collections.find(c => c.id === expandedCollection)
-    const tpl = col ? templates.find(t => t.id === col.templateId) : null
+    const tpl = col ? layouts.find(t => t.id === col.layoutId) : null
     if (!tpl) { setCardPreviews({}); return }
     let cancelled = false
     const renderAll = async () => {
@@ -104,13 +104,16 @@ export default function CollectionsPage() {
     }
     renderAll()
     return () => { cancelled = true }
-  }, [collectionCards, collections, templates, expandedCollection])
+  }, [collectionCards, collections, layouts, expandedCollection])
 
   // Load cards when a collection is selected
   useEffect(() => {
     if (!expandedCollection || !storage || !gameId) { setCollectionCards([]); setSelectedCardId(null); return; }
     setSelectedCardId(null); setShowBigPreview(false)
-    storage.listCards(gameId, expandedCollection).then(setCollectionCards).catch(() => setCollectionCards([]))
+    storage.listCards(gameId, expandedCollection).then((cards: any[]) => {
+      setCollectionCards(cards)
+      if (cards.length > 0) setSelectedCardId(cards[0].id)
+    }).catch(() => setCollectionCards([]))
   }, [expandedCollection, storage, gameId])
 
   // Scroll carousel thumbnail into view
@@ -126,14 +129,37 @@ export default function CollectionsPage() {
       const [gameData, colList, tplList, fonts] = await Promise.all([
         s.getGame(gameId),
         s.listCollections(gameId),
-        s.listTemplates(gameId),
+        s.listLayouts(gameId),
         s.listFonts(gameId),
       ])
       setGame(gameData)
       setCollections(colList)
-      setTemplates(tplList)
+      setLayouts(tplList)
       setGameFonts(fonts)
       setCardPreviews({})
+
+      // Auto-select first item if no persisted selection
+      if (colList.length > 0) {
+        const saved = localStorage.getItem(`game:${gameId}:selectedCollection`)
+        if (!saved || !colList.some((c: any) => c.id === saved)) {
+          setExpandedCollection(colList[0].id)
+          localStorage.setItem(`game:${gameId}:selectedCollection`, colList[0].id)
+        }
+      }
+      if (tplList.length > 0) {
+        const saved = localStorage.getItem(`game:${gameId}:selectedLayout`)
+        const tpl = saved && tplList.find((t: any) => t.id === saved) ? tplList.find((t: any) => t.id === saved) : tplList[0]
+        if (!saved || !tplList.some((t: any) => t.id === saved)) {
+          setSelectedLayoutId(tpl.id)
+          localStorage.setItem(`game:${gameId}:selectedLayout`, tpl.id)
+        }
+        if (tpl.root?.id && !selectedNodeId) setSelectedNodeId(tpl.root.id)
+      }
+      const fontKeys = Object.keys(fonts)
+      if (fontKeys.length > 0 && !selectedFont) {
+        setSelectedFont(fontKeys[0])
+      }
+
       setStatus('Ready.')
     } catch {
       setStatus('Error loading game.')
@@ -141,13 +167,13 @@ export default function CollectionsPage() {
   }
 
   const handleCreateCollection = async () => {
-    if (!storage || !gameId || templates.length === 0) return
+    if (!storage || !gameId || layouts.length === 0) return
     const name = `Collection ${collections.length + 1}`
-    const optimistic = { id: `temp-${Date.now()}`, name, templateId: templates[0].id }
+    const optimistic = { id: `temp-${Date.now()}`, name, layoutId: layouts[0].id }
     setCollections(prev => [...prev, optimistic])
     setExpandedCollection(optimistic.id)
     try {
-      const created = await storage.createCollection(gameId, name, templates[0].id)
+      const created = await storage.createCollection(gameId, name, layouts[0].id)
       setCollections(prev => prev.map(c => c.id === optimistic.id ? created : c))
       setExpandedCollection(created.id)
       if (gameId) localStorage.setItem(`game:${gameId}:selectedCollection`, created.id)
@@ -157,41 +183,41 @@ export default function CollectionsPage() {
     }
   }
 
-  const handleCreateTemplate = async () => {
+  const handleCreateLayout = async () => {
     if (!storage || !gameId) return
-    const name = `Template ${templates.length + 1}`
+    const name = `Layout ${layouts.length + 1}`
     const optimistic = { version: 2 as const, id: `temp-${Date.now()}`, name, width: 750, height: 1050, radius: 28, bleed: 18, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
-    setTemplates(prev => [...prev, optimistic])
-    setSelectedTemplateId(optimistic.id)
+    setLayouts(prev => [...prev, optimistic])
+    setSelectedLayoutId(optimistic.id)
     try {
-      const created = await storage.createTemplate(gameId, name)
-      setTemplates(prev => prev.map(t => t.id === optimistic.id ? created : t))
-      setSelectedTemplateId(created.id)
-      if (gameId) localStorage.setItem(`game:${gameId}:selectedTemplate`, created.id)
+      const created = await storage.createLayout(gameId, name)
+      setLayouts(prev => prev.map(t => t.id === optimistic.id ? created : t))
+      setSelectedLayoutId(created.id)
+      if (gameId) localStorage.setItem(`game:${gameId}:selectedLayout`, created.id)
     } catch {
-      setTemplates(prev => prev.filter(t => t.id !== optimistic.id))
-      setStatus('Error creating template.')
+      setLayouts(prev => prev.filter(t => t.id !== optimistic.id))
+      setStatus('Error creating layout.')
     }
   }
 
   // --- Layout editor handlers ---
 
-  const handleTemplateSave = async (updatedTemplate: any) => {
-    if (!gameId || !selectedTemplateId || !storage) return
+  const handleLayoutSave = async (updatedLayout: any) => {
+    if (!gameId || !selectedLayoutId || !storage) return
     try {
-      await storage.saveTemplate(gameId, selectedTemplateId, updatedTemplate)
-      setTemplates(prev => prev.map(t => t.id === selectedTemplateId ? updatedTemplate : t))
-      setStatus('Template saved.')
+      await storage.saveLayout(gameId, selectedLayoutId, updatedLayout)
+      setLayouts(prev => prev.map(t => t.id === selectedLayoutId ? updatedLayout : t))
+      setStatus('Layout saved.')
     } catch {
-      setStatus('Error saving template.')
+      setStatus('Error saving layout.')
     }
   }
 
   const getNodeTypeKey = (id: string): string => {
-    if (!selectedTemplate?.root) return 'unknown'
-    const kind = getNodeKind(selectedTemplate.root, id)
+    if (!selectedLayout?.root) return 'unknown'
+    const kind = getNodeKind(selectedLayout.root, id)
     if (kind === 'section') return 'section'
-    const item = findItemById(selectedTemplate.root, id)
+    const item = findItemById(selectedLayout.root, id)
     return (item as any)?.type ?? 'text'
   }
 
@@ -207,8 +233,8 @@ export default function CollectionsPage() {
   }
 
   const handlePropertyChange = (property: string, value: unknown) => {
-    if (!selectedTemplate || !selectedNodeId) return
-    const t = JSON.parse(JSON.stringify(selectedTemplate))
+    if (!selectedLayout || !selectedNodeId) return
+    const t = JSON.parse(JSON.stringify(selectedLayout))
     const kind = getNodeKind(t.root, selectedNodeId)
     if (!kind) return
     let node: any
@@ -242,27 +268,27 @@ export default function CollectionsPage() {
     } else {
       node[property] = value
     }
-    handleTemplateSave(t)
+    handleLayoutSave(t)
   }
 
-  const selectedKind = selectedNodeId && selectedTemplate?.root ? getNodeKind(selectedTemplate.root, selectedNodeId) : null
-  const isRoot = selectedNodeId === selectedTemplate?.root?.id
+  const selectedKind = selectedNodeId && selectedLayout?.root ? getNodeKind(selectedLayout.root, selectedNodeId) : null
+  const isRoot = selectedNodeId === selectedLayout?.root?.id
 
   const handleAddSection = () => {
-    if (!selectedTemplate) return
-    const t = JSON.parse(JSON.stringify(selectedTemplate))
+    if (!selectedLayout) return
+    const t = JSON.parse(JSON.stringify(selectedLayout))
     const parentId = selectedKind === 'section' && selectedNodeId ? selectedNodeId : t.root.id
     const parent = findSectionById(t.root, parentId)
     if (!parent) return
     const section = { id: crypto.randomUUID(), name: 'New Section', layout: 'stack' as const, sizePct: 100, gap: 0, children: [] as any[], items: [] as any[] }
     parent.children.push(section)
-    handleTemplateSave(t)
+    handleLayoutSave(t)
     setSelectedNodeId(section.id)
   }
 
   const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji') => {
-    if (!selectedTemplate) return
-    const t = JSON.parse(JSON.stringify(selectedTemplate))
+    if (!selectedLayout) return
+    const t = JSON.parse(JSON.stringify(selectedLayout))
     let parentId: string
     if (selectedKind === 'section' && selectedNodeId) parentId = selectedNodeId
     else if (selectedKind === 'item' && selectedNodeId) {
@@ -284,17 +310,17 @@ export default function CollectionsPage() {
       if (loc) loc.list.splice(loc.index + 1, 0, item)
       else parent.items.push(item)
     } else parent.items.push(item)
-    handleTemplateSave(t)
+    handleLayoutSave(t)
     setSelectedNodeId(item.id)
   }
 
   const handleDeleteNode = () => {
-    if (!selectedNodeId || !selectedKind || isRoot || !selectedTemplate) return
-    const t = JSON.parse(JSON.stringify(selectedTemplate))
+    if (!selectedNodeId || !selectedKind || isRoot || !selectedLayout) return
+    const t = JSON.parse(JSON.stringify(selectedLayout))
     const loc = findNodeLocation(t.root, selectedNodeId, selectedKind)
     if (!loc) return
     loc.list.splice(loc.index, 1)
-    handleTemplateSave(t)
+    handleLayoutSave(t)
     setSelectedNodeId(null)
   }
 
@@ -345,16 +371,16 @@ export default function CollectionsPage() {
         <Tabs defaultValue={localStorage.getItem(`game:${gameId}:tab`) || 'collections'} onValueChange={(v) => localStorage.setItem(`game:${gameId}:tab`, v)} className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="collections">Collections</TabsTrigger>
-            <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="layouts">Layouts</TabsTrigger>
             <TabsTrigger value="fonts">Fonts</TabsTrigger>
           </TabsList>
 
           <TabsContent value="collections">
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 items-start">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base">Collections</CardTitle>
-                <Button size="sm" variant="ghost" onClick={handleCreateCollection} disabled={templates.length === 0} title="New collection">
+                <Button size="sm" variant="ghost" onClick={handleCreateCollection} disabled={layouts.length === 0} title="New collection">
                   <Plus className="h-4 w-4" />
                 </Button>
               </CardHeader>
@@ -377,17 +403,17 @@ export default function CollectionsPage() {
                       </Button>
                       <select
                         className="rounded-md border bg-background px-2 py-1 text-sm"
-                        value={col.templateId}
+                        value={col.layoutId}
                         onChange={async (e) => {
                           try {
-                            await storage.updateCollection(gameId, col.id, { templateId: e.target.value })
+                            await storage.updateCollection(gameId, col.id, { layoutId: e.target.value })
                             await loadData(storage)
                           } catch {
                             setStatus('Error updating collection.')
                           }
                         }}
                       >
-                        {templates.map((t) => (
+                        {layouts.map((t) => (
                           <option key={t.id} value={t.id}>{t.name}</option>
                         ))}
                       </select>
@@ -402,7 +428,7 @@ export default function CollectionsPage() {
                   >
                     <span className="font-medium">{col.name}</span>
                     <span className="ml-2 text-xs text-muted-foreground">
-                      {templates.find((t) => t.id === col.templateId)?.name ?? col.templateId}
+                      {layouts.find((t) => t.id === col.layoutId)?.name ?? col.layoutId}
                     </span>
                   </ListItem>
                 ))}
@@ -588,43 +614,43 @@ export default function CollectionsPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="templates">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+          <TabsContent value="layouts">
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base">Templates</CardTitle>
-                  <Button size="sm" variant="ghost" onClick={handleCreateTemplate} title="New template">
+                  <CardTitle className="text-base">Layouts</CardTitle>
+                  <Button size="sm" variant="ghost" onClick={handleCreateLayout} title="New layout">
                     <Plus className="h-4 w-4" />
                   </Button>
                 </CardHeader>
                 <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
-                  {templates.map((tpl) => (
+                  {layouts.map((tpl) => (
                     <ListItem
                       key={tpl.id}
-                      selected={selectedTemplateId === tpl.id}
+                      selected={selectedLayoutId === tpl.id}
                       onClick={() => {
-                        const next = selectedTemplateId === tpl.id ? null : tpl.id
-                        setSelectedTemplateId(next)
-                        setSelectedNodeId(null)
-                        if (gameId) { if (next) localStorage.setItem(`game:${gameId}:selectedTemplate`, next); else localStorage.removeItem(`game:${gameId}:selectedTemplate`) }
+                        const next = selectedLayoutId === tpl.id ? null : tpl.id
+                        setSelectedLayoutId(next)
+                        setSelectedNodeId(next ? tpl.root?.id ?? null : null)
+                        if (gameId) { if (next) localStorage.setItem(`game:${gameId}:selectedLayout`, next); else localStorage.removeItem(`game:${gameId}:selectedLayout`) }
                       }}
                       actions={<>
                         <Button size="sm" variant="outline" onClick={async () => {
-                          const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Template ${templates.length + 1}` }
-                          setTemplates(prev => [...prev, opt])
+                          const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Layout ${layouts.length + 1}` }
+                          setLayouts(prev => [...prev, opt])
                           try {
-                            const copy = await storage.copyTemplate(gameId, tpl.id)
-                            setTemplates(prev => prev.map(t => t.id === opt.id ? copy : t))
-                          } catch { setTemplates(prev => prev.filter(t => t.id !== opt.id)); setStatus('Error copying template.') }
+                            const copy = await storage.copyLayout(gameId, tpl.id)
+                            setLayouts(prev => prev.map(t => t.id === opt.id ? copy : t))
+                          } catch { setLayouts(prev => prev.filter(t => t.id !== opt.id)); setStatus('Error copying layout.') }
                         }}>
                           <Copy className="h-4 w-4" />
                         </Button>
                         <ConfirmButton onConfirm={async () => {
-                          const prev = templates
-                          setTemplates(templates.filter((t) => t.id !== tpl.id))
-                          if (selectedTemplateId === tpl.id) setSelectedTemplateId(null)
-                          try { await storage.deleteTemplate(gameId, tpl.id) }
-                          catch (err: any) { setTemplates(prev); setStatus(err.message || 'Error deleting template.') }
+                          const prev = layouts
+                          setLayouts(layouts.filter((t) => t.id !== tpl.id))
+                          if (selectedLayoutId === tpl.id) setSelectedLayoutId(null)
+                          try { await storage.deleteLayout(gameId, tpl.id) }
+                          catch (err: any) { setLayouts(prev); setStatus(err.message || 'Error deleting layout.') }
                         }} />
                       </>}
                     >
@@ -632,24 +658,24 @@ export default function CollectionsPage() {
                       <span className="ml-2 text-xs text-muted-foreground">{tpl.width}×{tpl.height}</span>
                     </ListItem>
                   ))}
-                  {templates.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No templates yet.</p>
+                  {layouts.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No layouts yet.</p>
                   )}
                 </CardContent>
               </Card>
 
-              {selectedTemplate?.root ? (
+              {selectedLayout?.root ? (
                 <>
                   <div className="space-y-4">
                     <div className="overflow-y-auto max-h-[60vh] rounded-md border p-2">
                       <NodeTree
-                        root={selectedTemplate.root}
+                        root={selectedLayout.root}
                         selectedNodeId={selectedNodeId}
                         onSelectNode={handleNodeSelect}
                         onDrop={(dragId, dragKind, dropTargetId, position) => {
-                          const t = JSON.parse(JSON.stringify(selectedTemplate))
+                          const t = JSON.parse(JSON.stringify(selectedLayout))
                           if (moveNode(t.root, dragId, dragKind, dropTargetId, position)) {
-                            handleTemplateSave(t)
+                            handleLayoutSave(t)
                           }
                         }}
                         onAddSection={handleAddSection}
@@ -664,7 +690,7 @@ export default function CollectionsPage() {
                       <Card>
                         <CardContent className="pt-4">
                           <PropertyPanel
-                            template={selectedTemplate}
+                            layout={selectedLayout}
                             selectedNodeId={selectedNodeId}
                             selectedProperty={selectedProperty}
                             onSelectProperty={(prop) => {
@@ -680,13 +706,13 @@ export default function CollectionsPage() {
                       </Card>
                     )}
                   </div>
-                  {templatePreview && (
+                  {layoutPreview && (
                     <ZoomablePreview
-                      src={templatePreview}
-                      alt="Template preview"
-                      svgWidth={selectedTemplate.width}
-                      svgHeight={selectedTemplate.height}
-                      hitAreas={templateHitAreas}
+                      src={layoutPreview}
+                      alt="Layout preview"
+                      svgWidth={selectedLayout.width}
+                      svgHeight={selectedLayout.height}
+                      hitAreas={layoutHitAreas}
                       selectedHitAreaId={selectedNodeId}
                       onHitAreaClick={handleNodeSelect}
                       extraButtons={<>
@@ -710,19 +736,19 @@ export default function CollectionsPage() {
                 </>
               ) : (
                 <div className="md:col-span-2 flex items-center justify-center rounded-lg border bg-card p-8">
-                  <p className="text-sm text-muted-foreground">Select a template to edit</p>
+                  <p className="text-sm text-muted-foreground">Select a layout to edit</p>
                 </div>
               )}
             </div>
           </TabsContent>
 
           <TabsContent value="fonts">
-            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base">Fonts</CardTitle>
                   <Button size="sm" variant="ghost" onClick={() => setShowFontAdd(v => !v)} title="Add font">
-                    <PlusCircle className="h-4 w-4" />
+                    <Plus className="h-4 w-4" />
                   </Button>
                 </CardHeader>
                 <CardContent>
@@ -740,10 +766,9 @@ export default function CollectionsPage() {
                 </CardContent>
               </Card>
 
-              <div className="space-y-4">
-                <FontPreview fonts={gameFonts} selectedFont={selectedFont} previewText={fontPreviewText} />
-                <FontPreviewEditor previewText={fontPreviewText} onChangePreviewText={setFontPreviewText} />
-              </div>
+              <FontPreviewEditor previewText={fontPreviewText} onChangePreviewText={setFontPreviewText} />
+
+              <FontPreview fonts={gameFonts} selectedFont={selectedFont} previewText={fontPreviewText} />
             </div>
           </TabsContent>
         </Tabs>

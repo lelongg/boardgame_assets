@@ -5,7 +5,7 @@
 
 const apiBase = "/api";
 
-export const createLocalFileStorage = ({ defaultTemplate }) => {
+export const createLocalFileStorage = ({ defaultLayout }) => {
   return {
     async init() {
       // No initialization needed for local file storage
@@ -67,19 +67,19 @@ export const createLocalFileStorage = ({ defaultTemplate }) => {
       if (!response.ok) throw new Error("Failed to delete game");
     },
 
-    async loadTemplate(gameId) {
-      const response = await fetch(`${apiBase}/games/${gameId}/template`);
-      if (!response.ok) throw new Error("Failed to load template");
+    async loadLayout(gameId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layout`);
+      if (!response.ok) throw new Error("Failed to load layout");
       return await response.json();
     },
 
-    async saveTemplate(gameId, template) {
-      const response = await fetch(`${apiBase}/games/${gameId}/template`, {
+    async saveLayout(gameId, layout) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layout`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(template)
+        body: JSON.stringify(layout)
       });
-      if (!response.ok) throw new Error("Failed to save template");
+      if (!response.ok) throw new Error("Failed to save layout");
       return await response.json();
     },
 

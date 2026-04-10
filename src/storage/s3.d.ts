@@ -1,7 +1,7 @@
-import type { CardTemplate } from "../types";
+import type { CardLayout } from "../types";
 
 export interface S3StorageOptions {
-  defaultTemplate?: () => CardTemplate;
+  defaultLayout?: () => CardLayout;
   bucket?: string;
   region?: string;
   accessKeyId?: string;

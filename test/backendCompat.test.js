@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it, before, after } from "node:test";
 import "fake-indexeddb/auto";
-import { defaultTemplate } from "../src/template.js";
+import { defaultLayout } from "../src/layout.js";
 import { createLocalFileStorage } from "../src/storage/localFile.js";
 import { createIndexedDBStorage } from "../src/storage/indexedDB.js";
 import { createS3Storage } from "../src/storage/s3.js";
@@ -108,8 +108,8 @@ async function startServer() {
   const hashBuf = (d) => crypto.createHash("sha256").update(d).digest("hex").slice(0, 12);
 
   const gamePath = (gid) => path.join(dataRoot, gid, "game.json");
-  const templatesDir = (gid) => path.join(dataRoot, gid, "templates");
-  const tplPath = (gid, tid) => path.join(templatesDir(gid), `${tid}.json`);
+  const layoutsDir = (gid) => path.join(dataRoot, gid, "layouts");
+  const tplPath = (gid, tid) => path.join(layoutsDir(gid), `${tid}.json`);
   const colsDir = (gid) => path.join(dataRoot, gid, "collections");
   const colDir = (gid, cid) => path.join(colsDir(gid), cid);
   const colPath = (gid, cid) => path.join(colDir(gid, cid), "collection.json");
@@ -134,9 +134,9 @@ async function startServer() {
     while (fs.existsSync(path.join(dataRoot, id))) id = `${slug(name)}-${n++}`;
     const game = { id, name, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     writeJson(gamePath(id), game);
-    const tpl = defaultTemplate();
+    const tpl = defaultLayout();
     writeJson(tplPath(id, tpl.id), tpl);
-    writeJson(colPath(id, "default"), { id: "default", name: "Default", templateId: tpl.id });
+    writeJson(colPath(id, "default"), { id: "default", name: "Default", layoutId: tpl.id });
     writeJson(fontsManifest(id), {});
     return c.json(game, 201);
   });
@@ -155,30 +155,30 @@ async function startServer() {
     return c.json({});
   });
 
-  // Templates
-  app.get("/api/games/:gid/templates", (c) => {
-    const dir = templatesDir(c.req.param("gid"));
+  // Layouts
+  app.get("/api/games/:gid/layouts", (c) => {
+    const dir = layoutsDir(c.req.param("gid"));
     if (!fs.existsSync(dir)) return c.json([]);
     return c.json(fs.readdirSync(dir).filter(f => f.endsWith(".json")).map(f => readJson(path.join(dir, f), null)).filter(Boolean));
   });
-  app.post("/api/games/:gid/templates", async (c) => {
+  app.post("/api/games/:gid/layouts", async (c) => {
     const gid = c.req.param("gid"); const { name } = await c.req.json();
-    const tpl = { ...defaultTemplate(), id: slug(name) || uid(), name };
+    const tpl = { ...defaultLayout(), id: slug(name) || uid(), name };
     writeJson(tplPath(gid, tpl.id), tpl); return c.json(tpl, 201);
   });
-  app.get("/api/games/:gid/templates/:tid", (c) => {
+  app.get("/api/games/:gid/layouts/:tid", (c) => {
     const t = readJson(tplPath(c.req.param("gid"), c.req.param("tid")), null);
     return t ? c.json(t) : c.json({ error: "Not found" }, 404);
   });
-  app.put("/api/games/:gid/templates/:tid", async (c) => {
+  app.put("/api/games/:gid/layouts/:tid", async (c) => {
     const body = await c.req.json();
     writeJson(tplPath(c.req.param("gid"), c.req.param("tid")), body);
     return c.json(body);
   });
-  app.delete("/api/games/:gid/templates/:tid", (c) => {
+  app.delete("/api/games/:gid/layouts/:tid", (c) => {
     fs.rmSync(tplPath(c.req.param("gid"), c.req.param("tid")), { force: true }); return c.json({});
   });
-  app.post("/api/games/:gid/templates/:tid/copy", (c) => {
+  app.post("/api/games/:gid/layouts/:tid/copy", (c) => {
     const orig = readJson(tplPath(c.req.param("gid"), c.req.param("tid")), null);
     if (!orig) return c.json({ error: "Not found" }, 404);
     const copy = { ...orig, id: `${orig.id}-copy-${uid()}`, name: `${orig.name} (Copy)` };
@@ -193,10 +193,10 @@ async function startServer() {
       .map(d => readJson(colPath(c.req.param("gid"), d.name), null)).filter(Boolean));
   });
   app.post("/api/games/:gid/collections", async (c) => {
-    const gid = c.req.param("gid"); const { name, templateId } = await c.req.json();
+    const gid = c.req.param("gid"); const { name, layoutId } = await c.req.json();
     let id = slug(name); let n = 1;
     while (fs.existsSync(colDir(gid, id))) id = `${slug(name)}-${n++}`;
-    const col = { id, name, templateId };
+    const col = { id, name, layoutId };
     writeJson(colPath(gid, id), col); return c.json(col, 201);
   });
   app.get("/api/games/:gid/collections/:cid", (c) => {
@@ -345,7 +345,7 @@ async function startServer() {
  */
 function backendCompatSuite(name, createStorage) {
   describe(`${name}: backend compatibility`, () => {
-    let storage, gameId, templateId, collectionId, cardId;
+    let storage, gameId, layoutId, collectionId, cardId;
 
     before(async () => { storage = await createStorage(); if (storage.init) await storage.init(); });
 
@@ -366,22 +366,22 @@ function backendCompatSuite(name, createStorage) {
       assert.equal((await storage.getGame(gameId)).name, "Renamed");
     });
 
-    it("listTemplates returns at least the default template", async () => {
-      const templates = await storage.listTemplates(gameId);
-      assert.ok(templates.length >= 1); templateId = templates[0].id;
+    it("listLayouts returns at least the default layout", async () => {
+      const layouts = await storage.listLayouts(gameId);
+      assert.ok(layouts.length >= 1); layoutId = layouts[0].id;
     });
-    it("getTemplate returns the template", async () => {
-      const tpl = await storage.getTemplate(gameId, templateId);
+    it("getLayout returns the layout", async () => {
+      const tpl = await storage.getLayout(gameId, layoutId);
       assert.ok(tpl); assert.ok(tpl.root);
     });
-    it("saveTemplate updates the template", async () => {
-      const tpl = await storage.getTemplate(gameId, templateId);
-      tpl.name = "Updated"; const saved = await storage.saveTemplate(gameId, templateId, tpl);
+    it("saveLayout updates the layout", async () => {
+      const tpl = await storage.getLayout(gameId, layoutId);
+      tpl.name = "Updated"; const saved = await storage.saveLayout(gameId, layoutId, tpl);
       assert.equal(saved.name, "Updated");
     });
-    it("createTemplate creates a new template", async () => {
-      const tpl = await storage.createTemplate(gameId, "Second");
-      assert.ok(tpl.id); await storage.deleteTemplate(gameId, tpl.id);
+    it("createLayout creates a new layout", async () => {
+      const tpl = await storage.createLayout(gameId, "Second");
+      assert.ok(tpl.id); await storage.deleteLayout(gameId, tpl.id);
     });
 
     it("listCollections returns at least the default collection", async () => {
@@ -390,10 +390,10 @@ function backendCompatSuite(name, createStorage) {
     });
     it("getCollection returns the collection", async () => {
       const col = await storage.getCollection(gameId, collectionId);
-      assert.ok(col); assert.equal(col.templateId, templateId);
+      assert.ok(col); assert.equal(col.layoutId, layoutId);
     });
     it("createCollection creates a new collection", async () => {
-      const col = await storage.createCollection(gameId, "Second", templateId);
+      const col = await storage.createCollection(gameId, "Second", layoutId);
       assert.ok(col.id); await storage.deleteCollection(gameId, col.id);
     });
     it("updateCollection renames the collection", async () => {
@@ -460,10 +460,10 @@ async function createFullTestGame(storage) {
   const fakeImage = new File([new Uint8Array([137, 80, 78, 71])], "hero artwork.png", { type: "image/png" });
   const imageUrl = await storage.uploadImage(gameId, fakeImage);
 
-  // Build template with all item types
-  const templates = await storage.listTemplates(gameId);
-  const tpl = templates[0];
-  tpl.name = "Full Template";
+  // Build layout with all item types
+  const layouts = await storage.listLayouts(gameId);
+  const tpl = layouts[0];
+  tpl.name = "Full Layout";
   tpl.width = 800;
   tpl.height = 1200;
   tpl.radius = 16;
@@ -505,7 +505,7 @@ async function createFullTestGame(storage) {
     ],
     items: [],
   };
-  await storage.saveTemplate(gameId, tpl.id, tpl);
+  await storage.saveLayout(gameId, tpl.id, tpl);
 
   // Cards
   const cols = await storage.listCollections(gameId);
@@ -525,17 +525,17 @@ async function createFullTestGame(storage) {
     fields: { cost: "4", faction: "🏹" },
   });
 
-  return { gameId, templateId: tpl.id };
+  return { gameId, layoutId: tpl.id };
 }
 
 async function verifyFullTestGame(storage, gameId) {
   const game = await storage.getGame(gameId);
   assert.equal(game.name, "Transfer Test");
 
-  const templates = await storage.listTemplates(gameId);
-  assert.equal(templates.length, 1);
-  const tpl = templates[0];
-  assert.equal(tpl.name, "Full Template");
+  const layouts = await storage.listLayouts(gameId);
+  assert.equal(layouts.length, 1);
+  const tpl = layouts[0];
+  assert.equal(tpl.name, "Full Layout");
   assert.equal(tpl.width, 800);
   assert.equal(tpl.height, 1200);
   assert.equal(tpl.radius, 16);
@@ -627,7 +627,7 @@ after(async () => {
 });
 
 const createTestS3 = () => createS3Storage({
-  defaultTemplate,
+  defaultLayout,
   bucket: S3_BUCKET,
   region: "us-east-1",
   accessKeyId: "S3RVER",
@@ -637,11 +637,11 @@ const createTestS3 = () => createS3Storage({
 });
 
 describe("localFile backend (real server)", () => {
-  backendCompatSuite("localFile", async () => createLocalFileStorage({ defaultTemplate }));
+  backendCompatSuite("localFile", async () => createLocalFileStorage({ defaultLayout }));
 });
 
 describe("indexedDB backend", () => {
-  backendCompatSuite("indexedDB", async () => createIndexedDBStorage({ defaultTemplate }));
+  backendCompatSuite("indexedDB", async () => createIndexedDBStorage({ defaultLayout }));
 });
 
 describe("s3 backend (s3rver)", () => {
@@ -650,19 +650,19 @@ describe("s3 backend (s3rver)", () => {
 
 describe("round-trip: same backend", () => {
   it("localFile → zip → localFile preserves all data", async () => {
-    const src = createLocalFileStorage({ defaultTemplate });
+    const src = createLocalFileStorage({ defaultLayout });
     const { gameId } = await createFullTestGame(src);
     const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
-    const dst = createLocalFileStorage({ defaultTemplate });
+    const dst = createLocalFileStorage({ defaultLayout });
     const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
 
   it("indexedDB → zip → indexedDB preserves all data", async () => {
-    const src = createIndexedDBStorage({ defaultTemplate });
+    const src = createIndexedDBStorage({ defaultLayout });
     const { gameId } = await createFullTestGame(src);
     const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
-    const dst = createIndexedDBStorage({ defaultTemplate });
+    const dst = createIndexedDBStorage({ defaultLayout });
     const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
@@ -679,19 +679,19 @@ describe("round-trip: same backend", () => {
 
 describe("round-trip: cross-backend", () => {
   it("localFile → zip → indexedDB preserves all data", async () => {
-    const src = createLocalFileStorage({ defaultTemplate });
+    const src = createLocalFileStorage({ defaultLayout });
     const { gameId } = await createFullTestGame(src);
     const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
-    const dst = createIndexedDBStorage({ defaultTemplate });
+    const dst = createIndexedDBStorage({ defaultLayout });
     const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
 
   it("indexedDB → zip → localFile preserves all data", async () => {
-    const src = createIndexedDBStorage({ defaultTemplate });
+    const src = createIndexedDBStorage({ defaultLayout });
     const { gameId } = await createFullTestGame(src);
     const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
-    const dst = createLocalFileStorage({ defaultTemplate });
+    const dst = createLocalFileStorage({ defaultLayout });
     const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
@@ -700,13 +700,13 @@ describe("round-trip: cross-backend", () => {
     const src = createTestS3();
     const { gameId } = await createFullTestGame(src);
     const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
-    const dst = createLocalFileStorage({ defaultTemplate });
+    const dst = createLocalFileStorage({ defaultLayout });
     const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
 
   it("localFile → zip → s3 preserves all data", async () => {
-    const src = createLocalFileStorage({ defaultTemplate });
+    const src = createLocalFileStorage({ defaultLayout });
     const { gameId } = await createFullTestGame(src);
     const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
     const dst = createTestS3();
@@ -715,19 +715,19 @@ describe("round-trip: cross-backend", () => {
   });
 
   it("localFile → zip → indexedDB → zip → localFile survives double transfer", async () => {
-    const src = createLocalFileStorage({ defaultTemplate });
+    const src = createLocalFileStorage({ defaultLayout });
     const { gameId } = await createFullTestGame(src);
     const zip1 = await (await exportGameZip(src, gameId)).arrayBuffer();
-    const mid = createIndexedDBStorage({ defaultTemplate });
+    const mid = createIndexedDBStorage({ defaultLayout });
     const midId = await importGameZip(mid, zip1);
     const zip2 = await (await exportGameZip(mid, midId)).arrayBuffer();
-    const dst = createLocalFileStorage({ defaultTemplate });
+    const dst = createLocalFileStorage({ defaultLayout });
     const finalId = await importGameZip(dst, zip2);
     await verifyFullTestGame(dst, finalId);
   });
 
   it("preserves special characters through transfer", async () => {
-    const src = createLocalFileStorage({ defaultTemplate });
+    const src = createLocalFileStorage({ defaultLayout });
     const game = await src.createGame("Special Chars");
     const cols = await src.listCollections(game.id);
     await src.saveCard(game.id, cols[0].id, "card-special", {
@@ -735,7 +735,7 @@ describe("round-trip: cross-backend", () => {
       fields: { text: "Line 1\nLine 2", emoji: "⚔️🛡️", html: "<b>Bold</b>" },
     });
     const zip = await (await exportGameZip(src, game.id)).arrayBuffer();
-    const dst = createIndexedDBStorage({ defaultTemplate });
+    const dst = createIndexedDBStorage({ defaultLayout });
     const newId = await importGameZip(dst, zip);
     const newCols = await dst.listCollections(newId);
     const cards = await dst.listCards(newId, newCols[0].id);

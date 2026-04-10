@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeCard, normalizeTemplate } from "../src/normalize.ts";
+import { normalizeCard, normalizeLayout } from "../src/normalize.ts";
 
 test("normalizeCard handles empty name", () => {
   const card = normalizeCard({ id: "test", name: "", fields: {} });
@@ -44,8 +44,8 @@ test("normalizeCard handles null input", () => {
   assert.deepEqual(card.fields, {});
 });
 
-test("normalizeTemplate handles empty numeric fields", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles empty numeric fields", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -55,26 +55,26 @@ test("normalizeTemplate handles empty numeric fields", () => {
     bleed: "",
     root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
   });
-  assert.equal(template.width, 750);
-  assert.equal(template.height, 1050);
-  assert.equal(template.radius, 28);
-  assert.equal(template.bleed, 18);
+  assert.equal(layout.width, 750);
+  assert.equal(layout.height, 1050);
+  assert.equal(layout.radius, 28);
+  assert.equal(layout.bleed, 18);
 });
 
-test("normalizeTemplate handles missing fields", () => {
-  const template = normalizeTemplate({});
-  assert.equal(template.version, 2);
-  assert.equal(template.id, "default");
-  assert.equal(template.name, "Default");
-  assert.equal(template.width, 750);
-  assert.equal(template.height, 1050);
-  assert.equal(template.radius, 28);
-  assert.equal(template.bleed, 18);
-  assert.ok(template.root);
+test("normalizeLayout handles missing fields", () => {
+  const layout = normalizeLayout({});
+  assert.equal(layout.version, 2);
+  assert.equal(layout.id, "default");
+  assert.equal(layout.name, "Default");
+  assert.equal(layout.width, 750);
+  assert.equal(layout.height, 1050);
+  assert.equal(layout.radius, 28);
+  assert.equal(layout.bleed, 18);
+  assert.ok(layout.root);
 });
 
-test("normalizeTemplate handles section with empty layout", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles section with empty layout", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -92,13 +92,13 @@ test("normalizeTemplate handles section with empty layout", () => {
       items: []
     }
   });
-  assert.equal(template.root.layout, "stack");
-  assert.equal(template.root.sizePct, 100);
-  assert.equal(template.root.gap, 0);
+  assert.equal(layout.root.layout, "stack");
+  assert.equal(layout.root.sizePct, 100);
+  assert.equal(layout.root.gap, 0);
 });
 
-test("normalizeTemplate handles item with empty anchor points", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles item with empty anchor points", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -133,15 +133,15 @@ test("normalizeTemplate handles item with empty anchor points", () => {
       ]
     }
   });
-  const item = template.root.items[0];
+  const item = layout.root.items[0];
   assert.equal(item.anchor.x, 0.5);
   assert.equal(item.anchor.y, 0.5);
   assert.equal(item.attach.anchor.x, 0.5);
   assert.equal(item.attach.anchor.y, 0.5);
 });
 
-test("normalizeTemplate handles text item with empty values", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles text item with empty values", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -177,7 +177,7 @@ test("normalizeTemplate handles text item with empty values", () => {
       ]
     }
   });
-  const item = template.root.items[0];
+  const item = layout.root.items[0];
   assert.equal(item.type, "text");
   assert.equal(item.fieldId, undefined);
   assert.equal(item.widthPct, 50);
@@ -187,8 +187,8 @@ test("normalizeTemplate handles text item with empty values", () => {
   assert.equal(item.font, undefined);
 });
 
-test("normalizeTemplate handles frame item with empty values", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles frame item with empty values", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -222,14 +222,14 @@ test("normalizeTemplate handles frame item with empty values", () => {
       ]
     }
   });
-  const item = template.root.items[0];
+  const item = layout.root.items[0];
   assert.equal(item.type, "frame");
   assert.equal(item.strokeWidth, 2);
   assert.equal(item.cornerRadius, 8);
 });
 
-test("normalizeTemplate handles image item with empty values", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles image item with empty values", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -264,15 +264,15 @@ test("normalizeTemplate handles image item with empty values", () => {
       ]
     }
   });
-  const item = template.root.items[0];
+  const item = layout.root.items[0];
   assert.equal(item.type, "image");
   assert.equal(item.fieldId, undefined);
   assert.equal(item.fit, "cover");
   assert.equal(item.cornerRadius, 0);
 });
 
-test("normalizeTemplate handles legacy item without type", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles legacy item without type", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -306,7 +306,7 @@ test("normalizeTemplate handles legacy item without type", () => {
       ]
     }
   });
-  const item = template.root.items[0];
+  const item = layout.root.items[0];
   // Should default to text item
   assert.equal(item.type, undefined);
   assert.equal(item.fieldId, "title");
@@ -314,8 +314,8 @@ test("normalizeTemplate handles legacy item without type", () => {
   assert.equal(item.align, "center");
 });
 
-test("normalizeTemplate handles nested sections", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles nested sections", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -343,16 +343,16 @@ test("normalizeTemplate handles nested sections", () => {
       items: []
     }
   });
-  assert.equal(template.root.children.length, 1);
-  assert.equal(template.root.children[0].id, "header");
-  assert.equal(template.root.children[0].name, "New Section");
-  assert.equal(template.root.children[0].layout, "stack");
-  assert.equal(template.root.children[0].sizePct, 100);
-  assert.equal(template.root.children[0].gap, 0);
+  assert.equal(layout.root.children.length, 1);
+  assert.equal(layout.root.children[0].id, "header");
+  assert.equal(layout.root.children[0].name, "New Section");
+  assert.equal(layout.root.children[0].layout, "stack");
+  assert.equal(layout.root.children[0].sizePct, 100);
+  assert.equal(layout.root.children[0].gap, 0);
 });
 
-test("normalizeTemplate adds default fonts when missing", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout adds default fonts when missing", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -362,19 +362,19 @@ test("normalizeTemplate adds default fonts when missing", () => {
     bleed: 18,
     root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
   });
-  assert.ok(template.fonts, "Should have fonts field");
-  assert.ok(template.fonts.title, "Should have title font slot");
-  assert.ok(template.fonts.body, "Should have body font slot");
-  assert.equal(template.fonts.title.name, "Fraunces");
-  assert.equal(template.fonts.body.name, "Space Grotesk");
-  assert.equal(template.fonts.title.source, "google");
-  assert.equal(template.fonts.body.source, "google");
-  assert.equal(template.fonts.title.file, "");
-  assert.equal(template.fonts.body.file, "");
+  assert.ok(layout.fonts, "Should have fonts field");
+  assert.ok(layout.fonts.title, "Should have title font slot");
+  assert.ok(layout.fonts.body, "Should have body font slot");
+  assert.equal(layout.fonts.title.name, "Fraunces");
+  assert.equal(layout.fonts.body.name, "Space Grotesk");
+  assert.equal(layout.fonts.title.source, "google");
+  assert.equal(layout.fonts.body.source, "google");
+  assert.equal(layout.fonts.title.file, "");
+  assert.equal(layout.fonts.body.file, "");
 });
 
-test("normalizeTemplate preserves existing fonts", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout preserves existing fonts", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -388,14 +388,14 @@ test("normalizeTemplate preserves existing fonts", () => {
     },
     root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
   });
-  assert.deepEqual(Object.keys(template.fonts), ["heading", "flavor"]);
-  assert.equal(template.fonts.heading.name, "Cinzel");
-  assert.equal(template.fonts.heading.file, "abc123.woff2");
-  assert.equal(template.fonts.flavor.source, "upload");
+  assert.deepEqual(Object.keys(layout.fonts), ["heading", "flavor"]);
+  assert.equal(layout.fonts.heading.name, "Cinzel");
+  assert.equal(layout.fonts.heading.file, "abc123.woff2");
+  assert.equal(layout.fonts.flavor.source, "upload");
 });
 
-test("normalizeTemplate text item font accepts arbitrary string", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout text item font accepts arbitrary string", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -427,12 +427,12 @@ test("normalizeTemplate text item font accepts arbitrary string", () => {
       ]
     }
   });
-  const item = template.root.items[0];
+  const item = layout.root.items[0];
   assert.equal(item.font, "flavor");
 });
 
-test("normalizeTemplate handles anchor point rounding", () => {
-  const template = normalizeTemplate({
+test("normalizeLayout handles anchor point rounding", () => {
+  const layout = normalizeLayout({
     version: 2,
     id: "test",
     name: "Test",
@@ -466,7 +466,7 @@ test("normalizeTemplate handles anchor point rounding", () => {
       ]
     }
   });
-  const item = template.root.items[0];
+  const item = layout.root.items[0];
   // 0.2 should round to 0, 0.8 should round to 1
   assert.equal(item.anchor.x, 0);
   assert.equal(item.anchor.y, 1);

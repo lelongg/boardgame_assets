@@ -1,14 +1,14 @@
-import type { CardTemplateSection, CardTemplateItem } from "../../types"
+import type { CardLayoutSection, CardLayoutItem } from "../../types"
 
 export type FlatNode = {
   id: string
   name: string
   kind: "section" | "item"
   depth: number
-  obj: CardTemplateSection | CardTemplateItem
+  obj: CardLayoutSection | CardLayoutItem
 }
 
-export const flattenNodes = (section: CardTemplateSection, depth = 0): FlatNode[] => {
+export const flattenNodes = (section: CardLayoutSection, depth = 0): FlatNode[] => {
   const nodes: FlatNode[] = [{ id: section.id, name: section.name, kind: "section", depth, obj: section }]
   for (const item of section.items) {
     nodes.push({ id: item.id, name: item.name, kind: "item", depth: depth + 1, obj: item })
@@ -19,7 +19,7 @@ export const flattenNodes = (section: CardTemplateSection, depth = 0): FlatNode[
   return nodes
 }
 
-export const findSectionById = (section: CardTemplateSection, id: string): CardTemplateSection | null => {
+export const findSectionById = (section: CardLayoutSection, id: string): CardLayoutSection | null => {
   if (section.id === id) return section
   for (const child of section.children) {
     const found = findSectionById(child, id)
@@ -28,7 +28,7 @@ export const findSectionById = (section: CardTemplateSection, id: string): CardT
   return null
 }
 
-export const findItemById = (section: CardTemplateSection, id: string): CardTemplateItem | null => {
+export const findItemById = (section: CardLayoutSection, id: string): CardLayoutItem | null => {
   const item = section.items.find((i) => i.id === id)
   if (item) return item
   for (const child of section.children) {
@@ -41,7 +41,7 @@ export const findItemById = (section: CardTemplateSection, id: string): CardTemp
 export type NodeLocation = { list: any[]; index: number }
 
 export const findNodeLocation = (
-  section: CardTemplateSection,
+  section: CardLayoutSection,
   id: string,
   kind: "section" | "item"
 ): NodeLocation | null => {
@@ -64,10 +64,10 @@ export const findNodeLocation = (
 }
 
 export const findParentSection = (
-  section: CardTemplateSection,
+  section: CardLayoutSection,
   id: string,
   kind: "section" | "item"
-): CardTemplateSection | null => {
+): CardLayoutSection | null => {
   if (kind === "section") {
     if (section.children.some((c) => c.id === id)) return section
     for (const child of section.children) {
@@ -84,13 +84,13 @@ export const findParentSection = (
   return null
 }
 
-export const getNodeKind = (root: CardTemplateSection, id: string): "section" | "item" | null => {
+export const getNodeKind = (root: CardLayoutSection, id: string): "section" | "item" | null => {
   if (findSectionById(root, id)) return "section"
   if (findItemById(root, id)) return "item"
   return null
 }
 
-export const isDescendant = (parent: CardTemplateSection, childId: string): boolean => {
+export const isDescendant = (parent: CardLayoutSection, childId: string): boolean => {
   if (parent.id === childId) return true
   for (const child of parent.children) {
     if (isDescendant(child, childId)) return true
@@ -104,7 +104,7 @@ export const isDescendant = (parent: CardTemplateSection, childId: string): bool
  * - position: "inside" to append to a section, "before"/"after" to insert relative to the target
  */
 export const moveNode = (
-  root: CardTemplateSection,
+  root: CardLayoutSection,
   dragId: string,
   dragKind: "section" | "item",
   dropTargetId: string,

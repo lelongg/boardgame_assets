@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem, CardTemplateEmojiItem, FontSlot } from "./types";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutTextItem, CardLayoutEmojiItem, FontSlot } from "./types";
 
 /**
  * Safely parse a number from a value that might be empty, null, or undefined.
@@ -68,9 +68,9 @@ const normalizeAnchorPoint = (anchor: unknown): AnchorPoint => {
     };
 };
 /**
- * Normalize a card template item to ensure all fields have valid values.
+ * Normalize a card layout item to ensure all fields have valid values.
  */
-const normalizeItem = (item: unknown): CardTemplateItem => {
+const normalizeItem = (item: unknown): CardLayoutItem => {
     const obj = item && typeof item === "object" ? item as Record<string, unknown> : {};
     // Base properties
     const id = safeString(obj.id, `item-${Date.now()}`);
@@ -101,7 +101,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         heightPct
     };
     if (type === "frame") {
-        const frameItem: CardTemplateFrameItem = {
+        const frameItem: CardLayoutFrameItem = {
             ...base,
             type: "frame" as const,
             strokeWidth: safeNumber(obj.strokeWidth, 2),
@@ -112,7 +112,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         return frameItem;
     }
     if (type === "image") {
-        const imageItem: CardTemplateImageItem = {
+        const imageItem: CardLayoutImageItem = {
             ...base,
             type: "image" as const,
             fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
@@ -124,7 +124,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         return imageItem;
     }
     if (type === "emoji") {
-        const emojiItem: CardTemplateEmojiItem = {
+        const emojiItem: CardLayoutEmojiItem = {
             ...base,
             type: "emoji" as const,
             fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
@@ -135,7 +135,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         return emojiItem;
     }
     // Default to text item (with optional type for legacy support)
-    const textItem: CardTemplateTextItem = {
+    const textItem: CardLayoutTextItem = {
         ...base,
         type: type === "text" ? ("text" as const) : undefined,
         fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
@@ -150,9 +150,9 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
     return textItem;
 };
 /**
- * Normalize a card template section recursively.
+ * Normalize a card layout section recursively.
  */
-const normalizeSection = (section: unknown): CardTemplateSection => {
+const normalizeSection = (section: unknown): CardLayoutSection => {
     const obj = section && typeof section === "object" ? section as Record<string, unknown> : {};
     const id = safeString(obj.id, `section-${Date.now()}`);
     const name = safeString(obj.name, "New Section");
@@ -178,11 +178,11 @@ const normalizeSection = (section: unknown): CardTemplateSection => {
     };
 };
 /**
- * Normalize a card template to ensure all fields have valid values.
+ * Normalize a card layout to ensure all fields have valid values.
  * This protects against empty strings, null, or undefined values in JSON files.
  */
-export const normalizeTemplate = (template: unknown): CardTemplate => {
-    const obj = template && typeof template === "object" ? template as Record<string, unknown> : {};
+export const normalizeLayout = (layout: unknown): CardLayout => {
+    const obj = layout && typeof layout === "object" ? layout as Record<string, unknown> : {};
     return {
         version: 2,
         id: safeString(obj.id, "default"),

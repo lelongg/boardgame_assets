@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
-import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/templateHelpers'
+import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/layoutHelpers'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
@@ -31,8 +31,8 @@ export default function GameEditorPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
   const [propertyByType, setPropertyByType] = useState<Record<string, string>>({})
-  const [templatePreview, setTemplatePreview] = useState<string>('')
-  const [templateHitAreas, setTemplateHitAreas] = useState<{ id: string; x: number; y: number; width: number; height: number }[]>([])
+  const [layoutPreview, setLayoutPreview] = useState<string>('')
+  const [layoutHitAreas, setLayoutHitAreas] = useState<{ id: string; x: number; y: number; width: number; height: number }[]>([])
   const [showSections, setShowSections] = useState(true)
   const [showItemWires, setShowItemWires] = useState(true)
   const [savedCardJson, setSavedCardJson] = useState('')
@@ -44,7 +44,7 @@ export default function GameEditorPage() {
   }, [storage, gameId])
 
   useEffect(() => {
-    if (!game?.template?.fonts) return
+    if (!game?.layout?.fonts) return
     const styleId = 'game-fonts-style'
     let style = document.getElementById(styleId) as HTMLStyleElement | null
     if (!style) {
@@ -52,21 +52,21 @@ export default function GameEditorPage() {
       style.id = styleId
       document.head.appendChild(style)
     }
-    const rules = Object.values(game.template.fonts)
+    const rules = Object.values(game.layout.fonts)
       .filter((f: any) => f.file)
       .map((f: any) => `@font-face { font-family: '${f.name}'; src: url('/api/games/${gameId}/fonts/${f.file}'); }`)
       .join('\n')
     style.textContent = rules
     return () => { if (style) style.textContent = '' }
-  }, [game?.template?.fonts])
+  }, [game?.layout?.fonts])
 
   useEffect(() => {
-    if (!selectedCard || !game?.template || !gameId) return
+    if (!selectedCard || !game?.layout || !gameId) return
     const timer = setTimeout(async () => {
       try {
         const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
-        let svg = renderCardSvg(selectedCard, game.template)
-        svg = await embedFontsInSvg(svg, game.template, gameId)
+        let svg = renderCardSvg(selectedCard, game.layout)
+        svg = await embedFontsInSvg(svg, game.layout, gameId)
         svg = await embedImagesInSvg(svg)
         const blob = new Blob([svg], { type: 'image/svg+xml' })
         const blobUrl = URL.createObjectURL(blob)
@@ -76,7 +76,7 @@ export default function GameEditorPage() {
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [selectedCard, game?.template, gameId])
+  }, [selectedCard, game?.layout, gameId])
 
   // Auto-save card
   useEffect(() => {
@@ -115,9 +115,10 @@ export default function GameEditorPage() {
       ])
       setCollection(col)
 
-      const template = await s.getTemplate(gameId, col.templateId)
-      gameData.template = template
+      const layout = await s.getLayout(gameId, col.layoutId)
+      gameData.layout = layout
       setGame(gameData)
+      if (layout?.root?.id && !selectedNodeId) setSelectedNodeId(layout.root.id)
 
       const cardList = await s.listCards(gameId, collectionId)
       setCards(cardList)
@@ -188,40 +189,40 @@ export default function GameEditorPage() {
     setSelectedCard({ ...selectedCard, [field]: value })
   }
 
-  // Template preview
+  // Layout preview
   useEffect(() => {
-    if (!game?.template) { setTemplatePreview(''); return }
+    if (!game?.layout) { setLayoutPreview(''); return }
     const updatePreview = async () => {
-      const { renderTemplateSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
-      let svg = renderTemplateSvg(game.template, { showSections, showItems: showItemWires, selectedNodeId })
-      svg = await embedFontsInSvg(svg, game.template, gameId!)
+      const { renderLayoutSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
+      let svg = renderLayoutSvg(game.layout, { showSections, showItems: showItemWires, selectedNodeId })
+      svg = await embedFontsInSvg(svg, game.layout, gameId!)
       svg = await embedImagesInSvg(svg)
-      const layout = computeLayout(game.template)
-      setTemplateHitAreas([
+      const layout = computeLayout(game.layout)
+      setLayoutHitAreas([
         ...Array.from(layout.sections.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
         ...Array.from(layout.items.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
       ])
       const blob = new Blob([svg], { type: 'image/svg+xml' })
       const url = URL.createObjectURL(blob)
-      setTemplatePreview(prev => { if (prev) URL.revokeObjectURL(prev); return url })
+      setLayoutPreview(prev => { if (prev) URL.revokeObjectURL(prev); return url })
     }
     updatePreview()
-  }, [game?.template, showSections, showItemWires, selectedNodeId])
+  }, [game?.layout, showSections, showItemWires, selectedNodeId])
 
   // Layout handlers
-  const handleTemplateSave = async (updatedTemplate: any) => {
+  const handleLayoutSave = async (updatedLayout: any) => {
     if (!gameId || !game || !collection) return
     try {
-      await storage.saveTemplate(gameId, collection.templateId, updatedTemplate)
-      setGame({ ...game, template: updatedTemplate })
-    } catch { setStatus('Error saving template.') }
+      await storage.saveLayout(gameId, collection.layoutId, updatedLayout)
+      setGame({ ...game, layout: updatedLayout })
+    } catch { setStatus('Error saving layout.') }
   }
 
   const getNodeTypeKey = (id: string): string => {
-    if (!game?.template?.root) return 'unknown'
-    const kind = getNodeKind(game.template.root, id)
+    if (!game?.layout?.root) return 'unknown'
+    const kind = getNodeKind(game.layout.root, id)
     if (kind === 'section') return 'section'
-    const item = findItemById(game.template.root, id)
+    const item = findItemById(game.layout.root, id)
     return (item as any)?.type ?? 'text'
   }
 
@@ -236,8 +237,8 @@ export default function GameEditorPage() {
   }
 
   const handlePropertyChange = (property: string, value: unknown) => {
-    if (!game?.template || !selectedNodeId) return
-    const t = JSON.parse(JSON.stringify(game.template))
+    if (!game?.layout || !selectedNodeId) return
+    const t = JSON.parse(JSON.stringify(game.layout))
     const kind = getNodeKind(t.root, selectedNodeId)
     if (!kind) return
     let node: any
@@ -254,27 +255,27 @@ export default function GameEditorPage() {
     else if (property === 'attachAnchor') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.anchor = value }
     else if (property === 'attachTargetId') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.targetId = value; node.attach.targetType = getNodeKind(t.root, value as string) ?? 'section' }
     else node[property] = value
-    handleTemplateSave(t)
+    handleLayoutSave(t)
   }
 
-  const selectedKind = selectedNodeId && game?.template?.root ? getNodeKind(game.template.root, selectedNodeId) : null
-  const isRoot = selectedNodeId === game?.template?.root?.id
+  const selectedKind = selectedNodeId && game?.layout?.root ? getNodeKind(game.layout.root, selectedNodeId) : null
+  const isRoot = selectedNodeId === game?.layout?.root?.id
 
   const handleAddSection = () => {
-    if (!game?.template) return
-    const t = JSON.parse(JSON.stringify(game.template))
+    if (!game?.layout) return
+    const t = JSON.parse(JSON.stringify(game.layout))
     const parentId = selectedKind === 'section' && selectedNodeId ? selectedNodeId : t.root.id
     const parent = findSectionById(t.root, parentId)
     if (!parent) return
     const section = { id: crypto.randomUUID(), name: 'New Section', layout: 'stack' as const, sizePct: 100, gap: 0, children: [] as any[], items: [] as any[] }
     parent.children.push(section)
-    handleTemplateSave(t)
+    handleLayoutSave(t)
     setSelectedNodeId(section.id)
   }
 
   const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji') => {
-    if (!game?.template) return
-    const t = JSON.parse(JSON.stringify(game.template))
+    if (!game?.layout) return
+    const t = JSON.parse(JSON.stringify(game.layout))
     let parentId: string
     if (selectedKind === 'section' && selectedNodeId) parentId = selectedNodeId
     else if (selectedKind === 'item' && selectedNodeId) { const p = findParentSection(t.root, selectedNodeId, 'item'); parentId = p?.id ?? t.root.id }
@@ -291,17 +292,17 @@ export default function GameEditorPage() {
     const item = items[itemType]
     if (selectedKind === 'item' && selectedNodeId) { const loc = findNodeLocation(t.root, selectedNodeId, 'item'); if (loc) loc.list.splice(loc.index + 1, 0, item); else parent.items.push(item) }
     else parent.items.push(item)
-    handleTemplateSave(t)
+    handleLayoutSave(t)
     setSelectedNodeId(item.id)
   }
 
   const handleDeleteNode = () => {
-    if (!selectedNodeId || !selectedKind || isRoot || !game?.template) return
-    const t = JSON.parse(JSON.stringify(game.template))
+    if (!selectedNodeId || !selectedKind || isRoot || !game?.layout) return
+    const t = JSON.parse(JSON.stringify(game.layout))
     const loc = findNodeLocation(t.root, selectedNodeId, selectedKind)
     if (!loc) return
     loc.list.splice(loc.index, 1)
-    handleTemplateSave(t)
+    handleLayoutSave(t)
     setSelectedNodeId(null)
   }
 
@@ -356,7 +357,7 @@ export default function GameEditorPage() {
           </TabsList>
 
           <TabsContent value="cards">
-            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_360px] gap-6 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base">Cards</CardTitle>
@@ -409,7 +410,7 @@ export default function GameEditorPage() {
                           />
                         </div>
 
-                        {game?.template?.root && (() => {
+                        {game?.layout?.root && (() => {
                           const fields: { fieldId: string; itemName: string; itemType: string; values?: string[] }[] = []
                           const seen = new Set<string>()
                           const collectFields = (section: any) => {
@@ -422,7 +423,7 @@ export default function GameEditorPage() {
                             })
                             section.children?.forEach(collectFields)
                           }
-                          collectFields(game.template.root)
+                          collectFields(game.layout.root)
                           if (fields.length === 0) return null
                           return (
                             <div className="space-y-3">
@@ -534,17 +535,17 @@ export default function GameEditorPage() {
           </TabsContent>
 
           <TabsContent value="layout">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-              {game.template?.root && (
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
+              {game.layout?.root && (
                 <div className="overflow-y-auto max-h-[60vh] rounded-md border p-2">
                   <NodeTree
-                    root={game.template.root}
+                    root={game.layout.root}
                     selectedNodeId={selectedNodeId}
                     onSelectNode={handleNodeSelect}
                     onDrop={(dragId, dragKind, dropTargetId, position) => {
-                      const t = JSON.parse(JSON.stringify(game.template))
+                      const t = JSON.parse(JSON.stringify(game.layout))
                       if (moveNode(t.root, dragId, dragKind, dropTargetId, position)) {
-                        handleTemplateSave(t)
+                        handleLayoutSave(t)
                       }
                     }}
                     onAddSection={handleAddSection}
@@ -560,7 +561,7 @@ export default function GameEditorPage() {
                 <Card>
                   <CardContent className="pt-4">
                     <PropertyPanel
-                      template={game.template}
+                      layout={game.layout}
                       selectedNodeId={selectedNodeId}
                       selectedProperty={selectedProperty}
                       onSelectProperty={(prop) => {
@@ -574,13 +575,13 @@ export default function GameEditorPage() {
                   </CardContent>
                 </Card>
               ) : <div />}
-              {templatePreview && (
+              {layoutPreview && (
                 <ZoomablePreview
-                  src={templatePreview}
-                  alt="Template preview"
-                  svgWidth={game.template.width}
-                  svgHeight={game.template.height}
-                  hitAreas={templateHitAreas}
+                  src={layoutPreview}
+                  alt="Layout preview"
+                  svgWidth={game.layout.width}
+                  svgHeight={game.layout.height}
+                  hitAreas={layoutHitAreas}
                   selectedHitAreaId={selectedNodeId}
                   onHitAreaClick={handleNodeSelect}
                   extraButtons={<>

@@ -6,9 +6,9 @@ import {
   findItemById,
   findNodeLocation,
   findParentSection,
-} from "../src/components/layout/templateHelpers.ts";
+} from "../src/components/layout/layoutHelpers.ts";
 
-const makeTemplate = () => ({
+const makeLayout = () => ({
   id: "root",
   name: "Root",
   layout: "column",
@@ -43,7 +43,7 @@ const makeTemplate = () => ({
 });
 
 test("flattenNodes returns all nodes with depth", () => {
-  const root = makeTemplate();
+  const root = makeLayout();
   const nodes = flattenNodes(root);
   assert.equal(nodes.length, 6);
   assert.equal(nodes[0].id, "root");
@@ -60,24 +60,24 @@ test("flattenNodes returns all nodes with depth", () => {
 });
 
 test("findSectionById finds nested section", () => {
-  const root = makeTemplate();
+  const root = makeLayout();
   const section = findSectionById(root, "body");
   assert.equal(section?.id, "body");
 });
 
 test("findSectionById returns null for missing id", () => {
-  const root = makeTemplate();
+  const root = makeLayout();
   assert.equal(findSectionById(root, "nope"), null);
 });
 
 test("findItemById finds item in nested section", () => {
-  const root = makeTemplate();
+  const root = makeLayout();
   const item = findItemById(root, "desc");
   assert.equal(item?.id, "desc");
 });
 
 test("findNodeLocation finds section location", () => {
-  const root = makeTemplate();
+  const root = makeLayout();
   const loc = findNodeLocation(root, "header", "section");
   assert.ok(loc);
   assert.equal(loc.index, 0);
@@ -85,7 +85,7 @@ test("findNodeLocation finds section location", () => {
 });
 
 test("findNodeLocation finds item location", () => {
-  const root = makeTemplate();
+  const root = makeLayout();
   const loc = findNodeLocation(root, "desc", "item");
   assert.ok(loc);
   assert.equal(loc.index, 1);
@@ -93,13 +93,13 @@ test("findNodeLocation finds item location", () => {
 });
 
 test("findParentSection finds parent of item", () => {
-  const root = makeTemplate();
+  const root = makeLayout();
   const parent = findParentSection(root, "title", "item");
   assert.equal(parent?.id, "header");
 });
 
 test("findParentSection finds parent of section", () => {
-  const root = makeTemplate();
+  const root = makeLayout();
   const parent = findParentSection(root, "body", "section");
   assert.equal(parent?.id, "root");
 });

@@ -1,9 +1,9 @@
 import ControlPanel from './ControlPanel'
-import type { CardTemplate } from '../../types'
-import { findSectionById, findItemById, getNodeKind } from './templateHelpers'
+import type { CardLayout } from '../../types'
+import { findSectionById, findItemById, getNodeKind } from './layoutHelpers'
 
 type PropertyPanelProps = {
-  template: CardTemplate
+  layout: CardLayout
   selectedNodeId: string
   selectedProperty: string | null
   onSelectProperty: (property: string) => void
@@ -93,25 +93,25 @@ const getPropertyValue = (node: any, property: string): unknown => {
 }
 
 export default function PropertyPanel({
-  template,
+  layout,
   selectedNodeId,
   selectedProperty,
   onSelectProperty,
   onPropertyChange,
 }: PropertyPanelProps) {
-  const kind = getNodeKind(template.root, selectedNodeId)
+  const kind = getNodeKind(layout.root, selectedNodeId)
   if (!kind) return null
 
-  const isRoot = selectedNodeId === template.root.id
+  const isRoot = selectedNodeId === layout.root.id
   const node = kind === 'section'
-    ? findSectionById(template.root, selectedNodeId)
-    : findItemById(template.root, selectedNodeId)
+    ? findSectionById(layout.root, selectedNodeId)
+    : findItemById(layout.root, selectedNodeId)
   if (!node) return null
 
   const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
   const properties = getPropertiesForNode(kind, node, isRoot)
   const currentValue = selectedProperty
-    ? (TEMPLATE_KEYS.has(selectedProperty) ? (template as any)[selectedProperty] : getPropertyValue(node, selectedProperty))
+    ? (TEMPLATE_KEYS.has(selectedProperty) ? (layout as any)[selectedProperty] : getPropertyValue(node, selectedProperty))
     : null
 
   return (
@@ -139,7 +139,7 @@ export default function PropertyPanel({
           <ControlPanel
             property={selectedProperty}
             value={currentValue}
-            template={template}
+            layout={layout}
             selectedNodeId={selectedNodeId}
             onChange={(value) => onPropertyChange(selectedProperty, value)}
           />

@@ -5,7 +5,7 @@ const createMockFetch = () => {
   const mockData = {
     games: [],
     cards: {},
-    templates: {},
+    layouts: {},
   };
 
   const mockFetch = mock.fn(async (url, options = {}) => {
@@ -76,14 +76,14 @@ const createMockFetch = () => {
       }
       mockData.games.splice(gameIndex, 1);
       delete mockData.cards[gameId];
-      delete mockData.templates[gameId];
+      delete mockData.layouts[gameId];
       return { ok: true };
     }
 
-    // GET /api/games/:gameId/template
-    if (url.match(/^\/api\/games\/[^/]+\/template$/) && method === "GET") {
+    // GET /api/games/:gameId/layout
+    if (url.match(/^\/api\/games\/[^/]+\/layout$/) && method === "GET") {
       const gameId = url.split("/")[3];
-      const template = mockData.templates[gameId] || {
+      const layout = mockData.layouts[gameId] || {
         version: 2,
         id: "default",
         name: "Default",
@@ -103,18 +103,18 @@ const createMockFetch = () => {
       };
       return {
         ok: true,
-        json: async () => template,
+        json: async () => layout,
       };
     }
 
-    // PUT /api/games/:gameId/template
-    if (url.match(/^\/api\/games\/[^/]+\/template$/) && method === "PUT") {
+    // PUT /api/games/:gameId/layout
+    if (url.match(/^\/api\/games\/[^/]+\/layout$/) && method === "PUT") {
       const gameId = url.split("/")[3];
-      const template = JSON.parse(options.body);
-      mockData.templates[gameId] = template;
+      const layout = JSON.parse(options.body);
+      mockData.layouts[gameId] = layout;
       return {
         ok: true,
-        json: async () => template,
+        json: async () => layout,
       };
     }
 
@@ -214,13 +214,13 @@ test("Local file storage initialization", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     version: 2,
     id: "default",
     name: "Default",
   });
 
-  const storage = createLocalFileStorage({ defaultTemplate });
+  const storage = createLocalFileStorage({ defaultLayout });
 
   assert.ok(storage, "Storage should be created");
   assert.equal(typeof storage.init, "function", "Should have init method");
@@ -261,14 +261,14 @@ test("Local file storage initialization", async () => {
     "Should have deleteGame method"
   );
   assert.equal(
-    typeof storage.loadTemplate,
+    typeof storage.loadLayout,
     "function",
-    "Should have loadTemplate method"
+    "Should have loadLayout method"
   );
   assert.equal(
-    typeof storage.saveTemplate,
+    typeof storage.saveLayout,
     "function",
-    "Should have saveTemplate method"
+    "Should have saveLayout method"
   );
   assert.equal(
     typeof storage.listCards,
@@ -294,7 +294,7 @@ test("Local file storage is always authorized", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   assert.equal(storage.isAuthorized(), true, "Should always be authorized");
 
@@ -316,7 +316,7 @@ test("Local file storage listGames", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   // Initially empty
   let games = await storage.listGames();
@@ -343,7 +343,7 @@ test("Local file storage createGame", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   const game = await storage.createGame("My Test Game");
   assert.ok(game.id, "Game should have an id");
@@ -364,7 +364,7 @@ test("Local file storage getGame", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   const created = await storage.createGame("Test Game");
   const game = await storage.getGame(created.id);
@@ -379,7 +379,7 @@ test("Local file storage updateGame", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   const game = await storage.createGame("Test Game");
   
@@ -401,7 +401,7 @@ test("Local file storage deleteGame", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   const game = await storage.createGame("Test Game");
 
@@ -414,57 +414,57 @@ test("Local file storage deleteGame", async () => {
   assert.equal(games.length, 0, "Should have 0 games after delete");
 });
 
-test("Local file storage loadTemplate", async () => {
+test("Local file storage loadLayout", async () => {
   createMockFetch();
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     version: 2,
     id: "default",
-    name: "Default Template",
+    name: "Default Layout",
   });
 
   const { createLocalFileStorage } = await import(
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate });
+  const storage = createLocalFileStorage({ defaultLayout });
 
   const game = await storage.createGame("Test Game");
-  const template = await storage.loadTemplate(game.id);
+  const layout = await storage.loadLayout(game.id);
 
-  assert.ok(template, "Template should be loaded");
-  assert.equal(template.version, 2, "Template should have version 2");
+  assert.ok(layout, "Layout should be loaded");
+  assert.equal(layout.version, 2, "Layout should have version 2");
 });
 
-test("Local file storage saveTemplate", async () => {
+test("Local file storage saveLayout", async () => {
   createMockFetch();
 
-  const defaultTemplate = () => ({
+  const defaultLayout = () => ({
     version: 2,
     id: "default",
-    name: "Default Template",
+    name: "Default Layout",
   });
 
   const { createLocalFileStorage } = await import(
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate });
+  const storage = createLocalFileStorage({ defaultLayout });
 
   const game = await storage.createGame("Test Game");
-  const newTemplate = {
+  const newLayout = {
     version: 2,
     id: "custom",
-    name: "Custom Template",
+    name: "Custom Layout",
   };
 
-  const saved = await storage.saveTemplate(game.id, newTemplate);
-  assert.equal(saved.id, "custom", "Template should be saved");
-  assert.equal(saved.name, "Custom Template", "Template name should match");
+  const saved = await storage.saveLayout(game.id, newLayout);
+  assert.equal(saved.id, "custom", "Layout should be saved");
+  assert.equal(saved.name, "Custom Layout", "Layout name should match");
 
-  // Verify template was saved
-  const loaded = await storage.loadTemplate(game.id);
-  assert.equal(loaded.id, "custom", "Loaded template should match saved");
+  // Verify layout was saved
+  const loaded = await storage.loadLayout(game.id);
+  assert.equal(loaded.id, "custom", "Loaded layout should match saved");
 });
 
 test("Local file storage listCards", async () => {
@@ -474,7 +474,7 @@ test("Local file storage listCards", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   const game = await storage.createGame("Test Game");
 
@@ -489,7 +489,7 @@ test("Local file storage saveCard (create)", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   const game = await storage.createGame("Test Game");
   const card = await storage.saveCard(game.id, null, {
@@ -518,7 +518,7 @@ test("Local file storage saveCard (update)", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   const game = await storage.createGame("Test Game");
   const card = await storage.saveCard(game.id, null, {
@@ -547,7 +547,7 @@ test("Local file storage deleteCard", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   const game = await storage.createGame("Test Game");
   const card = await storage.saveCard(game.id, null, {
@@ -579,7 +579,7 @@ test("Local file storage error handling", async () => {
     "../src/web/storage/localFile.js"
   );
 
-  const storage = createLocalFileStorage({ defaultTemplate: () => ({}) });
+  const storage = createLocalFileStorage({ defaultLayout: () => ({}) });
 
   await assert.rejects(
     async () => await storage.listGames(),

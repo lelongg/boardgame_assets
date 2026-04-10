@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { createStorage } from '../storage'
 import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
-import type { CardData, CardTemplate } from '../types'
+import type { CardData, CardLayout } from '../types'
 
-type DeckEntry = { card: CardData; template: CardTemplate; collectionName: string }
+type DeckEntry = { card: CardData; layout: CardLayout; collectionName: string }
 
 const svgToImage = (svg: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
@@ -36,11 +36,11 @@ export default function ExportTTSPage() {
         const all: DeckEntry[] = []
         for (const col of collections) {
           const [tpl, cards] = await Promise.all([
-            s.getTemplate(gameId, col.templateId),
+            s.getLayout(gameId, col.layoutId),
             s.listCards(gameId, col.id),
           ])
           for (const card of cards) {
-            all.push({ card, template: tpl, collectionName: col.name })
+            all.push({ card, layout: tpl, collectionName: col.name })
           }
         }
         setEntries(all)
@@ -60,14 +60,14 @@ export default function ExportTTSPage() {
 
     try {
       const cardCount = Math.min(entries.length, TTS_MAX_CARDS - 1) // Reserve last slot for hidden card
-      const firstTemplate = entries[0].template
+      const firstLayout = entries[0].layout
 
       // Calculate grid dimensions
       const numWidth = Math.min(10, cardCount + 1) // +1 for hidden card
       const numHeight = Math.ceil((cardCount + 1) / numWidth)
 
       // Calculate card size to fit within atlas limits
-      const cardAspect = firstTemplate.height / firstTemplate.width
+      const cardAspect = firstLayout.height / firstLayout.width
       const cardWidth = Math.floor(MAX_ATLAS_SIZE / numWidth)
       const cardHeight = Math.floor(cardWidth * cardAspect)
       const atlasWidth = cardWidth * numWidth
@@ -87,9 +87,9 @@ export default function ExportTTSPage() {
       // Render each card
       for (let i = 0; i < cardCount; i++) {
         setStatus(`Rendering card ${i + 1}/${cardCount}...`)
-        const { card, template } = entries[i]
-        let svg = renderCardSvg(card, template)
-        svg = await embedFontsInSvg(svg, template, gameId!)
+        const { card, layout } = entries[i]
+        let svg = renderCardSvg(card, layout)
+        svg = await embedFontsInSvg(svg, layout, gameId!)
         svg = await embedImagesInSvg(svg)
 
         const img = await svgToImage(svg)

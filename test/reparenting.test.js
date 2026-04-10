@@ -98,7 +98,7 @@ const reparentNode = (root, nodeId, nodeType, newParentId) => {
 };
 
 test("can reparent a section to another section", () => {
-  const template = {
+  const layout = {
     root: {
       id: "root",
       name: "Root",
@@ -111,19 +111,19 @@ test("can reparent a section to another section", () => {
   };
 
   // Move header to be a child of body
-  const success = reparentNode(template.root, "header", "section", "body");
+  const success = reparentNode(layout.root, "header", "section", "body");
   
   assert.ok(success, "reparenting should succeed");
-  assert.equal(template.root.children.length, 1, "root should have 1 child");
-  assert.equal(template.root.children[0].id, "body", "root's only child should be body");
+  assert.equal(layout.root.children.length, 1, "root should have 1 child");
+  assert.equal(layout.root.children[0].id, "body", "root's only child should be body");
   
-  const body = findSectionById(template.root, "body");
+  const body = findSectionById(layout.root, "body");
   assert.equal(body.children.length, 1, "body should have 1 child");
   assert.equal(body.children[0].id, "header", "body's child should be header");
 });
 
 test("cannot reparent a section to itself", () => {
-  const template = {
+  const layout = {
     root: {
       id: "root",
       name: "Root",
@@ -135,14 +135,14 @@ test("cannot reparent a section to itself", () => {
   };
 
   // Try to move header to be a child of itself
-  const success = reparentNode(template.root, "header", "section", "header");
+  const success = reparentNode(layout.root, "header", "section", "header");
   
   assert.ok(!success, "reparenting to itself should fail");
-  assert.equal(template.root.children.length, 1, "root should still have 1 child");
+  assert.equal(layout.root.children.length, 1, "root should still have 1 child");
 });
 
 test("cannot reparent a section to its descendant", () => {
-  const template = {
+  const layout = {
     root: {
       id: "root",
       name: "Root",
@@ -161,15 +161,15 @@ test("cannot reparent a section to its descendant", () => {
   };
 
   // Try to move header to be a child of title (its own child)
-  const success = reparentNode(template.root, "header", "section", "title");
+  const success = reparentNode(layout.root, "header", "section", "title");
   
   assert.ok(!success, "reparenting to descendant should fail");
-  assert.equal(template.root.children.length, 1, "root should still have 1 child");
-  assert.equal(template.root.children[0].id, "header", "root's child should still be header");
+  assert.equal(layout.root.children.length, 1, "root should still have 1 child");
+  assert.equal(layout.root.children[0].id, "header", "root's child should still be header");
 });
 
 test("can reparent an item to another section", () => {
-  const template = {
+  const layout = {
     root: {
       id: "root",
       name: "Root",
@@ -189,20 +189,20 @@ test("can reparent an item to another section", () => {
   };
 
   // Move item1 from header to body
-  const success = reparentNode(template.root, "item1", "item", "body");
+  const success = reparentNode(layout.root, "item1", "item", "body");
   
   assert.ok(success, "reparenting should succeed");
   
-  const header = findSectionById(template.root, "header");
+  const header = findSectionById(layout.root, "header");
   assert.equal(header.items.length, 0, "header should have 0 items");
   
-  const body = findSectionById(template.root, "body");
+  const body = findSectionById(layout.root, "body");
   assert.equal(body.items.length, 1, "body should have 1 item");
   assert.equal(body.items[0].id, "item1", "body's item should be item1");
 });
 
 test("findParentSection returns correct parent for section", () => {
-  const template = {
+  const layout = {
     id: "root",
     name: "Root",
     children: [
@@ -218,13 +218,13 @@ test("findParentSection returns correct parent for section", () => {
     items: []
   };
 
-  const parent = findParentSection(template, "title", true);
+  const parent = findParentSection(layout, "title", true);
   assert.ok(parent, "parent should be found");
   assert.equal(parent.id, "header", "parent should be header");
 });
 
 test("findParentSection returns correct parent for item", () => {
-  const template = {
+  const layout = {
     id: "root",
     name: "Root",
     children: [
@@ -240,7 +240,7 @@ test("findParentSection returns correct parent for item", () => {
     items: []
   };
 
-  const parent = findParentSection(template, "item1", false);
+  const parent = findParentSection(layout, "item1", false);
   assert.ok(parent, "parent should be found");
   assert.equal(parent.id, "header", "parent should be header");
 });

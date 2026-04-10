@@ -10,7 +10,7 @@ export type AnchorPoint = {
 };
 
 // Base properties shared by all item types
-type CardTemplateItemBase = {
+type CardLayoutItemBase = {
   id: string;
   name: string;
   anchor: AnchorPoint;
@@ -24,7 +24,7 @@ type CardTemplateItemBase = {
 };
 
 // Text item - displays text from a field
-export type CardTemplateTextItem = CardTemplateItemBase & {
+export type CardLayoutTextItem = CardLayoutItemBase & {
   type?: "text";  // Optional to support legacy items
   fieldId?: string;
   defaultValue?: string;
@@ -37,7 +37,7 @@ export type CardTemplateTextItem = CardTemplateItemBase & {
 };
 
 // Frame item - displays a decorative frame/border
-export type CardTemplateFrameItem = CardTemplateItemBase & {
+export type CardLayoutFrameItem = CardLayoutItemBase & {
   type: "frame";
   strokeWidth?: number;
   strokeColor?: string;
@@ -46,7 +46,7 @@ export type CardTemplateFrameItem = CardTemplateItemBase & {
 };
 
 // Image item - displays an image from a URL field
-export type CardTemplateImageItem = CardTemplateItemBase & {
+export type CardLayoutImageItem = CardLayoutItemBase & {
   type: "image";
   fieldId?: string;
   defaultValue?: string;
@@ -56,7 +56,7 @@ export type CardTemplateImageItem = CardTemplateItemBase & {
 };
 
 // Emoji item - displays an emoji, optionally bound to a card field
-export type CardTemplateEmojiItem = CardTemplateItemBase & {
+export type CardLayoutEmojiItem = CardLayoutItemBase & {
   type: "emoji";
   fieldId?: string;
   emoji?: string;
@@ -65,21 +65,21 @@ export type CardTemplateEmojiItem = CardTemplateItemBase & {
 };
 
 // Union type for all item types
-export type CardTemplateItem =
-  | CardTemplateTextItem
-  | CardTemplateFrameItem
-  | CardTemplateImageItem
-  | CardTemplateEmojiItem;
+export type CardLayoutItem =
+  | CardLayoutTextItem
+  | CardLayoutFrameItem
+  | CardLayoutImageItem
+  | CardLayoutEmojiItem;
 
-export type CardTemplateSection = {
+export type CardLayoutSection = {
   id: string;
   name: string;
   layout: "row" | "column" | "stack" | "grid";
   columns?: number;
   sizePct: number;
   gap: number;
-  children: CardTemplateSection[];
-  items: CardTemplateItem[];
+  children: CardLayoutSection[];
+  items: CardLayoutItem[];
 };
 
 export type FontSlot = {
@@ -88,7 +88,7 @@ export type FontSlot = {
   source: "upload" | "google";
 };
 
-export type CardTemplate = {
+export type CardLayout = {
   version: 2;
   id: string;
   name: string;
@@ -97,11 +97,11 @@ export type CardTemplate = {
   radius: number;
   bleed: number;
   fonts: Record<string, FontSlot>;
-  root: CardTemplateSection;
+  root: CardLayoutSection;
 };
 
 export type Collection = {
   id: string;
   name: string;
-  templateId: string;
+  layoutId: string;
 };

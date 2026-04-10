@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ConfirmButton from './ConfirmButton'
 import ListItem from './ListItem'
 
@@ -119,52 +121,56 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
       ))}
 
       {showAddForm && (
-        <div className="space-y-3 rounded-md border p-4">
-          <div className="flex gap-2">
-            <Button size="sm" variant={source === 'google' ? 'default' : 'outline'} onClick={() => setSource('google')}>
-              Google Fonts
-            </Button>
-            <Button size="sm" variant={source === 'upload' ? 'default' : 'outline'} onClick={() => setSource('upload')}>
-              File
+        <div className="rounded-md border p-3">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium">Add font</span>
+            <Button size="sm" variant="ghost" onClick={() => { setShowAddForm(false); setGoogleFontName('') }} title="Cancel">
+              <X className="h-4 w-4" />
             </Button>
           </div>
-
-          {source === 'google' && (
-            <div className="flex gap-2">
-              <Input
-                value={googleFontName}
-                onChange={(e) => {
-                  const val = e.target.value
-                  const urlMatch = val.match(/fonts\.google\.com\/(?:specimen|share)\/([\w+]+)/)
-                    || val.match(/fonts\.googleapis\.com\/css2?\?family=([\w+]+)/)
-                  setGoogleFontName(urlMatch ? urlMatch[1].replace(/\+/g, ' ') : val)
+          <Tabs value={source} onValueChange={(v) => setSource(v as 'google' | 'upload')}>
+            <TabsList className="w-full mb-3">
+              <TabsTrigger value="google" className="flex-1">Google Fonts</TabsTrigger>
+              <TabsTrigger value="upload" className="flex-1">File</TabsTrigger>
+            </TabsList>
+            <TabsContent value="google">
+              <div className="flex gap-2">
+                <Input
+                  value={googleFontName}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    const urlMatch = val.match(/fonts\.google\.com\/(?:specimen|share)\/([\w+]+)/)
+                      || val.match(/fonts\.googleapis\.com\/css2?\?family=([\w+]+)/)
+                    setGoogleFontName(urlMatch ? urlMatch[1].replace(/\+/g, ' ') : val)
+                  }}
+                  placeholder="Name or Google Fonts URL"
+                  className="flex-1"
+                />
+                <Button disabled={loading || !googleFontName.trim()} onClick={handleAddGoogle}>
+                  Add
+                </Button>
+              </div>
+            </TabsContent>
+            <TabsContent value="upload">
+              <Button
+                disabled={loading}
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  const input = document.createElement('input')
+                  input.type = 'file'
+                  input.accept = '.woff2,.woff,.ttf,.otf'
+                  input.onchange = () => {
+                    const file = input.files?.[0]
+                    if (file) handleUpload(file)
+                  }
+                  input.click()
                 }}
-                placeholder="Name or Google Fonts URL"
-                className="flex-1"
-              />
-              <Button disabled={loading || !googleFontName.trim()} onClick={handleAddGoogle}>
-                Add
+              >
+                Choose File
               </Button>
-            </div>
-          )}
-
-          {source === 'upload' && (
-            <Button
-              disabled={loading}
-              onClick={() => {
-                const input = document.createElement('input')
-                input.type = 'file'
-                input.accept = '.woff2,.woff,.ttf,.otf'
-                input.onchange = () => {
-                  const file = input.files?.[0]
-                  if (file) handleUpload(file)
-                }
-                input.click()
-              }}
-            >
-              Choose File
-            </Button>
-          )}
+            </TabsContent>
+          </Tabs>
         </div>
       )}
     </div>
