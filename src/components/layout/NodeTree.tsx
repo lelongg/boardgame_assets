@@ -88,9 +88,8 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
   }
 
   return (
-    <div className="space-y-0.5">
-      <div className="flex items-center gap-1 px-1 pb-1">
-        <div className="ml-auto flex items-center gap-0.5">
+    <div>
+      <div className="flex items-center justify-end gap-0.5 px-1 py-1 border-b mb-1">
           {canCollapse && (
             <button
               onClick={() => updateCollapsed(prev => {
@@ -147,8 +146,8 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
               <Trash2 className="h-4 w-4" />
             </button>
           )}
-        </div>
       </div>
+      <div className="space-y-0.5">
       {nodes.map((node, idx) => {
         const isSelected = node.id === selectedNodeId
         const isDragging = node.id === dragId
@@ -247,6 +246,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
           </div>
         )
       })}
+      </div>
     </div>
   )
 }

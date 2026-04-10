@@ -537,7 +537,7 @@ export default function GameEditorPage() {
           <TabsContent value="layout">
             <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
               {game.layout?.root && (
-                <div className="overflow-y-auto max-h-[60vh] rounded-md border p-2">
+                <div className="overflow-y-auto max-h-[60vh] rounded-lg border bg-card overflow-hidden">
                   <NodeTree
                     root={game.layout.root}
                     selectedNodeId={selectedNodeId}

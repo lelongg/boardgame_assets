@@ -667,7 +667,7 @@ export default function CollectionsPage() {
               {selectedLayout?.root ? (
                 <>
                   <div className="space-y-4">
-                    <div className="overflow-y-auto max-h-[60vh] rounded-md border p-2">
+                    <div className="overflow-y-auto max-h-[60vh] rounded-lg border bg-card overflow-hidden">
                       <NodeTree
                         root={selectedLayout.root}
                         selectedNodeId={selectedNodeId}
