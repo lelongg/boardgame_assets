@@ -264,13 +264,13 @@ export const renderCardSvg = (card: CardData, layout: CardLayout, options: Rende
   const { palette } = theme;
   const { width, height, radius } = layout;
   const fontSlots = Object.keys(layout.fonts ?? {});
-  const layout = computeLayout(layout);
+  const computed = computeLayout(layout);
   const items: CardLayoutItem[] = [];
   collectItems(layout.root, items);
 
   const renderedItems = items
     .map((item) => {
-      const rect = layout.items.get(item.id);
+      const rect = computed.items.get(item.id);
       if (!rect) return "";
 
       const itemType = item.type ?? "text"; // Default to text for legacy items
@@ -343,7 +343,7 @@ export const renderCardSvg = (card: CardData, layout: CardLayout, options: Rende
   const debugRects = options.debug
     ? items
         .map((item) => {
-          const rect = layout.items.get(item.id);
+          const rect = computed.items.get(item.id);
           if (!rect) return "";
           const anchors = anchorPoints
             .map((anchor) => {
@@ -361,12 +361,12 @@ export const renderCardSvg = (card: CardData, layout: CardLayout, options: Rende
   const debugAnchors = options.debug
     ? items
         .map((item) => {
-          const rect = layout.items.get(item.id);
+          const rect = computed.items.get(item.id);
           if (!rect) return "";
           const targetRect =
             item.attach.targetType === "item"
-              ? layout.items.get(item.attach.targetId)
-              : layout.sections.get(item.attach.targetId);
+              ? computed.items.get(item.attach.targetId)
+              : computed.sections.get(item.attach.targetId);
           const targetPoint = targetRect
             ? anchorPosition(targetRect, item.attach.anchor)
             : { x: 16, y: 16 };
@@ -405,7 +405,7 @@ export const renderLayoutSvg = (layout: CardLayout, options: {
   const { palette } = theme;
   const { width, height, radius } = layout;
   const fontSlots = Object.keys(layout.fonts ?? {});
-  const layout = computeLayout(layout);
+  const computed = computeLayout(layout);
 
   // Render card content using empty card (defaults will show)
   const emptyCard: CardData = { id: '', name: 'Card Name', fields: {} };
@@ -413,7 +413,7 @@ export const renderLayoutSvg = (layout: CardLayout, options: {
   collectItems(layout.root, items);
 
   const renderedContent = items.map((item) => {
-    const rect = layout.items.get(item.id);
+    const rect = computed.items.get(item.id);
     if (!rect) return "";
     const itemType = item.type ?? "text";
     if (itemType === "frame") {
@@ -468,7 +468,7 @@ export const renderLayoutSvg = (layout: CardLayout, options: {
   }).join("");
 
   // Section wireframes
-  const sectionRects = showSections ? Array.from(layout.sections.entries())
+  const sectionRects = showSections ? Array.from(computed.sections.entries())
     .map(([id, rect]) => {
       const isSelected = id === selectedNodeId;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.muted;
@@ -478,7 +478,7 @@ export const renderLayoutSvg = (layout: CardLayout, options: {
     }).join("") : "";
 
   // Item wireframes
-  const itemRects = showItems ? Array.from(layout.items.entries())
+  const itemRects = showItems ? Array.from(computed.items.entries())
     .map(([id, rect]) => {
       const isSelected = id === selectedNodeId;
       const strokeColor = isSelected ? SELECTION_COLOR : palette.ink;
