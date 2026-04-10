@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { RgbaColorPicker } from 'react-colorful'
 import AnchorGrid from './AnchorGrid'
 import ListItem from '@/components/ListItem'
+import LoadingImg from '@/components/LoadingImg'
 import ConfirmButton from '@/components/ConfirmButton'
 import { findParentSection, findItemById, getNodeKind } from './templateHelpers'
 import type { CardTemplate } from '../../types'
@@ -337,7 +338,7 @@ export default function ControlPanel({ property, value, template, selectedNodeId
     return (
       <div className="space-y-2">
         {imgUrl && (
-          <img src={imgUrl} alt="Default" className="max-h-24 rounded border object-contain" />
+          <LoadingImg src={imgUrl} alt="Default" className="max-h-24 rounded border object-contain" />
         )}
         <Button
           size="sm"

@@ -3,14 +3,16 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, LayoutGrid, Layers, Printer } from 'lucide-react'
+import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, PlusCircle, LayoutGrid, Layers, Printer } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/templateHelpers'
+import LoadingImg from '@/components/LoadingImg'
 import PageLayout from '@/components/PageLayout'
+import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from '@/components/FontManager'
 import useStorage from '../hooks/useStorage'
 
 export default function CollectionsPage() {
@@ -37,6 +39,10 @@ export default function CollectionsPage() {
   const [showSections, setShowSections] = useState(true)
   const [showItemWires, setShowItemWires] = useState(true)
   const [editingName, setEditingName] = useState(false)
+  const [showFontAdd, setShowFontAdd] = useState(false)
+  const [selectedFont, setSelectedFont] = useState<string | null>(null)
+  const [fontPreviewText, setFontPreviewText] = useState(defaultPreviewText)
+  const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string; source: 'upload' | 'google' }>>({})
 
   // Layout editor state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -117,14 +123,16 @@ export default function CollectionsPage() {
   const loadData = async (s: any) => {
     try {
       if (!gameId) return
-      const [gameData, colList, tplList] = await Promise.all([
+      const [gameData, colList, tplList, fonts] = await Promise.all([
         s.getGame(gameId),
         s.listCollections(gameId),
         s.listTemplates(gameId),
+        s.listFonts(gameId),
       ])
       setGame(gameData)
       setCollections(colList)
       setTemplates(tplList)
+      setGameFonts(fonts)
       setCardPreviews({})
       setStatus('Ready.')
     } catch {
@@ -338,6 +346,7 @@ export default function CollectionsPage() {
           <TabsList className="mb-4">
             <TabsTrigger value="collections">Collections</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="fonts">Fonts</TabsTrigger>
           </TabsList>
 
           <TabsContent value="collections">
@@ -471,7 +480,7 @@ export default function CollectionsPage() {
                       <ChevronLeft className="h-5 w-5" />
                     </button>
                     <div className="flex-1 rounded-lg border bg-card p-4 flex justify-center">
-                      <img
+                      <LoadingImg
                         src={selectedCardId ? cardPreviews[selectedCardId] || '' : ''}
                         alt="Card preview"
                         className="max-w-full max-h-[60vh]"
@@ -498,7 +507,7 @@ export default function CollectionsPage() {
                         }`}
                         onClick={() => setSelectedCardId(card.id)}
                       >
-                        <img
+                        <LoadingImg
                           src={cardPreviews[card.id] || ''}
                           alt={card.name}
                           className="w-full"
@@ -563,7 +572,7 @@ export default function CollectionsPage() {
                         className={`relative rounded-md cursor-pointer transition-all ${selectedCardId === card.id ? 'outline outline-2 outline-primary' : 'outline outline-1 outline-border'}`}
                         onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}>
                         <div className="rounded-t-md overflow-hidden" style={{ aspectRatio: '5 / 7' }}>
-                          <img src={cardPreviews[card.id] || ''} alt={card.name} className="w-full h-full" />
+                          <LoadingImg src={cardPreviews[card.id] || ''} alt={card.name} className="w-full h-full" wrapperClassName="w-full h-full" />
                         </div>
                         <p className="px-2 py-1 text-xs text-center text-muted-foreground truncate">{card.name}</p>
                       </div>
@@ -704,6 +713,37 @@ export default function CollectionsPage() {
                   <p className="text-sm text-muted-foreground">Select a template to edit</p>
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="fonts">
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6 items-start">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-base">Fonts</CardTitle>
+                  <Button size="sm" variant="ghost" onClick={() => setShowFontAdd(v => !v)} title="Add font">
+                    <PlusCircle className="h-4 w-4" />
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <FontManager
+                    gameId={gameId!}
+                    storage={storage}
+                    fonts={gameFonts}
+                    onFontsChange={setGameFonts}
+                    onStatus={setStatus}
+                    showAdd={showFontAdd}
+                    onToggleAdd={() => setShowFontAdd(v => !v)}
+                    selectedFont={selectedFont}
+                    onSelectFont={setSelectedFont}
+                  />
+                </CardContent>
+              </Card>
+
+              <div className="space-y-4">
+                <FontPreview fonts={gameFonts} selectedFont={selectedFont} previewText={fontPreviewText} />
+                <FontPreviewEditor previewText={fontPreviewText} onChangePreviewText={setFontPreviewText} />
+              </div>
             </div>
           </TabsContent>
         </Tabs>

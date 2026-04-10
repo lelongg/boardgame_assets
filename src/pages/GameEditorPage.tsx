@@ -13,6 +13,7 @@ import ZoomablePreview from '@/components/ZoomablePreview'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
 import ListItem from '@/components/ListItem'
+import LoadingImg from '@/components/LoadingImg'
 import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
 
@@ -495,7 +496,7 @@ export default function GameEditorPage() {
                                         </div>
                                       </div>
                                       {expandedImages.has(fieldId) && selectedCard.fields?.[fieldId] && (
-                                        <img
+                                        <LoadingImg
                                           src={selectedCard.fields[fieldId]}
                                           alt={fieldId}
                                           className="max-h-32 rounded border object-contain"
