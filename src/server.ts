@@ -161,6 +161,26 @@ const listCollectionCards = (gameId: string, collectionId: string): CardData[] =
 // --- Migration from old structure ---
 
 const migrateGameIfNeeded = (gameId: string) => {
+  // Rename templates/ → layouts/ directory
+  const oldTemplatesDir = path.join(dataRoot, gameId, "templates");
+  if (fs.existsSync(oldTemplatesDir) && !fs.existsSync(layoutsDir(gameId))) {
+    fs.renameSync(oldTemplatesDir, layoutsDir(gameId));
+  }
+  // Rename templateId → layoutId in collection files
+  const colDir = collectionsDir(gameId);
+  if (fs.existsSync(colDir)) {
+    for (const colId of fs.readdirSync(colDir)) {
+      const cp = collectionPath(gameId, colId);
+      if (!fs.existsSync(cp)) continue;
+      const col = readJson<any>(cp, null);
+      if (col?.templateId && !col.layoutId) {
+        col.layoutId = col.templateId;
+        delete col.templateId;
+        writeJson(cp, col);
+      }
+    }
+  }
+
   const oldLayoutPath = path.join(dataRoot, gameId, "layout.json");
   const oldCardsDir = path.join(dataRoot, gameId, "cards");
   const newLayoutsDir = layoutsDir(gameId);

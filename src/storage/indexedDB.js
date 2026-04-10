@@ -26,7 +26,7 @@ const hashArrayBuffer = async (buf) => {
 // ── Database ───────────────────────────────────────────────────────────────
 
 const DB_NAME = "boardgame-assets";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -41,6 +41,29 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains("layouts")) {
         db.createObjectStore("layouts");
+      }
+      // Migrate v2 "templates" store to "layouts" and rename templateId in collections
+      if (db.objectStoreNames.contains("templates")) {
+        const tx = event.target.transaction;
+        const oldStore = tx.objectStore("templates");
+        const newStore = tx.objectStore("layouts");
+        const cursorReq = oldStore.openCursor();
+        cursorReq.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) { newStore.put(cursor.value, cursor.key); cursor.continue(); }
+        };
+        db.deleteObjectStore("templates");
+        // Rename templateId → layoutId in existing collections
+        const colStore = tx.objectStore("collections");
+        const colCursor = colStore.openCursor();
+        colCursor.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            const val = cursor.value;
+            if (val.templateId && !val.layoutId) { val.layoutId = val.templateId; delete val.templateId; cursor.update(val); }
+            cursor.continue();
+          }
+        };
       }
       if (!db.objectStoreNames.contains("collections")) {
         db.createObjectStore("collections");
