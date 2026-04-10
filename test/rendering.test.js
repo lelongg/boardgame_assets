@@ -74,7 +74,7 @@ test("renderCardSvg with nested sections", () => {
               type: "text",
               id: "title",
               name: "Title",
-              fieldId: "title",
+              bindings: { defaultValue: { field: "title" } },
               anchor: { x: 0.5, y: 0.5 },
               attach: {
                 targetType: "section",
@@ -101,7 +101,7 @@ test("renderCardSvg with nested sections", () => {
               type: "text",
               id: "description",
               name: "Description",
-              fieldId: "description",
+              bindings: { defaultValue: { field: "description" } },
               anchor: { x: 0, y: 0 },
               attach: {
                 targetType: "section",
@@ -160,7 +160,7 @@ test("renderCardSvg with multiple items in same section", () => {
           type: "text",
           id: "text1",
           name: "Text 1",
-          fieldId: "field1",
+          bindings: { defaultValue: { field: "field1" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",
@@ -177,7 +177,7 @@ test("renderCardSvg with multiple items in same section", () => {
           type: "text",
           id: "text2",
           name: "Text 2",
-          fieldId: "field2",
+          bindings: { defaultValue: { field: "field2" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",
@@ -194,7 +194,7 @@ test("renderCardSvg with multiple items in same section", () => {
           type: "text",
           id: "text3",
           name: "Text 3",
-          fieldId: "field3",
+          bindings: { defaultValue: { field: "field3" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",
@@ -299,7 +299,7 @@ test("renderCardSvg with image item", () => {
           type: "image",
           id: "image",
           name: "Image",
-          fieldId: "portrait",
+          bindings: { defaultValue: { field: "portrait" } },
           anchor: { x: 0.5, y: 0.5 },
           attach: {
             targetType: "section",
@@ -352,7 +352,7 @@ test("renderCardSvg with text alignment left", () => {
           type: "text",
           id: "text",
           name: "Text",
-          fieldId: "text",
+          bindings: { defaultValue: { field: "text" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",
@@ -401,7 +401,7 @@ test("renderCardSvg with text alignment center", () => {
           type: "text",
           id: "text",
           name: "Text",
-          fieldId: "text",
+          bindings: { defaultValue: { field: "text" } },
           anchor: { x: 0.5, y: 0.5 },
           attach: {
             targetType: "section",
@@ -450,7 +450,7 @@ test("renderCardSvg with text alignment right", () => {
           type: "text",
           id: "text",
           name: "Text",
-          fieldId: "text",
+          bindings: { defaultValue: { field: "text" } },
           anchor: { x: 1, y: 0 },
           attach: {
             targetType: "section",
@@ -506,7 +506,7 @@ test("renderCardSvg with row layout", () => {
               type: "text",
               id: "text1",
               name: "Text 1",
-              fieldId: "text1",
+              bindings: { defaultValue: { field: "text1" } },
               anchor: { x: 0.5, y: 0.5 },
               attach: {
                 targetType: "section",
@@ -533,7 +533,7 @@ test("renderCardSvg with row layout", () => {
               type: "text",
               id: "text2",
               name: "Text 2",
-              fieldId: "text2",
+              bindings: { defaultValue: { field: "text2" } },
               anchor: { x: 0.5, y: 0.5 },
               attach: {
                 targetType: "section",
@@ -593,7 +593,7 @@ test("renderCardSvg with column layout", () => {
               type: "text",
               id: "text1",
               name: "Text 1",
-              fieldId: "text1",
+              bindings: { defaultValue: { field: "text1" } },
               anchor: { x: 0.5, y: 0.5 },
               attach: {
                 targetType: "section",
@@ -620,7 +620,7 @@ test("renderCardSvg with column layout", () => {
               type: "text",
               id: "text2",
               name: "Text 2",
-              fieldId: "text2",
+              bindings: { defaultValue: { field: "text2" } },
               anchor: { x: 0.5, y: 0.5 },
               attach: {
                 targetType: "section",
@@ -703,7 +703,7 @@ test("renderCardSvg escapes special characters in text", () => {
           type: "text",
           id: "text",
           name: "Text",
-          fieldId: "text",
+          bindings: { defaultValue: { field: "text" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",
@@ -755,7 +755,7 @@ test("renderCardSvg with empty fields", () => {
           type: "text",
           id: "text",
           name: "Text",
-          fieldId: "missing-field",
+          bindings: { defaultValue: { field: "missing-field" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",
@@ -808,7 +808,7 @@ test("renderCardSvg uses font names from layout.fonts", () => {
           type: "text",
           id: "text1",
           name: "Text",
-          fieldId: "text",
+          bindings: { defaultValue: { field: "text" } },
           anchor: { x: 0, y: 0 },
           attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
           widthPct: 80,
@@ -856,7 +856,7 @@ test("renderCardSvg falls back to first font slot for unknown slot", () => {
           type: "text",
           id: "text1",
           name: "Text",
-          fieldId: "text",
+          bindings: { defaultValue: { field: "text" } },
           anchor: { x: 0, y: 0 },
           attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
           widthPct: 80,
@@ -903,7 +903,7 @@ test("renderCardSvg embeds fonts when fontData provided", () => {
           type: "text",
           id: "text1",
           name: "Text",
-          fieldId: "text",
+          bindings: { defaultValue: { field: "text" } },
           anchor: { x: 0, y: 0 },
           attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
           widthPct: 80,

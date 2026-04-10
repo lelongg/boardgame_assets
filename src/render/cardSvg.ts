@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutTextItem, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutEmojiItem } from "../types.js";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutTextItem, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutEmojiItem, PropertyBinding } from "../types.js";
 import { theme } from "../theme.js";
 
 const DEBUG_FONT = "'Space Grotesk', sans-serif";
@@ -69,6 +69,20 @@ const renderStyledLine = (runs: StyledRun[]): string => {
     if (run.italic) result = `<tspan font-style="italic">${result}</tspan>`;
     return result;
   }).join('');
+};
+
+/** Resolve a property value: check bindings first, fall back to static value.
+ *  Field key is scoped as "prop:field" to avoid collisions, with fallback to plain "field" for compat. */
+const resolve = (item: CardLayoutItem, prop: string, card: CardData): unknown => {
+  const binding = item.bindings?.[prop];
+  if (binding) {
+    if (binding.field === "name") return card.name || (item as any)[prop];
+    const scoped = card.fields[`${prop}:${binding.field}`];
+    if (scoped !== undefined && scoped !== "") return scoped;
+    const plain = card.fields[binding.field];
+    if (plain !== undefined && plain !== "") return plain;
+  }
+  return (item as any)[prop];
 };
 
 type LayoutResult = {
@@ -163,6 +177,7 @@ const collectItemPlacements = (
   result: LayoutResult,
   list: { item: CardLayoutItem; sectionId: string }[]
 ) => {
+  if (section.visible === false) return;
   section.items.forEach((item) => list.push({ item, sectionId: section.id }));
   section.children.forEach((child) => collectItemPlacements(child, result, list));
 };
@@ -279,6 +294,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
   const itemElements: string[] = [];
 
   items.forEach((item) => {
+    const vis = resolve(item, "visible", card);
+    if (vis === false || vis === "false") return;
     const rect = computed.items.get(item.id);
     if (!rect) return;
 
@@ -286,46 +303,45 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     const itemType = item.type ?? "text";
     
     if (itemType === "text") {
-      const textItem = item as CardLayoutTextItem;
-      const value = textItem.fieldId === "name" ? card.name : (textItem.fieldId ? card.fields[textItem.fieldId] : null) ?? textItem.defaultValue ?? "";
+      const value = String(resolve(item, "defaultValue", card) ?? "");
       if (!value) return;
-      const slotName = textItem.font && layout.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
+      const fontSize = Number(resolve(item, "fontSize", card)) || 16;
+      const align = String(resolve(item, "align", card) ?? "center") as "left" | "center" | "right";
+      const vAlign = String(resolve(item, "verticalAlign", card) ?? "middle");
+      const color = String(resolve(item, "color", card) ?? palette.ink);
+      const fontKey = String(resolve(item, "font", card) ?? "");
+      const slotName = fontKey && layout.fonts?.[fontKey] ? fontKey : fontSlots[0];
       const fontSlot = layout.fonts?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
-      const align = textItem.align ?? "center";
-      const vAlign = textItem.verticalAlign ?? "middle";
       const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
       const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
       const styledLines = parseRichText(value);
-      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${textItem.fontSize}" fill="${textItem.color ?? palette.ink}"`;
+      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign as any)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"`;
       if (styledLines.length === 1) {
         itemElements.push(`<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`);
       } else {
         const tspans = styledLines.map((line, i) =>
-          `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${textItem.fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
+          `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
         ).join('');
         itemElements.push(`<text ${baseAttrs}>${tspans}</text>`);
       }
     }
-    
+
     if (itemType === "frame") {
-      const frameItem = item as CardLayoutFrameItem;
-      const strokeWidth = frameItem.strokeWidth ?? 2;
-      const strokeColor = frameItem.strokeColor ?? palette.ink;
-      const fillColor = frameItem.fillColor ?? "none";
-      const cornerRadius = frameItem.cornerRadius ?? 8;
+      const strokeWidth = Number(resolve(item, "strokeWidth", card)) || 2;
+      const strokeColor = String(resolve(item, "strokeColor", card) ?? palette.ink);
+      const fillColor = String(resolve(item, "fillColor", card) ?? "none");
+      const cornerRadius = Number(resolve(item, "cornerRadius", card)) || 8;
       itemElements.push(`<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
     }
-    
-    if (itemType === "image") {
-      const imageItem = item as CardLayoutImageItem;
-      const imageUrl = (imageItem.fieldId ? card.fields[imageItem.fieldId] : null) ?? imageItem.defaultValue ?? "";
-      if (!imageUrl) return;
-      const cornerRadius = imageItem.cornerRadius ?? 0;
-      const clipId = `clip-${imageItem.id}`;
-      const fit = imageItem.fit ?? "cover";
 
-      // Calculate image dimensions based on fit mode
+    if (itemType === "image") {
+      const imageUrl = String(resolve(item, "defaultValue", card) ?? "");
+      if (!imageUrl) return;
+      const cornerRadius = Number(resolve(item, "cornerRadius", card)) || 0;
+      const clipId = `clip-${item.id}`;
+      const fit = String(resolve(item, "fit", card) ?? "cover");
+
       let imageProps = "";
       if (fit === "cover" || fit === "contain") {
         imageProps = `x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" preserveAspectRatio="${fit === "cover" ? "xMidYMid slice" : "xMidYMid meet"}"`;
@@ -342,9 +358,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     }
 
     if (itemType === "emoji") {
-      const emojiItem = item as CardLayoutEmojiItem;
-      const emoji = (emojiItem.fieldId ? card.fields[emojiItem.fieldId] : null) || emojiItem.emoji || "⭐";
-      const fontSize = emojiItem.fontSize ?? 32;
+      const emoji = String(resolve(item, "emoji", card) ?? "⭐");
+      const fontSize = Number(resolve(item, "fontSize", card)) || 32;
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2;
       itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);

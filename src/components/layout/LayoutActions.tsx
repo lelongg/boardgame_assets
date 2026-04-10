@@ -24,7 +24,6 @@ const newTextItem = (sectionId: string): CardLayoutTextItem => ({
   type: 'text',
   id: crypto.randomUUID(),
   name: 'New Text',
-  fieldId: 'field',
   anchor: { x: 0, y: 0 },
   attach: { targetType: 'section', targetId: sectionId, anchor: { x: 0, y: 0 } },
   widthPct: 80,
@@ -49,7 +48,6 @@ const newImageItem = (sectionId: string): CardLayoutImageItem => ({
   type: 'image',
   id: crypto.randomUUID(),
   name: 'New Image',
-  fieldId: 'image',
   anchor: { x: 0.5, y: 0.5 },
   attach: { targetType: 'section', targetId: sectionId, anchor: { x: 0.5, y: 0.5 } },
   widthPct: 80,
@@ -75,18 +73,22 @@ export default function LayoutActions({ layout, selectedNodeId, onLayoutChange, 
 
   const selectedKind = selectedNodeId ? getNodeKind(layout.root, selectedNodeId) : null
   const isRoot = selectedNodeId === layout.root.id
-  const canAddSection = !selectedKind || selectedKind === 'section'
-  const canAddItem = !selectedKind || selectedKind === 'section'
-
   const clone = (): CardLayout => JSON.parse(JSON.stringify(layout))
 
   const handleAddSection = () => {
     const t = clone()
-    const parentId = selectedKind === 'section' && selectedNodeId ? selectedNodeId : t.root.id
-    const parent = findSectionById(t.root, parentId)
-    if (!parent) return
     const section = newSection()
-    parent.children.push(section)
+    if (selectedKind === 'section' && selectedNodeId) {
+      const parent = findSectionById(t.root, selectedNodeId)
+      if (!parent) return
+      parent.children.push(section)
+    } else if (selectedKind === 'item' && selectedNodeId) {
+      const parent = findParentSection(t.root, selectedNodeId, 'item')
+      if (!parent) return
+      parent.children.push(section)
+    } else {
+      t.root.children.push(section)
+    }
     onLayoutChange(t)
     onSelectNode(section.id)
   }
@@ -140,11 +142,11 @@ export default function LayoutActions({ layout, selectedNodeId, onLayoutChange, 
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button size="sm" variant="outline" onClick={handleAddSection} disabled={!canAddSection}>
+      <Button size="sm" variant="outline" onClick={handleAddSection}>
         Add Section
       </Button>
       <div className="relative">
-        <Button size="sm" variant="outline" onClick={() => setShowItemType(!showItemType)} disabled={!canAddItem}>
+        <Button size="sm" variant="outline" onClick={() => setShowItemType(!showItemType)}>
           Add Item
         </Button>
         {showItemType && (

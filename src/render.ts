@@ -1,5 +1,5 @@
 import { theme } from "./theme.js";
-import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection } from "./types.js";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, PropertyBinding } from "./types.js";
 
 // 300 DPI: 1mm = 300/25.4 ≈ 11.811 pixels
 const PX_PER_MM = 300 / 25.4;
@@ -94,6 +94,20 @@ const anchorPoints: AnchorPoint[] = [
   { x: 1, y: 1 }
 ];
 
+/** Resolve a property value: check bindings first, fall back to static value.
+ *  Field key is scoped as "prop:field" to avoid collisions, with fallback to plain "field" for compat. */
+const resolve = (item: CardLayoutItem, prop: string, card: CardData): unknown => {
+  const binding = (item as any).bindings?.[prop];
+  if (binding) {
+    if (binding.field === "name") return card.name || (item as any)[prop];
+    const scoped = card.fields[`${prop}:${binding.field}`];
+    if (scoped !== undefined && scoped !== "") return scoped;
+    const plain = card.fields[binding.field];
+    if (plain !== undefined && plain !== "") return plain;
+  }
+  return (item as any)[prop];
+};
+
 const textAnchorFor = (align: string): string => {
   if (align === "center") return "middle";
   if (align === "right") return "end";
@@ -169,6 +183,7 @@ const layoutSections = (section: CardLayoutSection, rect: Rect, result: LayoutRe
 };
 
 const collectItemPlacements = (section: CardLayoutSection, result: LayoutResult, list: ItemPlacement[]): void => {
+  if (section.visible === false) return;
   section.items.forEach((item) => list.push({ item, sectionId: section.id }));
   section.children.forEach((child) => collectItemPlacements(child, result, list));
 };
@@ -285,6 +300,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
 
   const renderedItems = items
     .map((item) => {
+      const vis = resolve(item, "visible", card);
+      if (vis === false || vis === "false") return "";
       const rect = computed.items.get(item.id);
       if (!rect) return "";
 
@@ -303,7 +320,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       if (itemType === "image") {
         // Render image item - type guard
         if (item.type !== "image") return "";
-        const value = item.fieldId === "name" ? card.name : (item.fieldId ? card.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
+        const value = String(resolve(item, "defaultValue", card) ?? "");
         if (!value) return "";
         const cornerRadius = item.cornerRadius ?? 0;
         const fit = item.fit ?? "cover";
@@ -323,7 +340,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       
       if (itemType === "emoji") {
         if (item.type !== "emoji") return "";
-        const emoji = ((item as any).fieldId ? card.fields[(item as any).fieldId] : null) || (item as any).emoji || "⭐";
+        const emoji = String(resolve(item, "emoji", card) ?? "⭐");
         const fontSize = item.fontSize ?? 32;
         const textX = rect.x + rect.width / 2;
         const textY = rect.y + rect.height / 2;
@@ -332,15 +349,16 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
 
       // Render text item (default) - type guard
       if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
-      const value = item.fieldId === "name" ? card.name : (item.fieldId ? card.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
+      const value = String(resolve(item, "defaultValue", card) ?? "");
       if (!value) return "";
-      const slotName = item.font && layout.fonts?.[item.font] ? item.font : fontSlots[0];
+      const fontKey = String(resolve(item, "font", card) ?? "");
+      const slotName = fontKey && layout.fonts?.[fontKey] ? fontKey : fontSlots[0];
       const fontSlot = layout.fonts?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
-      const fontSize = item.fontSize ?? 20;
-      const align = item.align ?? "center";
-      const vAlign = (item as any).verticalAlign ?? "middle";
-      const color = escape(item.color ?? palette.ink);
+      const fontSize = Number(resolve(item, "fontSize", card)) || 20;
+      const align = String(resolve(item, "align", card) ?? "center");
+      const vAlign = String(resolve(item, "verticalAlign", card) ?? "middle");
+      const color = escape(String(resolve(item, "color", card) ?? palette.ink));
       const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
       const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
       const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"`;
@@ -442,7 +460,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
     }
     if (itemType === "image") {
       if (item.type !== "image") return "";
-      const value = (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
+      const value = String(resolve(item, "defaultValue", emptyCard) ?? "");
       if (!value) return "";
       const cr = item.cornerRadius ?? 0;
       const fit = item.fit ?? "cover";
@@ -454,14 +472,14 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
     }
     if (itemType === "emoji") {
       if (item.type !== "emoji") return "";
-      const emoji = (item as any).emoji || "⭐";
+      const emoji = String(resolve(item, "emoji", emptyCard) ?? "⭐");
       const fontSize = item.fontSize ?? 32;
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2;
       return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`;
     }
     if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
-    const value = item.fieldId === "name" ? emptyCard.name : (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
+    const value = String(resolve(item, "defaultValue", emptyCard) ?? "");
     if (!value) return "";
     const slotName = item.font && layout.fonts?.[item.font] ? item.font : fontSlots[0];
     const fontSlot = layout.fonts?.[slotName];

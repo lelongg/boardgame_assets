@@ -179,7 +179,7 @@ test("normalizeLayout handles text item with empty values", () => {
   });
   const item = layout.root.items[0];
   assert.equal(item.type, "text");
-  assert.equal(item.fieldId, undefined);
+  assert.equal(item.bindings, undefined);
   assert.equal(item.widthPct, 50);
   assert.equal(item.heightPct, 50);
   assert.equal(item.fontSize, 16);
@@ -266,7 +266,7 @@ test("normalizeLayout handles image item with empty values", () => {
   });
   const item = layout.root.items[0];
   assert.equal(item.type, "image");
-  assert.equal(item.fieldId, undefined);
+  assert.equal(item.bindings, undefined);
   assert.equal(item.fit, "cover");
   assert.equal(item.cornerRadius, 0);
 });
@@ -307,9 +307,9 @@ test("normalizeLayout handles legacy item without type", () => {
     }
   });
   const item = layout.root.items[0];
-  // Should default to text item
+  // Should default to text item, fieldId migrated to bindings
   assert.equal(item.type, undefined);
-  assert.equal(item.fieldId, "title");
+  assert.equal(item.bindings?.defaultValue?.field, "title");
   assert.equal(item.fontSize, 20);
   assert.equal(item.align, "center");
 });

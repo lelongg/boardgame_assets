@@ -11,7 +11,8 @@ import { exportGameZip, importGameZip } from '../gameZip'
 
 export default function GamesPage() {
   const [games, setGames] = useState<any[]>([])
-  const [expandedGame, setExpandedGame] = useState<string | null>(null)
+  const [expandedGame, _setExpandedGame] = useState<string | null>(() => localStorage.getItem('games:selectedGame'))
+  const setExpandedGame = (id: string | null) => { _setExpandedGame(id); if (id) localStorage.setItem('games:selectedGame', id); else localStorage.removeItem('games:selectedGame') }
   const navigate = useNavigate()
   const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
 
@@ -25,7 +26,7 @@ export default function GamesPage() {
       setStatus('Loading games...')
       const gameList = await s.listGames()
       setGames(gameList)
-      if (gameList.length > 0 && !expandedGame) {
+      if (gameList.length > 0 && (!expandedGame || !gameList.some((g: any) => g.id === expandedGame))) {
         setExpandedGame(gameList[0].id)
       }
       setStatus(`Loaded ${gameList.length} games.`)

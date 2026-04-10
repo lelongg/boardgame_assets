@@ -8,18 +8,20 @@ import LoadingImg from '@/components/LoadingImg'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
 import { findParentSection, findItemById, getNodeKind } from './layoutHelpers'
-import type { CardLayout } from '../../types'
+import type { CardLayout, PropertyBinding } from '../../types'
 
 type ControlPanelProps = {
   property: string
   value: unknown
+  binding?: PropertyBinding
   layout: CardLayout
   selectedNodeId?: string
   onChange: (value: unknown) => void
+  onBindingChange?: (binding: PropertyBinding | null) => void
 }
 
 type FieldMeta = {
-  type: 'number' | 'select' | 'anchor' | 'text' | 'richtext' | 'color' | 'image-upload' | 'emoji' | 'values'
+  type: 'number' | 'select' | 'anchor' | 'text' | 'richtext' | 'color' | 'image-upload' | 'emoji' | 'boolean'
   min?: number
   max?: number
   step?: number
@@ -89,9 +91,9 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
       return { type: 'richtext' }
     }
     case 'emoji': return { type: 'emoji' }
-    case 'values': return { type: 'values' }
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
+    case 'visible': return { type: 'boolean' }
     default: return { type: 'text' }
   }
 }
@@ -238,51 +240,76 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown
   )
 }
 
-function ValuesEditor({ value, onChange, layout, selectedNodeId }: { value: unknown; onChange: (v: unknown) => void; layout: CardLayout; selectedNodeId?: string }) {
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
-  const arr: string[] = Array.isArray(value) ? value : []
-  const node = selectedNodeId ? findItemById(layout.root, selectedNodeId) : null
-  const itemType = (node as any)?.type ?? 'text'
+const NO_BINDING = new Set(['name', 'id', 'anchor', 'attachAnchor', 'attachTargetId'])
 
-  const updateAt = (i: number, v: string) => {
-    const next = [...arr]
-    next[i] = v
-    onChange(next)
+function ValueItemEditor({ property, value, onChange }: { property: string; value: string; onChange: (v: string) => void }) {
+  if (property === 'emoji') return <EmojiPicker value={value} onChange={(v) => onChange(String(v))} />
+  if (property === 'color' || property === 'strokeColor' || property === 'fillColor') return <ColorControl value={value} onChange={(v) => onChange(String(v))} />
+  if (property === 'defaultValue') return <RichTextField value={value} onChange={onChange} />
+  return <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Value" />
+}
+
+function BindingEditor({ property, binding, onChange }: { property: string; binding: PropertyBinding | undefined; onChange: (b: PropertyBinding | null) => void }) {
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const field = binding?.field ?? ''
+  const values = binding?.values ?? []
+
+  const updateField = (f: string) => {
+    if (!f) { onChange(null); return }
+    onChange({ field: f, values: values.length ? values : undefined })
   }
-  const removeAt = (i: number) => {
-    onChange(arr.filter((_, j) => j !== i))
-    setSelectedIdx(null)
+  const updateValues = (v: string[]) => {
+    if (!field) return
+    onChange({ field, values: v.length ? v : undefined })
   }
-  const add = () => {
-    onChange([...arr, ''])
-    setSelectedIdx(arr.length)
-  }
+  const updateAt = (i: number, v: string) => { const next = [...values]; next[i] = v; updateValues(next) }
+  const removeAt = (i: number) => { updateValues(values.filter((_, j) => j !== i)); setSelectedIdx(null) }
 
   return (
     <div className="space-y-2">
-      {arr.map((v, i) => (
-        <ListItem
-          key={i}
-          selected={selectedIdx === i}
-          onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
-          actions={<div className="flex-1 space-y-2">
-            {itemType === 'emoji' ? (
-              <EmojiPicker value={v} onChange={(val) => updateAt(i, String(val))} />
-            ) : (
-              <Input value={v} onChange={(e) => updateAt(i, e.target.value)} placeholder={`Value ${i + 1}`} />
-            )}
-            <ConfirmButton onConfirm={() => removeAt(i)} />
-          </div>}
-        >
-          <span className="text-sm">{v || <span className="text-muted-foreground italic">empty</span>}</span>
-        </ListItem>
-      ))}
-      <Button size="sm" variant="outline" className="w-full" onClick={add}>+ Add value</Button>
+      <Input
+        value={field}
+        onChange={(e) => updateField(e.target.value)}
+        placeholder="Field name (e.g. rank, suit)"
+      />
+      {field && (
+        <div className="space-y-1">
+          <div className="text-xs text-muted-foreground">Allowed values</div>
+          {values.map((v, i) => (
+            <ListItem
+              key={i}
+              selected={selectedIdx === i}
+              onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
+              actions={<div className="flex-1 space-y-2">
+                <ValueItemEditor property={property} value={v} onChange={(val) => updateAt(i, val)} />
+                <ConfirmButton onConfirm={() => removeAt(i)} />
+              </div>}
+            >
+              <span className="text-sm">{v || <span className="text-muted-foreground italic">empty</span>}</span>
+            </ListItem>
+          ))}
+          <Button size="sm" variant="outline" className="w-full" onClick={() => { updateValues([...values, '']); setSelectedIdx(values.length) }}>+ Add value</Button>
+        </div>
+      )}
     </div>
   )
 }
 
-export default function ControlPanel({ property, value, layout, selectedNodeId, onChange }: ControlPanelProps) {
+function ValueEditor({ property, value, binding, layout, selectedNodeId, onChange }: Omit<ControlPanelProps, 'onBindingChange'>) {
+  const allowedValues = binding?.values
+  if (allowedValues?.length) {
+    return (
+      <select
+        value={String(value ?? '')}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+      >
+        <option value="">— select —</option>
+        {allowedValues.map((v) => <option key={v} value={v}>{v}</option>)}
+      </select>
+    )
+  }
+
   const meta = getFieldMeta(property, layout, selectedNodeId)
 
   if (meta.type === 'number') {
@@ -336,11 +363,41 @@ export default function ControlPanel({ property, value, layout, selectedNodeId, 
 
   if (meta.type === 'image-upload') {
     const imgUrl = String(value ?? '')
+    const readFileAsDataUrl = (file: File): Promise<string> =>
+      new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.readAsDataURL(file)
+      })
+    const handleImageFile = async (file: File) => {
+      if (!file.type.startsWith('image/')) return
+      onChange(await readFileAsDataUrl(file))
+    }
     return (
-      <div className="space-y-2">
+      <div
+        className="space-y-2"
+        onPaste={(e) => {
+          const file = Array.from(e.clipboardData.items)
+            .find((i) => i.type.startsWith('image/'))
+            ?.getAsFile()
+          if (file) {
+            e.preventDefault()
+            handleImageFile(file)
+          }
+        }}
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+        onDrop={(e) => {
+          e.preventDefault()
+          const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith('image/'))
+          if (file) handleImageFile(file)
+        }}
+      >
         {imgUrl && (
           <LoadingImg src={imgUrl} alt="Default" className="max-h-24 rounded border object-contain" />
         )}
+        <div className="rounded border border-dashed border-muted-foreground/40 p-3 text-center text-xs text-muted-foreground">
+          Paste or drop image here
+        </div>
         <Button
           size="sm"
           variant="outline"
@@ -350,13 +407,7 @@ export default function ControlPanel({ property, value, layout, selectedNodeId, 
             input.accept = 'image/*'
             input.onchange = async () => {
               const file = input.files?.[0]
-              if (!file) return
-              const dataUrl = await new Promise((resolve) => {
-                const reader = new FileReader()
-                reader.onload = () => resolve(reader.result)
-                reader.readAsDataURL(file)
-              })
-              onChange(dataUrl)
+              if (file) handleImageFile(file)
             }
             input.click()
           }}
@@ -380,8 +431,14 @@ export default function ControlPanel({ property, value, layout, selectedNodeId, 
     return <EmojiPicker value={String(value ?? '')} onChange={onChange} />
   }
 
-  if (meta.type === 'values') {
-    return <ValuesEditor value={value} onChange={onChange} layout={layout} selectedNodeId={selectedNodeId} />
+  if (meta.type === 'boolean') {
+    const checked = value !== false && value !== 'false'
+    return (
+      <button
+        onClick={() => onChange(!checked)}
+        className={`w-full rounded-md border px-3 py-2 text-sm text-left transition-colors ${checked ? 'bg-primary/10 border-primary text-primary' : 'bg-background border-input text-muted-foreground'}`}
+      >{checked ? 'Yes' : 'No'}</button>
+    )
   }
 
   if (meta.type === 'anchor') {
@@ -395,5 +452,36 @@ export default function ControlPanel({ property, value, layout, selectedNodeId, 
       value={String(value ?? '')}
       onChange={(e) => onChange(e.target.value)}
     />
+  )
+}
+
+export default function ControlPanel({ property, value, binding, layout, selectedNodeId, onChange, onBindingChange }: ControlPanelProps) {
+  const [mode, setMode] = useState<'value' | 'data'>(binding ? 'data' : 'value')
+  const canBind = !NO_BINDING.has(property)
+
+  // Switch to data tab when selecting a property that already has a binding
+  useEffect(() => { setMode(binding ? 'data' : 'value') }, [property])
+
+  if (!canBind) {
+    return <ValueEditor property={property} value={value} binding={binding} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1 rounded-md border p-0.5 w-fit">
+        <button
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${mode === 'value' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setMode('value')}
+        >Value</button>
+        <button
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${mode === 'data' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setMode('data')}
+        >Data</button>
+      </div>
+      {mode === 'value'
+        ? <ValueEditor property={property} value={value} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
+        : <BindingEditor property={property} binding={binding} onChange={(b) => onBindingChange?.(b)} />
+      }
+    </div>
   )
 }

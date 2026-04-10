@@ -9,10 +9,16 @@ export type AnchorPoint = {
   y: 0 | 0.5 | 1;
 };
 
+export type PropertyBinding = {
+  field: string;
+  values?: string[];
+};
+
 // Base properties shared by all item types
 type CardLayoutItemBase = {
   id: string;
   name: string;
+  visible?: boolean;
   anchor: AnchorPoint;
   attach: {
     targetType: "section" | "item";
@@ -21,14 +27,13 @@ type CardLayoutItemBase = {
   };
   widthPct: number;
   heightPct: number;
+  bindings?: Record<string, PropertyBinding>;
 };
 
 // Text item - displays text from a field
 export type CardLayoutTextItem = CardLayoutItemBase & {
   type?: "text";  // Optional to support legacy items
-  fieldId?: string;
   defaultValue?: string;
-  values?: string[];
   fontSize: number;
   align: "left" | "center" | "right";
   verticalAlign?: "top" | "middle" | "bottom";
@@ -48,9 +53,7 @@ export type CardLayoutFrameItem = CardLayoutItemBase & {
 // Image item - displays an image from a URL field
 export type CardLayoutImageItem = CardLayoutItemBase & {
   type: "image";
-  fieldId?: string;
   defaultValue?: string;
-  values?: string[];
   fit?: "cover" | "contain" | "fill";
   cornerRadius?: number;
 };
@@ -58,9 +61,7 @@ export type CardLayoutImageItem = CardLayoutItemBase & {
 // Emoji item - displays an emoji, optionally bound to a card field
 export type CardLayoutEmojiItem = CardLayoutItemBase & {
   type: "emoji";
-  fieldId?: string;
   emoji?: string;
-  values?: string[];
   fontSize: number;
 };
 
@@ -74,6 +75,7 @@ export type CardLayoutItem =
 export type CardLayoutSection = {
   id: string;
   name: string;
+  visible?: boolean;
   layout: "row" | "column" | "stack" | "grid";
   columns?: number;
   sizePct: number;

@@ -8,6 +8,8 @@ import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
+const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare;
+
 const slugify = (v) =>
   v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
@@ -317,7 +319,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       const db = await openDB();
       try {
         const entries = await idbGetAllByPrefix(db, "layouts", [gameId]);
-        return entries.map((e) => e.value);
+        return entries.map((e) => normalizeLayout(e.value));
       } finally {
         db.close();
       }
@@ -328,7 +330,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       try {
         const layout = await idbGet(db, "layouts", [gameId, layoutId]);
         if (!layout) throw new Error(`Layout not found: ${layoutId}`);
-        return layout;
+        return normalizeLayout(layout);
       } finally {
         db.close();
       }
@@ -460,7 +462,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       const db = await openDB();
       try {
         const entries = await idbGetAllByPrefix(db, "cards", [gameId, collectionId]);
-        return entries.map((e) => e.value);
+        return entries.map((e) => e.value).sort((a, b) => naturalCompare(a.name, b.name));
       } finally {
         db.close();
       }

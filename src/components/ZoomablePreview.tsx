@@ -125,6 +125,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
         className={`p-3 overflow-hidden ${
           unlocked ? 'touch-none cursor-grab active:cursor-grabbing' : ''
         }`}
+        style={{ backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '16px 16px' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -138,7 +139,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
         <img
           src={src}
           alt={alt}
-          className={`max-w-full select-none transition-opacity duration-200 ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
+          className={`max-w-full select-none transition-opacity duration-200 drop-shadow-lg ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
           draggable={false}
           onLoad={() => setImgLoaded(true)}
           onError={() => setImgLoaded(true)}

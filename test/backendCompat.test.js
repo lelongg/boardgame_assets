@@ -472,8 +472,8 @@ async function createFullTestGame(storage) {
     id: "root", name: "Root", layout: "column", sizePct: 100, gap: 12, columns: 2,
     children: [
       { id: "header", name: "Header", layout: "row", sizePct: 30, gap: 8, columns: 2, children: [], items: [
-        { id: "title-item", name: "Title", type: "text", fieldId: "name", defaultValue: "Untitled",
-          values: ["Warrior", "Mage", "Rogue"],
+        { id: "title-item", name: "Title", type: "text", defaultValue: "Untitled",
+          bindings: { defaultValue: { field: "name", values: ["Warrior", "Mage", "Rogue"] } },
           fontSize: 32, align: "center", verticalAlign: "middle", font: "title", color: "#1a1a2e",
           anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0.5, y: 0.5 } },
           widthPct: 100, heightPct: 100 },
@@ -481,8 +481,9 @@ async function createFullTestGame(storage) {
       { id: "body", name: "Body", layout: "stack", sizePct: 70, gap: 0, columns: 2,
         children: [
           { id: "grid-section", name: "Grid", layout: "grid", sizePct: 60, gap: 4, columns: 3, children: [], items: [
-            { id: "art-item", name: "Artwork", type: "image", fieldId: "image", defaultValue: imageUrl,
-              values: [], fit: "cover", cornerRadius: 12,
+            { id: "art-item", name: "Artwork", type: "image", defaultValue: imageUrl,
+              bindings: { defaultValue: { field: "image" } },
+              fit: "cover", cornerRadius: 12,
               anchor: { x: 0.5, y: 0 }, attach: { targetType: "section", targetId: "grid-section", anchor: { x: 0.5, y: 0 } },
               widthPct: 100, heightPct: 80 },
           ]},
@@ -492,11 +493,13 @@ async function createFullTestGame(storage) {
             strokeWidth: 3, strokeColor: "#16213e", fillColor: "none", cornerRadius: 8,
             anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } },
             widthPct: 95, heightPct: 95 },
-          { id: "emoji-item", name: "Faction", type: "emoji", fieldId: "faction", emoji: "⚔️",
-            values: ["⚔️", "🛡️", "🔮", "🏹"], fontSize: 48,
+          { id: "emoji-item", name: "Faction", type: "emoji", emoji: "⚔️",
+            bindings: { emoji: { field: "faction", values: ["⚔️", "🛡️", "🔮", "🏹"] } },
+            fontSize: 48,
             anchor: { x: 0.5, y: 1 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 1 } },
             widthPct: 15, heightPct: 10 },
-          { id: "desc-item", name: "Description", type: "text", fieldId: "description", defaultValue: "",
+          { id: "desc-item", name: "Description", type: "text", defaultValue: "",
+            bindings: { defaultValue: { field: "description" } },
             fontSize: 14, align: "left", verticalAlign: "top", color: "#333",
             anchor: { x: 0, y: 0 }, attach: { targetType: "item", targetId: "art-item", anchor: { x: 0, y: 1 } },
             widthPct: 90, heightPct: 30 },
@@ -550,8 +553,8 @@ async function verifyFullTestGame(storage, gameId) {
   // Text item
   const title = items.find(i => i.id === "title-item");
   assert.ok(title); assert.equal(title.type, "text");
-  assert.equal(title.fieldId, "name"); assert.equal(title.defaultValue, "Untitled");
-  assert.deepEqual(title.values, ["Warrior", "Mage", "Rogue"]);
+  assert.equal(title.bindings?.defaultValue?.field, "name"); assert.equal(title.defaultValue, "Untitled");
+  assert.deepEqual(title.bindings.defaultValue.values, ["Warrior", "Mage", "Rogue"]);
   assert.equal(title.fontSize, 32); assert.equal(title.align, "center");
   assert.equal(title.font, "title"); assert.equal(title.color, "#1a1a2e");
 
@@ -569,8 +572,8 @@ async function verifyFullTestGame(storage, gameId) {
   // Emoji item
   const emoji = items.find(i => i.id === "emoji-item");
   assert.ok(emoji); assert.equal(emoji.type, "emoji");
-  assert.equal(emoji.fieldId, "faction"); assert.equal(emoji.emoji, "⚔️");
-  assert.deepEqual(emoji.values, ["⚔️", "🛡️", "🔮", "🏹"]);
+  assert.equal(emoji.bindings?.emoji?.field, "faction"); assert.equal(emoji.emoji, "⚔️");
+  assert.deepEqual(emoji.bindings.emoji.values, ["⚔️", "🛡️", "🔮", "🏹"]);
   assert.equal(emoji.fontSize, 48);
 
   // Description attached to item

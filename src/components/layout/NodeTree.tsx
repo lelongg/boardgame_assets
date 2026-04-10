@@ -11,8 +11,6 @@ type NodeTreeProps = {
   onAddSection?: () => void
   onAddItem?: (type: 'text' | 'frame' | 'image' | 'emoji') => void
   onDelete?: () => void
-  canAddSection?: boolean
-  canAddItem?: boolean
   canDelete?: boolean
 }
 
@@ -21,7 +19,7 @@ type DropIndicator = {
   position: 'before' | 'after' | 'inside'
 }
 
-export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, onAddSection, onAddItem, onDelete, canAddSection, canAddItem, canDelete }: NodeTreeProps) {
+export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, onAddSection, onAddItem, onDelete, canDelete }: NodeTreeProps) {
   const [showItemMenu, setShowItemMenu] = useState(false)
   const allNodes = flattenNodes(root)
   const [dragId, setDragId] = useState<string | null>(null)
@@ -110,8 +108,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
           {onAddSection && (
             <button
               onClick={onAddSection}
-              disabled={!canAddSection}
-              className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+              className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
               title="Add Section"
             >
               <FolderPlus className="h-4 w-4" />
@@ -121,8 +118,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
             <div className="relative">
               <button
                 onClick={() => setShowItemMenu(!showItemMenu)}
-                disabled={!canAddItem}
-                className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
                 title="Add Item"
               >
                 <Plus className="h-4 w-4" />

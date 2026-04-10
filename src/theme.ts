@@ -4,7 +4,7 @@ export const theme = {
   radius: 28,
   bleed: 18,
   palette: {
-    paper: "#f6f1e9",
+    paper: "#ffffff",
     ink: "#1b1a17",
     muted: "#5f5a53",
     accent: {

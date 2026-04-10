@@ -39,6 +39,9 @@ export default function CollectionsPage() {
   const [showSections, setShowSections] = useState(true)
   const [showItemWires, setShowItemWires] = useState(true)
   const [editingName, setEditingName] = useState(false)
+  const [activeTab, setActiveTab] = useState(() => (gameId && localStorage.getItem(`game:${gameId}:tab`)) || 'collections')
+  const [previewCardId, setPreviewCardId] = useState<string | null>(null)
+  const [previewCards, setPreviewCards] = useState<any[]>([])
   const [showFontAdd, setShowFontAdd] = useState(false)
   const [selectedFont, setSelectedFont] = useState<string | null>(null)
   const [fontPreviewText, setFontPreviewText] = useState(defaultPreviewText)
@@ -58,15 +61,37 @@ export default function CollectionsPage() {
     loadData(storage)
   }, [storage, gameId])
 
+  // Load cards for layout preview selector
+  useEffect(() => {
+    if (!storage || !gameId || !selectedLayoutId || !collections.length) { setPreviewCards([]); return }
+    const load = async () => {
+      const cols = collections.filter(c => c.layoutId === selectedLayoutId)
+      const all: any[] = []
+      for (const col of cols) {
+        const cards = await storage.listCards(gameId, col.id)
+        all.push(...cards)
+      }
+      setPreviewCards(all)
+      if (previewCardId && !all.some((c: any) => c.id === previewCardId)) setPreviewCardId(null)
+    }
+    load()
+  }, [storage, gameId, selectedLayoutId, collections])
+
   // Layout preview
+  const previewCard = previewCardId ? previewCards.find((c: any) => c.id === previewCardId) : null
   useEffect(() => {
     if (!selectedLayout) { setLayoutPreview(''); return }
     const updatePreview = async () => {
-      const { renderLayoutSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
-      let svg = renderLayoutSvg(selectedLayout, { showSections, showItems: showItemWires, selectedNodeId })
-      svg = await embedFontsInSvg(svg, selectedLayout, gameId!)
-      svg = await embedImagesInSvg(svg)
-      const layout = computeLayout(selectedLayout)
+      const render = await import('../render')
+      let svg: string
+      if (previewCard) {
+        svg = render.renderCardSvg(previewCard, selectedLayout)
+      } else {
+        svg = render.renderLayoutSvg(selectedLayout, { showSections, showItems: showItemWires, selectedNodeId })
+      }
+      svg = await render.embedFontsInSvg(svg, selectedLayout, gameId!)
+      svg = await render.embedImagesInSvg(svg)
+      const layout = render.computeLayout(selectedLayout)
       const areas = [
         ...Array.from(layout.sections.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
         ...Array.from(layout.items.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
@@ -77,7 +102,7 @@ export default function CollectionsPage() {
       setLayoutPreview(prev => { if (prev) URL.revokeObjectURL(prev); return url })
     }
     updatePreview()
-  }, [selectedLayout, showSections, showItemWires, selectedNodeId])
+  }, [selectedLayout, showSections, showItemWires, selectedNodeId, previewCard])
 
   // Render card previews client-side
   useEffect(() => {
@@ -228,7 +253,7 @@ export default function CollectionsPage() {
     }
     setSelectedNodeId(id)
     const newTypeKey = getNodeTypeKey(id)
-    const defaults: Record<string, string> = { section: 'layout', text: 'fieldId', frame: 'fillColor', image: 'fieldId', emoji: 'emoji' }
+    const defaults: Record<string, string> = { section: 'layout', text: 'defaultValue', frame: 'fillColor', image: 'defaultValue', emoji: 'emoji' }
     setSelectedProperty(propertyByType[newTypeKey] ?? defaults[newTypeKey] ?? 'name')
   }
 
@@ -256,7 +281,26 @@ export default function CollectionsPage() {
     }
     if (!node) return
     const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
-    if (TEMPLATE_KEYS.has(property)) {
+    if (property.startsWith('__binding__')) {
+      const prop = property.slice('__binding__'.length)
+      if (!node.bindings) node.bindings = {}
+      if (value) node.bindings[prop] = value
+      else delete node.bindings[prop]
+      if (Object.keys(node.bindings).length === 0) delete node.bindings
+      const binding = value as { field: string; values?: string[] } | null
+      if (binding?.field) {
+        const syncBindings = (s: any) => {
+          s.items?.forEach((item: any) => {
+            if (item.id === node.id || !item.bindings?.[prop]) return
+            if (item.bindings[prop].field === binding.field) {
+              item.bindings[prop] = { ...item.bindings[prop], values: binding.values }
+            }
+          })
+          s.children?.forEach(syncBindings)
+        }
+        syncBindings(t.root)
+      }
+    } else if (TEMPLATE_KEYS.has(property)) {
       (t as any)[property] = value
     } else if (property === 'attachAnchor') {
       if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
@@ -277,11 +321,18 @@ export default function CollectionsPage() {
   const handleAddSection = () => {
     if (!selectedLayout) return
     const t = JSON.parse(JSON.stringify(selectedLayout))
-    const parentId = selectedKind === 'section' && selectedNodeId ? selectedNodeId : t.root.id
-    const parent = findSectionById(t.root, parentId)
-    if (!parent) return
     const section = { id: crypto.randomUUID(), name: 'New Section', layout: 'stack' as const, sizePct: 100, gap: 0, children: [] as any[], items: [] as any[] }
-    parent.children.push(section)
+    if (selectedKind === 'section' && selectedNodeId) {
+      const parent = findSectionById(t.root, selectedNodeId)
+      if (!parent) return
+      parent.children.push(section)
+    } else if (selectedKind === 'item' && selectedNodeId) {
+      const parent = findParentSection(t.root, selectedNodeId, 'item')
+      if (!parent) return
+      parent.children.push(section)
+    } else {
+      t.root.children.push(section)
+    }
     handleLayoutSave(t)
     setSelectedNodeId(section.id)
   }
@@ -299,9 +350,9 @@ export default function CollectionsPage() {
     if (!parent) return
     const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 100, heightPct: 100 }
     const items: Record<string, any> = {
-      text: { ...base, type: 'text', name: 'New Text', fieldId: 'field', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
+      text: { ...base, type: 'text', name: 'New Text', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
       frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
-      image: { ...base, type: 'image', name: 'New Image', fieldId: 'image', fit: 'cover', cornerRadius: 0 },
+      image: { ...base, type: 'image', name: 'New Image', fit: 'cover', cornerRadius: 0 },
       emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
     }
     const item = items[itemType]
@@ -370,7 +421,7 @@ export default function CollectionsPage() {
       errorDetail={errorDetail}
       onDismissError={clearError}
     >
-        <Tabs defaultValue={localStorage.getItem(`game:${gameId}:tab`) || 'collections'} onValueChange={(v) => localStorage.setItem(`game:${gameId}:tab`, v)} className="w-full">
+        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (gameId) localStorage.setItem(`game:${gameId}:tab`, v) }} className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="collections">Collections</TabsTrigger>
             <TabsTrigger value="layouts">Layouts</TabsTrigger>
@@ -397,28 +448,32 @@ export default function CollectionsPage() {
                       if (gameId) { if (next) localStorage.setItem(`game:${gameId}:selectedCollection`, next); else localStorage.removeItem(`game:${gameId}:selectedCollection`) }
                     }}
                     actions={<>
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit">
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit cards">
                         <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => {
+                        setSelectedLayoutId(col.layoutId)
+                        setActiveTab('layouts')
+                      }} title="Edit layout">
+                        <Layers className="h-4 w-4" />
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}/print`)} title="Print">
                         <Printer className="h-4 w-4" />
                       </Button>
-                      <select
-                        className="rounded-md border bg-background px-2 py-1 text-sm"
-                        value={col.layoutId}
-                        onChange={async (e) => {
-                          try {
-                            await storage.updateCollection(gameId, col.id, { layoutId: e.target.value })
-                            await loadData(storage)
-                          } catch {
-                            setStatus('Error updating collection.')
+                      <Button size="sm" variant="outline" title="Clone collection" onClick={async () => {
+                        try {
+                          setStatus('Cloning collection...')
+                          const newCol = await storage.createCollection(gameId, `${col.name} (copy)`, col.layoutId)
+                          const cards = await storage.listCards(gameId, col.id)
+                          for (const card of cards) {
+                            await storage.saveCard(gameId, newCol.id, null, { ...card, id: undefined, name: card.name })
                           }
-                        }}
-                      >
-                        {layouts.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                      </select>
+                          await loadData(storage)
+                          setStatus('Collection cloned.')
+                        } catch { setStatus('Error cloning collection.') }
+                      }}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
                       <ConfirmButton onConfirm={async () => {
                         const prev = collections
                         setCollections(collections.filter((c) => c.id !== col.id))
@@ -507,11 +562,11 @@ export default function CollectionsPage() {
                     >
                       <ChevronLeft className="h-5 w-5" />
                     </button>
-                    <div className="flex-1 rounded-lg border bg-card p-4 flex justify-center">
+                    <div className="flex-1 rounded-lg border overflow-hidden p-4 flex justify-center" style={{ backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '16px 16px' }}>
                       <LoadingImg
                         src={selectedCardId ? cardPreviews[selectedCardId] || '' : ''}
                         alt="Card preview"
-                        className="max-w-full max-h-[60vh]"
+                        className="max-w-full max-h-[60vh] drop-shadow-lg"
                       />
                     </div>
                     <button
@@ -599,8 +654,8 @@ export default function CollectionsPage() {
                       <div key={card.id}
                         className={`relative rounded-md cursor-pointer transition-all ${selectedCardId === card.id ? 'outline outline-2 outline-primary' : 'outline outline-1 outline-border'}`}
                         onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}>
-                        <div className="rounded-t-md overflow-hidden" style={{ aspectRatio: '5 / 7' }}>
-                          <LoadingImg src={cardPreviews[card.id] || ''} alt={card.name} className="w-full h-full" wrapperClassName="w-full h-full" />
+                        <div className="rounded-t-md overflow-hidden p-2" style={{ aspectRatio: '5 / 7', backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '12px 12px' }}>
+                          <LoadingImg src={cardPreviews[card.id] || ''} alt={card.name} className="w-full h-full drop-shadow-md object-contain" wrapperClassName="w-full h-full" />
                         </div>
                         <p className="px-2 py-1 text-xs text-center text-muted-foreground truncate">{card.name}</p>
                       </div>
@@ -683,8 +738,6 @@ export default function CollectionsPage() {
                         onAddSection={handleAddSection}
                         onAddItem={handleAddItem}
                         onDelete={handleDeleteNode}
-                        canAddSection={!selectedKind || selectedKind === 'section'}
-                        canAddItem={!selectedKind || selectedKind === 'section'}
                         canDelete={!!selectedNodeId && !isRoot}
                       />
                     </div>
@@ -718,6 +771,16 @@ export default function CollectionsPage() {
                       selectedHitAreaId={selectedNodeId}
                       onHitAreaClick={handleNodeSelect}
                       extraButtons={<>
+                        {previewCards.length > 0 && (
+                          <select
+                            value={previewCardId ?? ''}
+                            onChange={(e) => setPreviewCardId(e.target.value || null)}
+                            className="rounded border bg-background px-1.5 py-0.5 text-xs max-w-[120px]"
+                          >
+                            <option value="">Layout view</option>
+                            {previewCards.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        )}
                         <button
                           onClick={() => setShowSections(s => !s)}
                           className={`rounded p-1 transition-colors ${showSections ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}

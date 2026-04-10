@@ -31,7 +31,7 @@ test("text item renders correctly", () => {
           type: "text",
           id: "text-item",
           name: "Text Item",
-          fieldId: "description",
+          bindings: { defaultValue: { field: "description" } },
           anchor: { x: 0.5, y: 0.5 },
           attach: {
             targetType: "section",
@@ -134,7 +134,7 @@ test("image item renders correctly", () => {
           type: "image",
           id: "image-item",
           name: "Image Item",
-          fieldId: "portrait",
+          bindings: { defaultValue: { field: "portrait" } },
           anchor: { x: 0.5, y: 0 },
           attach: {
             targetType: "section",
@@ -186,7 +186,7 @@ test("legacy item without type renders as text", () => {
           // No type field - should default to text
           id: "legacy-item",
           name: "Legacy Item",
-          fieldId: "title",
+          bindings: { defaultValue: { field: "title" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",
@@ -236,7 +236,7 @@ test("image item without URL does not render", () => {
           type: "image",
           id: "image-item",
           name: "Image Item",
-          fieldId: "missing-field",
+          bindings: { defaultValue: { field: "missing-field" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",

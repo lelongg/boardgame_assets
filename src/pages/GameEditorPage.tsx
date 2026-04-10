@@ -230,7 +230,7 @@ export default function GameEditorPage() {
     }
     setSelectedNodeId(id)
     const newTypeKey = getNodeTypeKey(id)
-    const defaults: Record<string, string> = { section: 'layout', text: 'fieldId', frame: 'fillColor', image: 'fieldId', emoji: 'emoji' }
+    const defaults: Record<string, string> = { section: 'layout', text: 'defaultValue', frame: 'fillColor', image: 'defaultValue', emoji: 'emoji' }
     setSelectedProperty(propertyByType[newTypeKey] ?? defaults[newTypeKey] ?? 'name')
   }
 
@@ -249,7 +249,27 @@ export default function GameEditorPage() {
     }
     if (!node) return
     const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
-    if (TEMPLATE_KEYS.has(property)) { (t as any)[property] = value }
+    if (property.startsWith('__binding__')) {
+      const prop = property.slice('__binding__'.length)
+      if (!node.bindings) node.bindings = {}
+      if (value) node.bindings[prop] = value
+      else delete node.bindings[prop]
+      if (Object.keys(node.bindings).length === 0) delete node.bindings
+      // Sync values to all items sharing the same field:property binding
+      const binding = value as { field: string; values?: string[] } | null
+      if (binding?.field) {
+        const syncBindings = (s: any) => {
+          s.items?.forEach((item: any) => {
+            if (item.id === node.id || !item.bindings?.[prop]) return
+            if (item.bindings[prop].field === binding.field) {
+              item.bindings[prop] = { ...item.bindings[prop], values: binding.values }
+            }
+          })
+          s.children?.forEach(syncBindings)
+        }
+        syncBindings(t.root)
+      }
+    } else if (TEMPLATE_KEYS.has(property)) { (t as any)[property] = value }
     else if (property === 'attachAnchor') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.anchor = value }
     else if (property === 'attachTargetId') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.targetId = value; node.attach.targetType = getNodeKind(t.root, value as string) ?? 'section' }
     else node[property] = value
@@ -262,11 +282,18 @@ export default function GameEditorPage() {
   const handleAddSection = () => {
     if (!game?.layout) return
     const t = JSON.parse(JSON.stringify(game.layout))
-    const parentId = selectedKind === 'section' && selectedNodeId ? selectedNodeId : t.root.id
-    const parent = findSectionById(t.root, parentId)
-    if (!parent) return
     const section = { id: crypto.randomUUID(), name: 'New Section', layout: 'stack' as const, sizePct: 100, gap: 0, children: [] as any[], items: [] as any[] }
-    parent.children.push(section)
+    if (selectedKind === 'section' && selectedNodeId) {
+      const parent = findSectionById(t.root, selectedNodeId)
+      if (!parent) return
+      parent.children.push(section)
+    } else if (selectedKind === 'item' && selectedNodeId) {
+      const parent = findParentSection(t.root, selectedNodeId, 'item')
+      if (!parent) return
+      parent.children.push(section)
+    } else {
+      t.root.children.push(section)
+    }
     handleLayoutSave(t)
     setSelectedNodeId(section.id)
   }
@@ -282,9 +309,9 @@ export default function GameEditorPage() {
     if (!parent) return
     const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 100, heightPct: 100 }
     const items: Record<string, any> = {
-      text: { ...base, type: 'text', name: 'New Text', fieldId: 'field', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
+      text: { ...base, type: 'text', name: 'New Text', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
       frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
-      image: { ...base, type: 'image', name: 'New Image', fieldId: 'image', fit: 'cover', cornerRadius: 0 },
+      image: { ...base, type: 'image', name: 'New Image', fit: 'cover', cornerRadius: 0 },
       emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
     }
     const item = items[itemType]
@@ -411,108 +438,136 @@ export default function GameEditorPage() {
                         </div>
 
                         {game?.layout?.root && (() => {
-                          const fields: { fieldId: string; itemName: string; itemType: string; values?: string[] }[] = []
-                          const seen = new Set<string>()
-                          const collectFields = (section: any) => {
+                          // Discover fields from bindings, keyed by field:property
+                          const fieldMap = new Map<string, { field: string; property: string; itemType: string; values?: string[] }>()
+                          const collectBindings = (section: any) => {
                             section.items?.forEach((item: any) => {
-                              const type = item.type ?? 'text'
-                              if ((type === 'text' || type === 'image' || type === 'emoji') && item.fieldId && item.fieldId !== 'name' && !seen.has(item.fieldId)) {
-                                seen.add(item.fieldId)
-                                fields.push({ fieldId: item.fieldId, itemName: item.name, itemType: type, values: Array.isArray(item.values) && item.values.length > 0 ? item.values : undefined })
+                              const bindings = item.bindings as Record<string, { field: string; values?: string[] }> | undefined
+                              if (!bindings) return
+                              const itemType = item.type ?? 'text'
+                              for (const [prop, binding] of Object.entries(bindings)) {
+                                if (binding.field === 'name') continue
+                                const key = `${binding.field}\0${prop}`
+                                const existing = fieldMap.get(key)
+                                if (existing) {
+                                  if (binding.values?.length) {
+                                    const merged = new Set(existing.values ?? [])
+                                    for (const v of binding.values) merged.add(v)
+                                    existing.values = [...merged]
+                                  }
+                                  continue
+                                }
+                                fieldMap.set(key, {
+                                  field: binding.field,
+                                  property: prop,
+                                  itemType,
+                                  values: binding.values,
+                                })
                               }
                             })
-                            section.children?.forEach(collectFields)
+                            section.children?.forEach(collectBindings)
                           }
-                          collectFields(game.layout.root)
-                          if (fields.length === 0) return null
+                          collectBindings(game.layout.root)
+                          if (fieldMap.size === 0) return null
+
+                          const setField = (fieldKey: string, val: string) =>
+                            setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldKey]: val } })
+
+                          // Resolve the card field value: try scoped key first, fall back to plain
+                          const getField = (property: string, field: string) =>
+                            selectedCard.fields?.[`${property}:${field}`] ?? selectedCard.fields?.[field] ?? ''
+
                           return (
                             <div className="space-y-3">
-                              {fields.map(({ fieldId, itemType, values }) => (
-                                <div key={fieldId} className="space-y-1">
-                                  <Label className="text-sm flex items-center gap-1.5">{{ text: <Type className="h-3.5 w-3.5 text-muted-foreground" />, image: <Image className="h-3.5 w-3.5 text-muted-foreground" />, emoji: <Smile className="h-3.5 w-3.5 text-muted-foreground" /> }[itemType]} {fieldId}</Label>
+                              {[...fieldMap.entries()].map(([key, { field, property, itemType, values }]) => {
+                                const fieldKey = `${property}:${field}`
+                                const val = getField(property, field)
+                                return (
+                                <div key={key} className="space-y-1">
+                                  <Label className="text-sm">{field}</Label>
                                   {values ? (
                                     <select
-                                      value={selectedCard.fields?.[fieldId] ?? ''}
-                                      onChange={(e) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: e.target.value } })}
+                                      value={val}
+                                      onChange={(e) => setField(fieldKey, e.target.value)}
                                       className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                                     >
                                       <option value="">— select —</option>
                                       {values.map((v: string) => <option key={v} value={v}>{v}</option>)}
                                     </select>
-                                  ) : itemType === 'image' ? (
+                                  ) : property === 'emoji' ? (
+                                    <Input
+                                      value={val}
+                                      onChange={(e) => setField(fieldKey, e.target.value)}
+                                      placeholder="Emoji"
+                                    />
+                                  ) : property === 'defaultValue' && itemType === 'image' ? (
                                     <div className="space-y-2">
                                       <div className="relative">
                                         <Input
-                                          value={selectedCard.fields?.[fieldId] ?? ''}
-                                          onChange={(e) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: e.target.value } })}
+                                          value={val}
+                                          onChange={(e) => setField(fieldKey, e.target.value)}
                                           placeholder="Image URL"
                                           className="pr-16"
                                         />
                                         <div className="absolute right-0 top-0 h-full flex items-center gap-0.5 pr-1">
-                                          {selectedCard.fields?.[fieldId] && (
-                                            <button
-                                              type="button"
-                                              className="text-muted-foreground hover:text-foreground p-1 rounded-sm"
-                                              onClick={() => setExpandedImages(prev => {
-                                                const next = new Set(prev)
-                                                next.has(fieldId) ? next.delete(fieldId) : next.add(fieldId)
-                                                return next
-                                              })}
-                                              title="Preview image"
-                                            >
-                                              <Eye className="h-4 w-4" />
-                                            </button>
+                                          {val && (
+                                            <button type="button" className="text-muted-foreground hover:text-foreground p-1 rounded-sm"
+                                              onClick={() => setExpandedImages(prev => { const next = new Set(prev); next.has(fieldKey) ? next.delete(fieldKey) : next.add(fieldKey); return next })}
+                                              title="Preview image"><Eye className="h-4 w-4" /></button>
                                           )}
-                                          <button
-                                            type="button"
-                                            className="text-muted-foreground hover:text-foreground p-1 rounded-sm"
-                                            title="Upload image"
+                                          <button type="button" className="text-muted-foreground hover:text-foreground p-1 rounded-sm" title="Upload image"
                                             onClick={() => {
                                               const input = document.createElement('input')
-                                              input.type = 'file'
-                                              input.accept = 'image/*'
+                                              input.type = 'file'; input.accept = 'image/*'
                                               input.onchange = async () => {
-                                                const file = input.files?.[0]
-                                                if (!file) return
+                                                const file = input.files?.[0]; if (!file) return
                                                 try {
                                                   setStatus('Uploading image...')
                                                   let url: string
-                                                  try {
-                                                    url = await storage.uploadImage(gameId, file)
-                                                  } catch {
-                                                    // Fallback to data URI if storage upload fails
-                                                    url = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(file) })
-                                                  }
-                                                  setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldId]: url } }))
+                                                  try { url = await storage.uploadImage(gameId, file) }
+                                                  catch { url = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(file) }) }
+                                                  setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldKey]: url } }))
                                                   setStatus('Image uploaded.')
-                                                } catch (err: any) {
-                                                  setStatus(`Error: ${err.message || 'Upload failed'}`)
-                                                }
+                                                } catch (err: any) { setStatus(`Error: ${err.message || 'Upload failed'}`) }
                                               }
                                               input.click()
-                                            }}
-                                          >
-                                            <Upload className="h-4 w-4" />
-                                          </button>
+                                            }}><Upload className="h-4 w-4" /></button>
                                         </div>
                                       </div>
-                                      {expandedImages.has(fieldId) && selectedCard.fields?.[fieldId] && (
-                                        <LoadingImg
-                                          src={selectedCard.fields[fieldId]}
-                                          alt={fieldId}
-                                          className="max-h-32 rounded border object-contain"
-                                        />
+                                      {expandedImages.has(fieldKey) && val && (
+                                        <LoadingImg src={val} alt={field} className="max-h-32 rounded border object-contain" />
                                       )}
                                     </div>
+                                  ) : (property === 'color' || property === 'strokeColor' || property === 'fillColor') ? (
+                                    <Input
+                                      value={val}
+                                      onChange={(e) => setField(fieldKey, e.target.value)}
+                                      placeholder="#000000"
+                                    />
+                                  ) : (property === 'fontSize' || property === 'strokeWidth' || property === 'cornerRadius') ? (
+                                    <Input
+                                      type="number"
+                                      value={val}
+                                      onChange={(e) => setField(fieldKey, e.target.value)}
+                                    />
+                                  ) : property === 'visible' ? (
+                                    <button
+                                      onClick={() => setField(fieldKey, val === 'false' ? 'true' : 'false')}
+                                      className={`w-full rounded-md border px-3 py-2 text-sm text-left transition-colors ${
+                                        val !== 'false'
+                                          ? 'bg-primary/10 border-primary text-primary'
+                                          : 'bg-background border-input text-muted-foreground'
+                                      }`}
+                                    >{val !== 'false' ? 'Yes' : 'No'}</button>
                                   ) : (
                                     <RichTextField
-                                      value={selectedCard.fields?.[fieldId] ?? ''}
-                                      onChange={(html) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: html } })}
-                                      placeholder={`Enter ${fieldId}`}
+                                      value={val}
+                                      onChange={(html) => setField(fieldKey, html)}
                                     />
                                   )}
                                 </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           )
                         })()}
@@ -551,8 +606,6 @@ export default function GameEditorPage() {
                     onAddSection={handleAddSection}
                     onAddItem={handleAddItem}
                     onDelete={handleDeleteNode}
-                    canAddSection={!selectedKind || selectedKind === 'section'}
-                    canAddItem={!selectedKind || selectedKind === 'section'}
                     canDelete={!!selectedNodeId && !isRoot}
                   />
                 </div>

@@ -31,7 +31,7 @@ export const defaultLayout = (): CardLayout => ({
             type: "text",
             id: "title",
             name: "Title",
-            fieldId: "name",
+            bindings: { defaultValue: { field: "name" } },
             anchor: { x: 0, y: 0.5 },
             attach: {
               targetType: "section",
@@ -73,7 +73,7 @@ export const defaultLayout = (): CardLayout => ({
             type: "image",
             id: "artwork",
             name: "Artwork",
-            fieldId: "image",
+            bindings: { defaultValue: { field: "image" } },
             anchor: { x: 0.5, y: 0 },
             attach: {
               targetType: "section",
@@ -89,7 +89,7 @@ export const defaultLayout = (): CardLayout => ({
             type: "text",
             id: "description",
             name: "Description",
-            fieldId: "description",
+            bindings: { defaultValue: { field: "description" } },
             anchor: { x: 0.5, y: 0 },
             attach: {
               targetType: "item",

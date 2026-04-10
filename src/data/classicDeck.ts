@@ -1,10 +1,10 @@
 import type { CardData, CardLayout } from "../types";
 
 const SUITS = [
-  { symbol: "♠", name: "Spades", color: "#1a1a1a" },
-  { symbol: "♥", name: "Hearts", color: "#cc0000" },
-  { symbol: "♦", name: "Diamonds", color: "#cc0000" },
-  { symbol: "♣", name: "Clubs", color: "#1a1a1a" },
+  { symbol: "♠️", name: "Spades", color: "#1a1a1a" },
+  { symbol: "♥️", name: "Hearts", color: "#cc0000" },
+  { symbol: "♦️", name: "Diamonds", color: "#cc0000" },
+  { symbol: "♣️", name: "Clubs", color: "#1a1a1a" },
 ] as const;
 
 const RANKS = [
@@ -23,6 +23,7 @@ const RANKS = [
   { symbol: "K", name: "King", order: 13 },
 ] as const;
 
+
 export const classicDeckCards = (): CardData[] => {
   const cards: CardData[] = [];
 
@@ -32,9 +33,9 @@ export const classicDeckCards = (): CardData[] => {
         id: `${rank.symbol.toLowerCase()}-of-${suit.name.toLowerCase()}`,
         name: `${rank.name} of ${suit.name}`,
         fields: {
-          rank: rank.symbol,
-          suit: suit.symbol,
-          color: suit.color,
+          "defaultValue:rank": rank.symbol,
+          "emoji:suit": suit.symbol,
+          "color:color": suit.color,
         },
       });
     }
@@ -44,12 +45,12 @@ export const classicDeckCards = (): CardData[] => {
     {
       id: "red-joker",
       name: "Red Joker",
-      fields: { rank: "★", suit: "★", color: "#cc0000" },
+      fields: { "defaultValue:rank": "★", "emoji:suit": "★", "color:color": "#cc0000" },
     },
     {
       id: "black-joker",
       name: "Black Joker",
-      fields: { rank: "★", suit: "★", color: "#1a1a1a" },
+      fields: { "defaultValue:rank": "★", "emoji:suit": "★", "color:color": "#1a1a1a" },
     },
   );
 
@@ -87,7 +88,7 @@ export const classicDeckLayout = (): CardLayout => ({
             type: "text",
             id: "rank-top",
             name: "Rank",
-            fieldId: "rank",
+            bindings: { defaultValue: { field: "rank", values: ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "★"] } },
             anchor: { x: 0, y: 0 },
             attach: { targetType: "section", targetId: "top", anchor: { x: 0, y: 0 } },
             widthPct: 28,
@@ -101,7 +102,7 @@ export const classicDeckLayout = (): CardLayout => ({
             type: "emoji",
             id: "suit-top",
             name: "Suit",
-            fieldId: "suit",
+            bindings: { emoji: { field: "suit", values: ["♠️", "♥️", "♦️", "♣️", "★"] } },
             anchor: { x: 0.5, y: 0 },
             attach: { targetType: "item", targetId: "rank-top", anchor: { x: 0.5, y: 1 } },
             widthPct: 28,
@@ -122,7 +123,7 @@ export const classicDeckLayout = (): CardLayout => ({
             type: "emoji",
             id: "suit-center",
             name: "Suit Large",
-            fieldId: "suit",
+            bindings: { emoji: { field: "suit", values: ["♠️", "♥️", "♦️", "♣️", "★"] } },
             anchor: { x: 0.5, y: 0.5 },
             attach: { targetType: "section", targetId: "center", anchor: { x: 0.5, y: 0.5 } },
             widthPct: 50,
@@ -143,7 +144,7 @@ export const classicDeckLayout = (): CardLayout => ({
             type: "text",
             id: "rank-bottom",
             name: "Rank",
-            fieldId: "rank",
+            bindings: { defaultValue: { field: "rank", values: ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "★"] } },
             anchor: { x: 1, y: 1 },
             attach: { targetType: "section", targetId: "bottom", anchor: { x: 1, y: 1 } },
             widthPct: 28,
@@ -157,7 +158,7 @@ export const classicDeckLayout = (): CardLayout => ({
             type: "emoji",
             id: "suit-bottom",
             name: "Suit",
-            fieldId: "suit",
+            bindings: { emoji: { field: "suit", values: ["♠️", "♥️", "♦️", "♣️", "★"] } },
             anchor: { x: 0.5, y: 1 },
             attach: { targetType: "item", targetId: "rank-bottom", anchor: { x: 0.5, y: 0 } },
             widthPct: 28,

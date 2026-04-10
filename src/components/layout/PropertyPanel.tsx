@@ -14,6 +14,7 @@ type PropertyDef = { key: string; label: string }
 
 const SECTION_PROPERTIES: PropertyDef[] = [
   { key: 'name', label: 'Name' },
+  { key: 'visible', label: 'Visible' },
   { key: 'layout', label: 'Layout' },
   { key: 'sizePct', label: 'Size %' },
   { key: 'gap', label: 'Gap' },
@@ -32,6 +33,7 @@ const ROOT_PROPERTIES: PropertyDef[] = [
 
 const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
   { key: 'name', label: 'Name' },
+  { key: 'visible', label: 'Visible' },
   { key: 'widthPct', label: 'Width %' },
   { key: 'heightPct', label: 'Height %' },
   { key: 'anchor', label: 'Anchor' },
@@ -40,9 +42,7 @@ const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
 ]
 
 const TEXT_PROPERTIES: PropertyDef[] = [
-  { key: 'fieldId', label: 'Field ID' },
-  { key: 'values', label: 'Values' },
-  { key: 'defaultValue', label: 'Default' },
+  { key: 'defaultValue', label: 'Text' },
   { key: 'fontSize', label: 'Font Size' },
   { key: 'align', label: 'H Align' },
   { key: 'verticalAlign', label: 'V Align' },
@@ -58,17 +58,13 @@ const FRAME_PROPERTIES: PropertyDef[] = [
 ]
 
 const IMAGE_PROPERTIES: PropertyDef[] = [
-  { key: 'fieldId', label: 'Field ID' },
-  { key: 'values', label: 'Values' },
-  { key: 'defaultValue', label: 'Default Image' },
+  { key: 'defaultValue', label: 'Image' },
   { key: 'fit', label: 'Fit' },
   { key: 'cornerRadius', label: 'Corner Radius' },
 ]
 
 const EMOJI_PROPERTIES: PropertyDef[] = [
-  { key: 'fieldId', label: 'Field ID' },
-  { key: 'values', label: 'Values' },
-  { key: 'emoji', label: 'Default Emoji' },
+  { key: 'emoji', label: 'Emoji' },
   { key: 'fontSize', label: 'Size' },
 ]
 
@@ -110,6 +106,7 @@ export default function PropertyPanel({
 
   const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
   const properties = getPropertiesForNode(kind, node, isRoot)
+  const bindings = (node as any).bindings ?? {}
   const currentValue = selectedProperty
     ? (TEMPLATE_KEYS.has(selectedProperty) ? (layout as any)[selectedProperty] : getPropertyValue(node, selectedProperty))
     : null
@@ -118,19 +115,25 @@ export default function PropertyPanel({
     <div className="space-y-3">
       <div>
         <div className="flex flex-wrap gap-1.5">
-          {properties.map((prop) => (
-            <button
-              key={prop.key}
-              onClick={() => onSelectProperty(prop.key)}
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
-                selectedProperty === prop.key
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-background border-input hover:bg-accent/50'
-              }`}
-            >
-              {prop.label}
-            </button>
-          ))}
+          {properties.map((prop) => {
+            const hasBind = !!bindings[prop.key]
+            return (
+              <button
+                key={prop.key}
+                onClick={() => onSelectProperty(prop.key)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                  selectedProperty === prop.key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : hasBind
+                      ? 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900'
+                      : 'bg-background border-input hover:bg-accent/50'
+                }`}
+              >
+                {hasBind && <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 mr-1 -ml-0.5" />}
+                {prop.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -139,9 +142,11 @@ export default function PropertyPanel({
           <ControlPanel
             property={selectedProperty}
             value={currentValue}
+            binding={bindings[selectedProperty]}
             layout={layout}
             selectedNodeId={selectedNodeId}
             onChange={(value) => onPropertyChange(selectedProperty, value)}
+            onBindingChange={(binding) => onPropertyChange('__binding__' + selectedProperty, binding)}
           />
         </div>
       )}

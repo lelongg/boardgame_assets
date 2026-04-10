@@ -148,6 +148,8 @@ const listCollections = (gameId: string): Collection[] => {
     .filter(Boolean) as Collection[];
 };
 
+const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare;
+
 const listCollectionCards = (gameId: string, collectionId: string): CardData[] => {
   const dir = collectionCardsDir(gameId, collectionId);
   if (!fs.existsSync(dir)) return [];
@@ -155,7 +157,8 @@ const listCollectionCards = (gameId: string, collectionId: string): CardData[] =
     .filter((f) => f.endsWith(".json"))
     .map((f) => readJson<Partial<CardData> | null>(path.join(dir, f), null))
     .filter(Boolean)
-    .map((c) => normalizeCard(c));
+    .map((c) => normalizeCard(c))
+    .sort((a, b) => naturalCompare(a.name, b.name));
 };
 
 // --- Migration from old structure ---
