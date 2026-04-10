@@ -4,8 +4,77 @@ import "fake-indexeddb/auto";
 import { defaultTemplate } from "../src/template.js";
 import { createLocalFileStorage } from "../src/storage/localFile.js";
 import { createIndexedDBStorage } from "../src/storage/indexedDB.js";
+import { createS3Storage } from "../src/storage/s3.js";
 import { exportGameZip, importGameZip } from "../src/gameZip.js";
 import { getAsset } from "../src/storage/assetCache.js";
+
+// ── Start mock S3 server ──────────────────────────────────────────────────
+
+const S3_PORT = 5198;
+
+async function startS3Mock() {
+  const { Hono } = await import("hono");
+  const { serve } = await import("@hono/node-server");
+
+  const objects = new Map(); // key → { body: Buffer, contentType: string }
+  const app = new Hono();
+
+  // PUT object
+  app.put("/:bucket/*", async (c) => {
+    const key = c.req.path.replace(`/${c.req.param("bucket")}/`, "");
+    const body = Buffer.from(await c.req.arrayBuffer());
+    objects.set(key, { body, contentType: c.req.header("content-type") ?? "application/octet-stream" });
+    return c.body(null, 200);
+  });
+
+  // GET object
+  app.get("/:bucket/*", (c) => {
+    const key = c.req.path.replace(`/${c.req.param("bucket")}/`, "");
+    // ListObjectsV2
+    if (c.req.query("list-type") === "2") {
+      const prefix = c.req.query("prefix") ?? "";
+      const delimiter = c.req.query("delimiter");
+      const keys = [...objects.keys()].filter(k => k.startsWith(prefix));
+      if (delimiter) {
+        const prefixes = new Set();
+        const contents = [];
+        for (const k of keys) {
+          const rest = k.slice(prefix.length);
+          const idx = rest.indexOf(delimiter);
+          if (idx >= 0) {
+            prefixes.add(prefix + rest.slice(0, idx + 1));
+          } else {
+            contents.push(k);
+          }
+        }
+        const xml = `<?xml version="1.0"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+          <Name>${c.req.param("bucket")}</Name><Prefix>${prefix}</Prefix><Delimiter>${delimiter}</Delimiter>
+          ${contents.map(k => `<Contents><Key>${k}</Key></Contents>`).join("")}
+          ${[...prefixes].map(p => `<CommonPrefixes><Prefix>${p}</Prefix></CommonPrefixes>`).join("")}
+        </ListBucketResult>`;
+        return c.body(xml, { headers: { "Content-Type": "application/xml" } });
+      }
+      const xml = `<?xml version="1.0"?><ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+        <Name>${c.req.param("bucket")}</Name><Prefix>${prefix}</Prefix>
+        ${keys.map(k => `<Contents><Key>${k}</Key></Contents>`).join("")}
+      </ListBucketResult>`;
+      return c.body(xml, { headers: { "Content-Type": "application/xml" } });
+    }
+    const obj = objects.get(key);
+    if (!obj) return c.body(null, 404);
+    return c.body(obj.body, { headers: { "Content-Type": obj.contentType } });
+  });
+
+  // DELETE object
+  app.delete("/:bucket/*", (c) => {
+    const key = c.req.path.replace(`/${c.req.param("bucket")}/`, "");
+    objects.delete(key);
+    return c.body(null, 204);
+  });
+
+  const server = serve({ fetch: app.fetch, port: S3_PORT });
+  return { close: () => server.close() };
+}
 
 // ── Start real server for localFile tests ─────────────────────────────────
 
@@ -545,8 +614,27 @@ async function verifyFullTestGame(storage, gameId) {
 // Single server for all tests
 
 let serverCleanup;
-before(async () => { serverCleanup = (await startServer()).cleanup; });
-after(() => { serverCleanup?.(); });
+let s3Mock;
+const S3_BUCKET = "test-bucket";
+
+before(async () => {
+  serverCleanup = (await startServer()).cleanup;
+  s3Mock = await startS3Mock();
+});
+after(async () => {
+  serverCleanup?.();
+  if (s3Mock) s3Mock.close();
+});
+
+const createTestS3 = () => createS3Storage({
+  defaultTemplate,
+  bucket: S3_BUCKET,
+  region: "us-east-1",
+  accessKeyId: "S3RVER",
+  secretAccessKey: "S3RVER",
+  endpoint: `http://127.0.0.1:${S3_PORT}`,
+  prefix: "test-" + Math.random().toString(36).slice(2, 8),
+});
 
 describe("localFile backend (real server)", () => {
   backendCompatSuite("localFile", async () => createLocalFileStorage({ defaultTemplate }));
@@ -554,6 +642,10 @@ describe("localFile backend (real server)", () => {
 
 describe("indexedDB backend", () => {
   backendCompatSuite("indexedDB", async () => createIndexedDBStorage({ defaultTemplate }));
+});
+
+describe("s3 backend (s3rver)", () => {
+  backendCompatSuite("s3", async () => createTestS3());
 });
 
 describe("round-trip: same backend", () => {
@@ -574,6 +666,15 @@ describe("round-trip: same backend", () => {
     const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
+
+  it("s3 → zip → s3 preserves all data", async () => {
+    const src = createTestS3();
+    const { gameId } = await createFullTestGame(src);
+    const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
+    const dst = createTestS3();
+    const newId = await importGameZip(dst, zip);
+    await verifyFullTestGame(dst, newId);
+  });
 });
 
 describe("round-trip: cross-backend", () => {
@@ -591,6 +692,24 @@ describe("round-trip: cross-backend", () => {
     const { gameId } = await createFullTestGame(src);
     const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
     const dst = createLocalFileStorage({ defaultTemplate });
+    const newId = await importGameZip(dst, zip);
+    await verifyFullTestGame(dst, newId);
+  });
+
+  it("s3 → zip → localFile preserves all data", async () => {
+    const src = createTestS3();
+    const { gameId } = await createFullTestGame(src);
+    const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
+    const dst = createLocalFileStorage({ defaultTemplate });
+    const newId = await importGameZip(dst, zip);
+    await verifyFullTestGame(dst, newId);
+  });
+
+  it("localFile → zip → s3 preserves all data", async () => {
+    const src = createLocalFileStorage({ defaultTemplate });
+    const { gameId } = await createFullTestGame(src);
+    const zip = await (await exportGameZip(src, gameId)).arrayBuffer();
+    const dst = createTestS3();
     const newId = await importGameZip(dst, zip);
     await verifyFullTestGame(dst, newId);
   });
