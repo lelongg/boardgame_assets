@@ -13,7 +13,8 @@ fs.mkdirSync(docsDir, { recursive: true });
 
 // Build React app with Vite
 console.log("Building React app...");
-execSync("npm run build", { stdio: "inherit" });
+process.env.VITE_BASE_PATH = "/boardgame_assets/editor/";
+execSync("npm run build", { stdio: "inherit", env: { ...process.env } });
 
 // Inject Google OAuth client ID into built files
 const googleClientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
