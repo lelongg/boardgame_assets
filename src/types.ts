@@ -28,6 +28,7 @@ export type CardTemplateTextItem = CardTemplateItemBase & {
   type?: "text";  // Optional to support legacy items
   fieldId?: string;
   defaultValue?: string;
+  values?: string[];
   fontSize: number;
   align: "left" | "center" | "right";
   verticalAlign?: "top" | "middle" | "bottom";
@@ -49,20 +50,32 @@ export type CardTemplateImageItem = CardTemplateItemBase & {
   type: "image";
   fieldId?: string;
   defaultValue?: string;
+  values?: string[];
   fit?: "cover" | "contain" | "fill";
   cornerRadius?: number;
 };
 
+// Emoji item - displays an emoji, optionally bound to a card field
+export type CardTemplateEmojiItem = CardTemplateItemBase & {
+  type: "emoji";
+  fieldId?: string;
+  emoji?: string;
+  values?: string[];
+  fontSize: number;
+};
+
 // Union type for all item types
-export type CardTemplateItem = 
-  | CardTemplateTextItem 
-  | CardTemplateFrameItem 
-  | CardTemplateImageItem;
+export type CardTemplateItem =
+  | CardTemplateTextItem
+  | CardTemplateFrameItem
+  | CardTemplateImageItem
+  | CardTemplateEmojiItem;
 
 export type CardTemplateSection = {
   id: string;
   name: string;
-  layout: "row" | "column" | "stack";
+  layout: "row" | "column" | "stack" | "grid";
+  columns?: number;
   sizePct: number;
   gap: number;
   children: CardTemplateSection[];

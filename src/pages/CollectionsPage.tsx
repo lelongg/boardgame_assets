@@ -3,18 +3,22 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, LayoutGrid, Layers, Printer } from 'lucide-react'
-import { createStorage } from '../storage'
+import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, PlusCircle, LayoutGrid, Layers, Printer } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
+import ListItem from '@/components/ListItem'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/templateHelpers'
+import LoadingImg from '@/components/LoadingImg'
+import PageLayout from '@/components/PageLayout'
+import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from '@/components/FontManager'
+import useStorage from '../hooks/useStorage'
 
 export default function CollectionsPage() {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
-  const [storage, setStorage] = useState<any>(null)
+  const { storage, status, setStatus } = useStorage()
   const [game, setGame] = useState<any>(null)
   const [collections, setCollections] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
@@ -32,10 +36,13 @@ export default function CollectionsPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(() => {
     try { return localStorage.getItem(`game:${gameId}:selectedTemplate`) } catch { return null }
   })
-  const [status, setStatus] = useState('Loading...')
   const [showSections, setShowSections] = useState(true)
   const [showItemWires, setShowItemWires] = useState(true)
   const [editingName, setEditingName] = useState(false)
+  const [showFontAdd, setShowFontAdd] = useState(false)
+  const [selectedFont, setSelectedFont] = useState<string | null>(null)
+  const [fontPreviewText, setFontPreviewText] = useState(defaultPreviewText)
+  const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string; source: 'upload' | 'google' }>>({})
 
   // Layout editor state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -47,37 +54,18 @@ export default function CollectionsPage() {
   const selectedTemplate = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) : null
 
   useEffect(() => {
-    const init = async () => {
-      const s = await createStorage()
-      setStorage(s)
-      await loadData(s)
-    }
-    init()
-  }, [gameId])
+    if (!storage || !gameId) return
+    loadData(storage)
+  }, [storage, gameId])
 
   // Template preview
   useEffect(() => {
     if (!selectedTemplate) { setTemplatePreview(''); return }
     const updatePreview = async () => {
-      const { renderTemplateSvg, computeLayout } = await import('../render')
+      const { renderTemplateSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
       let svg = renderTemplateSvg(selectedTemplate, { showSections, showItems: showItemWires, selectedNodeId })
-      // Embed images as base64 data URIs since blob SVGs can't fetch external URLs
-      const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
-      for (const match of imgMatches) {
-        const url = match.slice(6, -1)
-        try {
-          const resp = await fetch(url)
-          if (resp.ok) {
-            const blob = await resp.blob()
-            const b64 = await new Promise<string>(resolve => {
-              const reader = new FileReader()
-              reader.onload = () => resolve(reader.result as string)
-              reader.readAsDataURL(blob)
-            })
-            svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-          }
-        } catch { /* skip */ }
-      }
+      svg = await embedFontsInSvg(svg, selectedTemplate, gameId!)
+      svg = await embedImagesInSvg(svg)
       const layout = computeLayout(selectedTemplate)
       const areas = [
         ...Array.from(layout.sections.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
@@ -99,25 +87,13 @@ export default function CollectionsPage() {
     if (!tpl) { setCardPreviews({}); return }
     let cancelled = false
     const renderAll = async () => {
-      const { renderCardSvg } = await import('../render')
+      const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
       const previews: Record<string, string> = {}
       for (const card of collectionCards) {
         if (cancelled) return
         let svg = renderCardSvg(card, tpl)
-        // Embed images as base64
-        const matches = svg.match(/href="((?:\/api\/|data:)[^"]+)"/g) || []
-        for (const m of matches) {
-          const url = m.slice(6, -1)
-          if (url.startsWith('data:')) continue
-          try {
-            const resp = await fetch(url)
-            if (resp.ok) {
-              const blob = await resp.blob()
-              const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(blob) })
-              svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-            }
-          } catch { /* skip */ }
-        }
+        svg = await embedFontsInSvg(svg, tpl, gameId!)
+        svg = await embedImagesInSvg(svg)
         const blob = new Blob([svg], { type: 'image/svg+xml' })
         previews[card.id] = URL.createObjectURL(blob)
       }
@@ -147,14 +123,16 @@ export default function CollectionsPage() {
   const loadData = async (s: any) => {
     try {
       if (!gameId) return
-      const [gameData, colList, tplList] = await Promise.all([
+      const [gameData, colList, tplList, fonts] = await Promise.all([
         s.getGame(gameId),
         s.listCollections(gameId),
         s.listTemplates(gameId),
+        s.listFonts(gameId),
       ])
       setGame(gameData)
       setCollections(colList)
       setTemplates(tplList)
+      setGameFonts(fonts)
       setCardPreviews({})
       setStatus('Ready.')
     } catch {
@@ -224,7 +202,7 @@ export default function CollectionsPage() {
     }
     setSelectedNodeId(id)
     const newTypeKey = getNodeTypeKey(id)
-    const defaults: Record<string, string> = { section: 'layout', text: 'fieldId', frame: 'fillColor', image: 'fieldId' }
+    const defaults: Record<string, string> = { section: 'layout', text: 'fieldId', frame: 'fillColor', image: 'fieldId', emoji: 'emoji' }
     setSelectedProperty(propertyByType[newTypeKey] ?? defaults[newTypeKey] ?? 'name')
   }
 
@@ -251,7 +229,10 @@ export default function CollectionsPage() {
       node = findItem(t.root)
     }
     if (!node) return
-    if (property === 'attachAnchor') {
+    const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
+    if (TEMPLATE_KEYS.has(property)) {
+      (t as any)[property] = value
+    } else if (property === 'attachAnchor') {
       if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
       node.attach.anchor = value
     } else if (property === 'attachTargetId') {
@@ -279,7 +260,7 @@ export default function CollectionsPage() {
     setSelectedNodeId(section.id)
   }
 
-  const handleAddItem = (itemType: 'text' | 'frame' | 'image') => {
+  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji') => {
     if (!selectedTemplate) return
     const t = JSON.parse(JSON.stringify(selectedTemplate))
     let parentId: string
@@ -290,11 +271,12 @@ export default function CollectionsPage() {
     } else parentId = t.root.id
     const parent = findSectionById(t.root, parentId)
     if (!parent) return
-    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 80, heightPct: 20 }
+    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 100, heightPct: 100 }
     const items: Record<string, any> = {
       text: { ...base, type: 'text', name: 'New Text', fieldId: 'field', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
-      frame: { ...base, type: 'frame', name: 'New Frame', heightPct: 90, widthPct: 90, strokeWidth: 2, cornerRadius: 8 },
-      image: { ...base, type: 'image', name: 'New Image', fieldId: 'image', heightPct: 60, fit: 'cover', cornerRadius: 0 },
+      frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
+      image: { ...base, type: 'image', name: 'New Image', fieldId: 'image', fit: 'cover', cornerRadius: 0 },
+      emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
     }
     const item = items[itemType]
     if (selectedKind === 'item' && selectedNodeId) {
@@ -325,48 +307,46 @@ export default function CollectionsPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b bg-background px-4 py-2 md:px-7">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          {editingName ? (
-            <input
-              autoFocus
-              className="text-lg font-semibold bg-transparent border-b border-primary outline-none"
-              defaultValue={game.name}
-              onBlur={async (e) => {
-                const name = e.target.value.trim()
-                setEditingName(false)
-                if (!name || name === game.name) return
-                try {
-                  await storage.updateGame(gameId, { name })
-                  setGame({ ...game, name })
-                } catch {
-                  setStatus('Error renaming game.')
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                if (e.key === 'Escape') setEditingName(false)
-              }}
-            />
-          ) : (
-            <h1
-              className="text-lg font-semibold cursor-pointer hover:text-muted-foreground transition-colors"
-              onClick={() => setEditingName(true)}
-            >{game.name}</h1>
-          )}
-          <div className="ml-auto text-sm text-muted-foreground">{status}</div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-4 md:px-7 md:py-6">
+    <PageLayout
+      header={<>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        {editingName ? (
+          <input
+            autoFocus
+            className="text-lg font-semibold bg-transparent border-b border-primary outline-none"
+            defaultValue={game.name}
+            onBlur={async (e) => {
+              const name = e.target.value.trim()
+              setEditingName(false)
+              if (!name || name === game.name) return
+              try {
+                await storage.updateGame(gameId, { name })
+                setGame({ ...game, name })
+              } catch {
+                setStatus('Error renaming game.')
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              if (e.key === 'Escape') setEditingName(false)
+            }}
+          />
+        ) : (
+          <h1
+            className="text-lg font-semibold cursor-pointer hover:text-muted-foreground transition-colors"
+            onClick={() => setEditingName(true)}
+          >{game.name}</h1>
+        )}
+      </>}
+      status={status}
+    >
         <Tabs defaultValue={localStorage.getItem(`game:${gameId}:tab`) || 'collections'} onValueChange={(v) => localStorage.setItem(`game:${gameId}:tab`, v)} className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="collections">Collections</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="fonts">Fonts</TabsTrigger>
           </TabsList>
 
           <TabsContent value="collections">
@@ -380,55 +360,51 @@ export default function CollectionsPage() {
               </CardHeader>
               <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
                 {collections.map((col) => (
-                  <div
+                  <ListItem
                     key={col.id}
-                    className={`rounded-lg border bg-card cursor-pointer ${expandedCollection === col.id ? 'ring-2 ring-inset ring-primary' : ''}`}
+                    selected={expandedCollection === col.id}
                     onClick={() => {
                       const next = expandedCollection === col.id ? null : col.id
                       setExpandedCollection(next)
                       if (gameId) { if (next) localStorage.setItem(`game:${gameId}:selectedCollection`, next); else localStorage.removeItem(`game:${gameId}:selectedCollection`) }
                     }}
+                    actions={<>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}/print`)} title="Print">
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                      <select
+                        className="rounded-md border bg-background px-2 py-1 text-sm"
+                        value={col.templateId}
+                        onChange={async (e) => {
+                          try {
+                            await storage.updateCollection(gameId, col.id, { templateId: e.target.value })
+                            await loadData(storage)
+                          } catch {
+                            setStatus('Error updating collection.')
+                          }
+                        }}
+                      >
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                      <ConfirmButton onConfirm={async () => {
+                        const prev = collections
+                        setCollections(collections.filter((c) => c.id !== col.id))
+                        setExpandedCollection(null)
+                        try { await storage.deleteCollection(gameId, col.id) }
+                        catch { setCollections(prev); setStatus('Error deleting collection.') }
+                      }} />
+                    </>}
                   >
-                    <div className="px-3 py-2.5">
-                      <span className="font-medium">{col.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {templates.find((t) => t.id === col.templateId)?.name ?? col.templateId}
-                      </span>
-                    </div>
-                    {expandedCollection === col.id && (
-                      <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}`)} title="Edit">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/game/${gameId}/collection/${col.id}/print`)} title="Print">
-                          <Printer className="h-4 w-4" />
-                        </Button>
-                        <select
-                          className="rounded-md border bg-background px-2 py-1 text-sm"
-                          value={col.templateId}
-                          onChange={async (e) => {
-                            try {
-                              await storage.updateCollection(gameId, col.id, { templateId: e.target.value })
-                              await loadData(storage)
-                            } catch {
-                              setStatus('Error updating collection.')
-                            }
-                          }}
-                        >
-                          {templates.map((t) => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
-                          ))}
-                        </select>
-                        <ConfirmButton onConfirm={async () => {
-                          const prev = collections
-                          setCollections(collections.filter((c) => c.id !== col.id))
-                          setExpandedCollection(null)
-                          try { await storage.deleteCollection(gameId, col.id) }
-                          catch { setCollections(prev); setStatus('Error deleting collection.') }
-                        }} />
-                      </div>
-                    )}
-                  </div>
+                    <span className="font-medium">{col.name}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {templates.find((t) => t.id === col.templateId)?.name ?? col.templateId}
+                    </span>
+                  </ListItem>
                 ))}
                 {collections.length === 0 && (
                   <p className="text-sm text-muted-foreground">No collections yet.</p>
@@ -504,7 +480,7 @@ export default function CollectionsPage() {
                       <ChevronLeft className="h-5 w-5" />
                     </button>
                     <div className="flex-1 rounded-lg border bg-card p-4 flex justify-center">
-                      <img
+                      <LoadingImg
                         src={selectedCardId ? cardPreviews[selectedCardId] || '' : ''}
                         alt="Card preview"
                         className="max-w-full max-h-[60vh]"
@@ -531,7 +507,7 @@ export default function CollectionsPage() {
                         }`}
                         onClick={() => setSelectedCardId(card.id)}
                       >
-                        <img
+                        <LoadingImg
                           src={cardPreviews[card.id] || ''}
                           alt={card.name}
                           className="w-full"
@@ -596,7 +572,7 @@ export default function CollectionsPage() {
                         className={`relative rounded-md cursor-pointer transition-all ${selectedCardId === card.id ? 'outline outline-2 outline-primary' : 'outline outline-1 outline-border'}`}
                         onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}>
                         <div className="rounded-t-md overflow-hidden" style={{ aspectRatio: '5 / 7' }}>
-                          <img src={cardPreviews[card.id] || ''} alt={card.name} className="w-full h-full" />
+                          <LoadingImg src={cardPreviews[card.id] || ''} alt={card.name} className="w-full h-full" wrapperClassName="w-full h-full" />
                         </div>
                         <p className="px-2 py-1 text-xs text-center text-muted-foreground truncate">{card.name}</p>
                       </div>
@@ -623,42 +599,38 @@ export default function CollectionsPage() {
                 </CardHeader>
                 <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
                   {templates.map((tpl) => (
-                    <div
+                    <ListItem
                       key={tpl.id}
-                      className={`rounded-lg border bg-card cursor-pointer ${selectedTemplateId === tpl.id ? 'ring-2 ring-inset ring-primary' : ''}`}
+                      selected={selectedTemplateId === tpl.id}
                       onClick={() => {
                         const next = selectedTemplateId === tpl.id ? null : tpl.id
                         setSelectedTemplateId(next)
                         setSelectedNodeId(null)
                         if (gameId) { if (next) localStorage.setItem(`game:${gameId}:selectedTemplate`, next); else localStorage.removeItem(`game:${gameId}:selectedTemplate`) }
                       }}
+                      actions={<>
+                        <Button size="sm" variant="outline" onClick={async () => {
+                          const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Template ${templates.length + 1}` }
+                          setTemplates(prev => [...prev, opt])
+                          try {
+                            const copy = await storage.copyTemplate(gameId, tpl.id)
+                            setTemplates(prev => prev.map(t => t.id === opt.id ? copy : t))
+                          } catch { setTemplates(prev => prev.filter(t => t.id !== opt.id)); setStatus('Error copying template.') }
+                        }}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <ConfirmButton onConfirm={async () => {
+                          const prev = templates
+                          setTemplates(templates.filter((t) => t.id !== tpl.id))
+                          if (selectedTemplateId === tpl.id) setSelectedTemplateId(null)
+                          try { await storage.deleteTemplate(gameId, tpl.id) }
+                          catch (err: any) { setTemplates(prev); setStatus(err.message || 'Error deleting template.') }
+                        }} />
+                      </>}
                     >
-                      <div className="px-3 py-2.5">
-                        <span className="font-medium">{tpl.name}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{tpl.width}×{tpl.height}</span>
-                      </div>
-                      {selectedTemplateId === tpl.id && (
-                        <div className="flex gap-2 border-t px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                          <Button size="sm" variant="outline" onClick={async () => {
-                            const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Template ${templates.length + 1}` }
-                            setTemplates(prev => [...prev, opt])
-                            try {
-                              const copy = await storage.copyTemplate(gameId, tpl.id)
-                              setTemplates(prev => prev.map(t => t.id === opt.id ? copy : t))
-                            } catch { setTemplates(prev => prev.filter(t => t.id !== opt.id)); setStatus('Error copying template.') }
-                          }}>
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <ConfirmButton onConfirm={async () => {
-                            const prev = templates
-                            setTemplates(templates.filter((t) => t.id !== tpl.id))
-                            if (selectedTemplateId === tpl.id) setSelectedTemplateId(null)
-                            try { await storage.deleteTemplate(gameId, tpl.id) }
-                            catch (err: any) { setTemplates(prev); setStatus(err.message || 'Error deleting template.') }
-                          }} />
-                        </div>
-                      )}
-                    </div>
+                      <span className="font-medium">{tpl.name}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{tpl.width}×{tpl.height}</span>
+                    </ListItem>
                   ))}
                   {templates.length === 0 && (
                     <p className="text-sm text-muted-foreground">No templates yet.</p>
@@ -743,8 +715,38 @@ export default function CollectionsPage() {
               )}
             </div>
           </TabsContent>
+
+          <TabsContent value="fonts">
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6 items-start">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-base">Fonts</CardTitle>
+                  <Button size="sm" variant="ghost" onClick={() => setShowFontAdd(v => !v)} title="Add font">
+                    <PlusCircle className="h-4 w-4" />
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <FontManager
+                    gameId={gameId!}
+                    storage={storage}
+                    fonts={gameFonts}
+                    onFontsChange={setGameFonts}
+                    onStatus={setStatus}
+                    showAdd={showFontAdd}
+                    onToggleAdd={() => setShowFontAdd(v => !v)}
+                    selectedFont={selectedFont}
+                    onSelectFont={setSelectedFont}
+                  />
+                </CardContent>
+              </Card>
+
+              <div className="space-y-4">
+                <FontPreview fonts={gameFonts} selectedFont={selectedFont} previewText={fontPreviewText} />
+                <FontPreviewEditor previewText={fontPreviewText} onChangePreviewText={setFontPreviewText} />
+              </div>
+            </div>
+          </TabsContent>
         </Tabs>
-      </main>
-    </div>
+    </PageLayout>
   )
 }

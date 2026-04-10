@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem } from "../types.js";
+import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateTextItem, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateEmojiItem } from "../types.js";
 import { theme } from "../theme.js";
 
 const DEBUG_FONT = "'Space Grotesk', sans-serif";
@@ -96,6 +96,26 @@ const layoutSections = (section: CardTemplateSection, rect: Rect, result: Layout
 
   if (section.layout === "stack") {
     section.children.forEach((child) => layoutSections(child, rect, result));
+    return;
+  }
+
+  if (section.layout === "grid") {
+    const cols = section.columns ?? 2;
+    const rows = Math.ceil(section.children.length / cols);
+    const gapX = section.gap;
+    const gapY = section.gap;
+    const cellW = (rect.width - (cols - 1) * gapX) / cols;
+    const cellH = (rect.height - (rows - 1) * gapY) / rows;
+    section.children.forEach((child, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      layoutSections(child, {
+        x: rect.x + col * (cellW + gapX),
+        y: rect.y + row * (cellH + gapY),
+        width: cellW,
+        height: cellH,
+      }, result);
+    });
     return;
   }
 
@@ -291,7 +311,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       const cornerRadius = imageItem.cornerRadius ?? 0;
       const clipId = `clip-${imageItem.id}`;
       const fit = imageItem.fit ?? "cover";
-      
+
       // Calculate image dimensions based on fit mode
       let imageProps = "";
       if (fit === "cover" || fit === "contain") {
@@ -299,13 +319,22 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
       } else {
         imageProps = `x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" preserveAspectRatio="none"`;
       }
-      
+
       if (cornerRadius > 0) {
         clipPaths.push(`<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" /></clipPath>`);
         itemElements.push(`<image ${imageProps} href="${escape(imageUrl)}" clip-path="url(#${clipId})" />`);
       } else {
         itemElements.push(`<image ${imageProps} href="${escape(imageUrl)}" />`);
       }
+    }
+
+    if (itemType === "emoji") {
+      const emojiItem = item as CardTemplateEmojiItem;
+      const emoji = (emojiItem.fieldId ? card.fields[emojiItem.fieldId] : null) || emojiItem.emoji || "⭐";
+      const fontSize = emojiItem.fontSize ?? 32;
+      const textX = rect.x + rect.width / 2;
+      const textY = rect.y + rect.height / 2;
+      itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
     }
   });
 

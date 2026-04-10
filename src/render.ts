@@ -110,6 +110,26 @@ const layoutSections = (section: CardTemplateSection, rect: Rect, result: Layout
     return;
   }
 
+  if (section.layout === "grid") {
+    const cols = section.columns ?? 2;
+    const rows = Math.ceil(section.children.length / cols);
+    const gapX = section.gap;
+    const gapY = section.gap;
+    const cellW = (rect.width - (cols - 1) * gapX) / cols;
+    const cellH = (rect.height - (rows - 1) * gapY) / rows;
+    section.children.forEach((child, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      layoutSections(child, {
+        x: rect.x + col * (cellW + gapX),
+        y: rect.y + row * (cellH + gapY),
+        width: cellW,
+        height: cellH,
+      }, result);
+    });
+    return;
+  }
+
   const gapTotal = Math.max(section.children.length - 1, 0) * section.gap;
   const available = section.layout === "row" ? rect.width : rect.height;
   const totalPct = section.children.reduce((sum, child) => sum + (child.sizePct || 0), 0) || 100;
@@ -242,8 +262,8 @@ const findItem = (section: CardTemplateSection, id: string): CardTemplateItem | 
 
 export const renderCardSvg = (card: CardData, template: CardTemplate, options: RenderOptions = {}): string => {
   const { palette } = theme;
-  const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
   const { width, height, radius } = template;
+  const fontSlots = Object.keys(template.fonts ?? {});
   const layout = computeLayout(template);
   const items: CardTemplateItem[] = [];
   collectItems(template.root, items);
@@ -252,7 +272,7 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
     .map((item) => {
       const rect = layout.items.get(item.id);
       if (!rect) return "";
-      
+
       const itemType = item.type ?? "text"; // Default to text for legacy items
       
       if (itemType === "frame") {
@@ -286,11 +306,22 @@ export const renderCardSvg = (card: CardData, template: CardTemplate, options: R
         return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${preserveAspectRatio}"${clipAttr} />`;
       }
       
+      if (itemType === "emoji") {
+        if (item.type !== "emoji") return "";
+        const emoji = ((item as any).fieldId ? card.fields[(item as any).fieldId] : null) || (item as any).emoji || "⭐";
+        const fontSize = item.fontSize ?? 32;
+        const textX = rect.x + rect.width / 2;
+        const textY = rect.y + rect.height / 2;
+        return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`;
+      }
+
       // Render text item (default) - type guard
-      if (item.type === "frame" || item.type === "image") return "";
+      if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
       const value = item.fieldId === "name" ? card.name : (item.fieldId ? card.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
       if (!value) return "";
-      const fontFamily = item.font === "title" ? typography.title : typography.body;
+      const slotName = item.font && template.fonts?.[item.font] ? item.font : fontSlots[0];
+      const fontSlot = template.fonts?.[slotName];
+      const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
       const fontSize = item.fontSize ?? 20;
       const align = item.align ?? "center";
       const vAlign = (item as any).verticalAlign ?? "middle";
@@ -373,13 +404,13 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
   const { showSections = true, showItems = true, selectedNodeId = null } = options;
   const { palette } = theme;
   const { width, height, radius } = template;
+  const fontSlots = Object.keys(template.fonts ?? {});
   const layout = computeLayout(template);
 
   // Render card content using empty card (defaults will show)
   const emptyCard: CardData = { id: '', name: 'Card Name', fields: {} };
   const items: CardTemplateItem[] = [];
   collectItems(template.root, items);
-  const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
 
   const renderedContent = items.map((item) => {
     const rect = layout.items.get(item.id);
@@ -405,10 +436,20 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
       const ca = cr > 0 ? ` clip-path="url(#${clipId})"` : "";
       return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${par}"${ca} />`;
     }
-    if (item.type === "frame" || item.type === "image") return "";
+    if (itemType === "emoji") {
+      if (item.type !== "emoji") return "";
+      const emoji = (item as any).emoji || "⭐";
+      const fontSize = item.fontSize ?? 32;
+      const textX = rect.x + rect.width / 2;
+      const textY = rect.y + rect.height / 2;
+      return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`;
+    }
+    if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
     const value = item.fieldId === "name" ? emptyCard.name : (item.fieldId ? emptyCard.fields[item.fieldId] : null) ?? (item as any).defaultValue ?? "";
     if (!value) return "";
-    const fontFamily = item.font === "title" ? typography.title : typography.body;
+    const slotName = item.font && template.fonts?.[item.font] ? item.font : fontSlots[0];
+    const fontSlot = template.fonts?.[slotName];
+    const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
     const fontSize = item.fontSize ?? 20;
     const align = item.align ?? "left";
     const vAlign = (item as any).verticalAlign ?? "top";
@@ -458,6 +499,53 @@ export const renderTemplateSvg = (template: CardTemplate, options: {
   ${sectionRects}
   ${itemRects}
 </svg>`;
+};
+
+/** Fetch template fonts and embed them as base64 @font-face rules into the SVG.
+ *  Blob SVGs displayed via <img> can't access the page's @font-face rules. */
+export const embedFontsInSvg = async (svg: string, template: CardTemplate, gameId: string): Promise<string> => {
+  const fonts = template.fonts;
+  if (!fonts) return svg;
+  const rules: string[] = [];
+  for (const slot of Object.values(fonts)) {
+    if (!slot.file) continue;
+    try {
+      const resp = await fetch(`/api/games/${gameId}/fonts/${slot.file}`);
+      if (!resp.ok) continue;
+      const blob = await resp.blob();
+      const b64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+      rules.push(`@font-face { font-family: '${slot.name}'; src: url('${b64}'); }`);
+    } catch { /* skip */ }
+  }
+  if (!rules.length) return svg;
+  const styleBlock = `<defs><style>${rules.join('\n')}</style></defs>`;
+  // Insert after the opening <svg ...> tag
+  return svg.replace(/(<svg[^>]*>)/, `$1${styleBlock}`);
+};
+
+/** Fetch images referenced via /api/ URLs and embed them as base64 data URIs.
+ *  Blob SVGs displayed via <img> can't fetch external URLs. */
+export const embedImagesInSvg = async (svg: string): Promise<string> => {
+  const matches = svg.match(/href="(\/api\/[^"]+)"/g) || [];
+  for (const m of matches) {
+    const url = m.slice(6, -1);
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const blob = await resp.blob();
+      const b64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+      svg = svg.replace(`href="${url}"`, `href="${b64}"`);
+    } catch { /* skip */ }
+  }
+  return svg;
 };
 
 export const injectDebugLabel = (svg: string, debugAttach: unknown): string => {

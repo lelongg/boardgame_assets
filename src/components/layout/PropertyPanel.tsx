@@ -17,6 +17,17 @@ const SECTION_PROPERTIES: PropertyDef[] = [
   { key: 'layout', label: 'Layout' },
   { key: 'sizePct', label: 'Size %' },
   { key: 'gap', label: 'Gap' },
+  { key: 'columns', label: 'Columns' },
+]
+
+const ROOT_PROPERTIES: PropertyDef[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'width', label: 'Width' },
+  { key: 'height', label: 'Height' },
+  { key: 'radius', label: 'Radius' },
+  { key: 'bleed', label: 'Bleed' },
+  { key: 'layout', label: 'Layout' },
+  { key: 'gap', label: 'Gap' },
 ]
 
 const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
@@ -30,6 +41,7 @@ const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
 
 const TEXT_PROPERTIES: PropertyDef[] = [
   { key: 'fieldId', label: 'Field ID' },
+  { key: 'values', label: 'Values' },
   { key: 'defaultValue', label: 'Default' },
   { key: 'fontSize', label: 'Font Size' },
   { key: 'align', label: 'H Align' },
@@ -47,18 +59,27 @@ const FRAME_PROPERTIES: PropertyDef[] = [
 
 const IMAGE_PROPERTIES: PropertyDef[] = [
   { key: 'fieldId', label: 'Field ID' },
+  { key: 'values', label: 'Values' },
   { key: 'defaultValue', label: 'Default Image' },
   { key: 'fit', label: 'Fit' },
   { key: 'cornerRadius', label: 'Corner Radius' },
 ]
 
-const getPropertiesForNode = (kind: 'section' | 'item', node: any): PropertyDef[] => {
-  if (kind === 'section') return SECTION_PROPERTIES
+const EMOJI_PROPERTIES: PropertyDef[] = [
+  { key: 'fieldId', label: 'Field ID' },
+  { key: 'values', label: 'Values' },
+  { key: 'emoji', label: 'Default Emoji' },
+  { key: 'fontSize', label: 'Size' },
+]
+
+const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boolean): PropertyDef[] => {
+  if (kind === 'section') return isRoot ? ROOT_PROPERTIES : SECTION_PROPERTIES
   const itemType = node.type ?? 'text'
   switch (itemType) {
     case 'text': return [...COMMON_ITEM_PROPERTIES, ...TEXT_PROPERTIES]
     case 'frame': return [...COMMON_ITEM_PROPERTIES, ...FRAME_PROPERTIES]
     case 'image': return [...COMMON_ITEM_PROPERTIES, ...IMAGE_PROPERTIES]
+    case 'emoji': return [...COMMON_ITEM_PROPERTIES, ...EMOJI_PROPERTIES]
     default: return COMMON_ITEM_PROPERTIES
   }
 }
@@ -81,13 +102,17 @@ export default function PropertyPanel({
   const kind = getNodeKind(template.root, selectedNodeId)
   if (!kind) return null
 
+  const isRoot = selectedNodeId === template.root.id
   const node = kind === 'section'
     ? findSectionById(template.root, selectedNodeId)
     : findItemById(template.root, selectedNodeId)
   if (!node) return null
 
-  const properties = getPropertiesForNode(kind, node)
-  const currentValue = selectedProperty ? getPropertyValue(node, selectedProperty) : null
+  const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
+  const properties = getPropertiesForNode(kind, node, isRoot)
+  const currentValue = selectedProperty
+    ? (TEMPLATE_KEYS.has(selectedProperty) ? (template as any)[selectedProperty] : getPropertyValue(node, selectedProperty))
+    : null
 
   return (
     <div className="space-y-3">

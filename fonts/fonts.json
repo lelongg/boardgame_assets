@@ -1,0 +1,22 @@
+{
+  "title": {
+    "name": "Fraunces",
+    "file": "",
+    "source": "google"
+  },
+  "body": {
+    "name": "Space Grotesk",
+    "file": "",
+    "source": "google"
+  },
+  "playwrite-ie": {
+    "name": "Playwrite IE",
+    "file": "9989621508c7.woff2",
+    "source": "google"
+  },
+  "Bolyar": {
+    "name": "FMBolyarRoughOPro-500",
+    "file": "5a2f591f7803.ttf",
+    "source": "upload"
+  }
+}

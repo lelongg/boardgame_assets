@@ -17,11 +17,14 @@
     "test": "node --test --import tsx test/*.test.js"
   },
   "devDependencies": {
+    "@smithy/util-stream": "^4.5.22",
     "@types/node": "^25.2.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.24",
+    "fake-indexeddb": "^6.2.5",
+    "google-drive-mock": "^1.1.5",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.15.0",
@@ -29,6 +32,7 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1027.0",
     "@hono/node-server": "^1.19.13",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-label": "^2.1.8",
@@ -40,7 +44,9 @@
     "@tiptap/starter-kit": "^3.22.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "emoji-picker-element": "^1.29.1",
     "hono": "^4.12.12",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.564.0",
     "react": "^19.2.4",
     "react-colorful": "^5.6.1",

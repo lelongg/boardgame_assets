@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Eye, Upload, ArrowLeft, Copy, Save, Plus, LayoutGrid, Layers } from 'lucide-react'
+import { Eye, Upload, ArrowLeft, Copy, Save, Plus, LayoutGrid, Layers, Type, Image, Smile } from 'lucide-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,16 +9,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/templateHelpers'
-import { createStorage } from '../storage'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
+import ListItem from '@/components/ListItem'
+import LoadingImg from '@/components/LoadingImg'
+import PageLayout from '@/components/PageLayout'
+import useStorage from '../hooks/useStorage'
 
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
   const navigate = useNavigate()
-  const [status, setStatus] = useState('Loading...')
-  const [storage, setStorage] = useState<any>(null)
+  const { storage, status, setStatus } = useStorage()
   const [game, setGame] = useState<any>(null)
   const [collection, setCollection] = useState<any>(null)
   const [cards, setCards] = useState<any[]>([])
@@ -37,13 +39,9 @@ export default function GameEditorPage() {
   const isCardDirty = selectedCard && JSON.stringify(selectedCard) !== savedCardJson
 
   useEffect(() => {
-    const initStorage = async () => {
-      const s = await createStorage()
-      setStorage(s)
-      await loadGame(s)
-    }
-    initStorage()
-  }, [gameId])
+    if (!storage || !gameId) return
+    loadGame(storage)
+  }, [storage, gameId])
 
   useEffect(() => {
     if (!game?.template?.fonts) return
@@ -56,7 +54,7 @@ export default function GameEditorPage() {
     }
     const rules = Object.values(game.template.fonts)
       .filter((f: any) => f.file)
-      .map((f: any) => `@font-face { font-family: '${f.name}'; src: url('/api/fonts/${f.file}'); }`)
+      .map((f: any) => `@font-face { font-family: '${f.name}'; src: url('/api/games/${gameId}/fonts/${f.file}'); }`)
       .join('\n')
     style.textContent = rules
     return () => { if (style) style.textContent = '' }
@@ -66,22 +64,10 @@ export default function GameEditorPage() {
     if (!selectedCard || !game?.template || !gameId) return
     const timer = setTimeout(async () => {
       try {
-        const { renderCardSvg } = await import('../render')
+        const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
         let svg = renderCardSvg(selectedCard, game.template)
-        // Embed images as base64 for blob SVGs
-        const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
-        for (const match of imgMatches) {
-          const url = match.slice(6, -1)
-          try {
-            const resp = await fetch(url)
-            if (resp.ok) {
-              const b = await resp.blob()
-              const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(b) })
-              svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-            }
-          } catch { /* skip */ }
-        }
-        // Also embed data: URIs that are already inline (no fetch needed)
+        svg = await embedFontsInSvg(svg, game.template, gameId)
+        svg = await embedImagesInSvg(svg)
         const blob = new Blob([svg], { type: 'image/svg+xml' })
         const blobUrl = URL.createObjectURL(blob)
         setCardPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return blobUrl })
@@ -206,25 +192,10 @@ export default function GameEditorPage() {
   useEffect(() => {
     if (!game?.template) { setTemplatePreview(''); return }
     const updatePreview = async () => {
-      const { renderTemplateSvg, computeLayout } = await import('../render')
+      const { renderTemplateSvg, computeLayout, embedFontsInSvg, embedImagesInSvg } = await import('../render')
       let svg = renderTemplateSvg(game.template, { showSections, showItems: showItemWires, selectedNodeId })
-      // Embed images as base64 data URIs since blob SVGs can't fetch external URLs
-      const imgMatches = svg.match(/href="(\/api\/[^"]+)"/g) || []
-      for (const match of imgMatches) {
-        const url = match.slice(6, -1) // extract URL from href="..."
-        try {
-          const resp = await fetch(url)
-          if (resp.ok) {
-            const blob = await resp.blob()
-            const b64 = await new Promise<string>(resolve => {
-              const reader = new FileReader()
-              reader.onload = () => resolve(reader.result as string)
-              reader.readAsDataURL(blob)
-            })
-            svg = svg.replace(`href="${url}"`, `href="${b64}"`)
-          }
-        } catch { /* skip */ }
-      }
+      svg = await embedFontsInSvg(svg, game.template, gameId!)
+      svg = await embedImagesInSvg(svg)
       const layout = computeLayout(game.template)
       setTemplateHitAreas([
         ...Array.from(layout.sections.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
@@ -260,7 +231,7 @@ export default function GameEditorPage() {
     }
     setSelectedNodeId(id)
     const newTypeKey = getNodeTypeKey(id)
-    const defaults: Record<string, string> = { section: 'layout', text: 'fieldId', frame: 'fillColor', image: 'fieldId' }
+    const defaults: Record<string, string> = { section: 'layout', text: 'fieldId', frame: 'fillColor', image: 'fieldId', emoji: 'emoji' }
     setSelectedProperty(propertyByType[newTypeKey] ?? defaults[newTypeKey] ?? 'name')
   }
 
@@ -278,7 +249,9 @@ export default function GameEditorPage() {
       node = find(t.root)
     }
     if (!node) return
-    if (property === 'attachAnchor') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.anchor = value }
+    const TEMPLATE_KEYS = new Set(['width', 'height', 'radius', 'bleed'])
+    if (TEMPLATE_KEYS.has(property)) { (t as any)[property] = value }
+    else if (property === 'attachAnchor') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.anchor = value }
     else if (property === 'attachTargetId') { if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }; node.attach.targetId = value; node.attach.targetType = getNodeKind(t.root, value as string) ?? 'section' }
     else node[property] = value
     handleTemplateSave(t)
@@ -299,7 +272,7 @@ export default function GameEditorPage() {
     setSelectedNodeId(section.id)
   }
 
-  const handleAddItem = (itemType: 'text' | 'frame' | 'image') => {
+  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji') => {
     if (!game?.template) return
     const t = JSON.parse(JSON.stringify(game.template))
     let parentId: string
@@ -308,11 +281,12 @@ export default function GameEditorPage() {
     else parentId = t.root.id
     const parent = findSectionById(t.root, parentId)
     if (!parent) return
-    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 80, heightPct: 20 }
+    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 100, heightPct: 100 }
     const items: Record<string, any> = {
       text: { ...base, type: 'text', name: 'New Text', fieldId: 'field', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
-      frame: { ...base, type: 'frame', name: 'New Frame', heightPct: 90, widthPct: 90, strokeWidth: 2, cornerRadius: 8 },
-      image: { ...base, type: 'image', name: 'New Image', fieldId: 'image', heightPct: 60, fit: 'cover', cornerRadius: 0 },
+      frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
+      image: { ...base, type: 'image', name: 'New Image', fieldId: 'image', fit: 'cover', cornerRadius: 0 },
+      emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
     }
     const item = items[itemType]
     if (selectedKind === 'item' && selectedNodeId) { const loc = findNodeLocation(t.root, selectedNodeId, 'item'); if (loc) loc.list.splice(loc.index + 1, 0, item); else parent.items.push(item) }
@@ -340,44 +314,41 @@ export default function GameEditorPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b bg-background px-4 py-2 md:px-7">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate(`/game/${gameId}`)}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          {editingName ? (
-            <input
-              autoFocus
-              className="text-lg font-semibold bg-transparent border-b border-primary outline-none"
-              defaultValue={game.name}
-              onBlur={async (e) => {
-                const name = e.target.value.trim()
-                setEditingName(false)
-                if (!name || name === game.name) return
-                try {
-                  await storage.updateGame(gameId, { name })
-                  setGame({ ...game, name })
-                } catch {
-                  setStatus('Error renaming game.')
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                if (e.key === 'Escape') { setEditingName(false) }
-              }}
-            />
-          ) : (
-            <h1
-              className="text-lg font-semibold cursor-pointer hover:text-muted-foreground transition-colors"
-              onClick={() => setEditingName(true)}
-            >{game.name}</h1>
-          )}
-          <div className="ml-auto text-sm text-muted-foreground">{status}</div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-4 md:px-7 md:py-4">
+    <PageLayout
+      header={<>
+        <Button variant="ghost" size="sm" onClick={() => navigate(`/game/${gameId}`)}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        {editingName ? (
+          <input
+            autoFocus
+            className="text-lg font-semibold bg-transparent border-b border-primary outline-none"
+            defaultValue={game.name}
+            onBlur={async (e) => {
+              const name = e.target.value.trim()
+              setEditingName(false)
+              if (!name || name === game.name) return
+              try {
+                await storage.updateGame(gameId, { name })
+                setGame({ ...game, name })
+              } catch {
+                setStatus('Error renaming game.')
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              if (e.key === 'Escape') { setEditingName(false) }
+            }}
+          />
+        ) : (
+          <h1
+            className="text-lg font-semibold cursor-pointer hover:text-muted-foreground transition-colors"
+            onClick={() => setEditingName(true)}
+          >{game.name}</h1>
+        )}
+      </>}
+      status={status}
+    >
         <Tabs defaultValue={localStorage.getItem(`editor:${gameId}:tab`) || 'cards'} onValueChange={(v) => localStorage.setItem(`editor:${gameId}:tab`, v)} className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="cards">Cards</TabsTrigger>
@@ -385,7 +356,7 @@ export default function GameEditorPage() {
           </TabsList>
 
           <TabsContent value="cards">
-            <div className="grid grid-cols-1 md:grid-cols-[240px_1fr_360px] gap-6 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_360px] gap-6 items-start">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle className="text-base">Cards</CardTitle>
@@ -395,38 +366,33 @@ export default function GameEditorPage() {
                 </CardHeader>
                 <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
                   {cards.map((card) => (
-                    <div key={card.id} className={`rounded-lg border bg-card cursor-pointer ${
-                      selectedCard?.id === card.id ? 'ring-2 ring-inset ring-primary' : ''
-                    }`}>
-                      <button
-                        onClick={() => selectCard(storage, card.id)}
-                        className="w-full px-3 py-2.5 text-left text-sm font-medium"
-                      >
-                        {card.name}
-                      </button>
-                      {selectedCard?.id === card.id && (
-                        <div className="flex gap-2 border-t px-3 py-2">
-                          <Button size="sm" variant="outline" onClick={handleSaveCard} disabled={!isCardDirty} title="Save">
-                            <Save className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={async () => {
-                            const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
-                            setCards(prev => [...prev, opt])
-                            setSelectedCard(opt)
-                            setSavedCardJson(JSON.stringify(opt))
-                            try {
-                              const copy = await storage.copyCard(gameId, collectionId, card.id)
-                              setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
-                              setSelectedCard(copy)
-                              setSavedCardJson(JSON.stringify(copy))
-                            } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
-                          }}>
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <ConfirmButton onConfirm={handleDeleteCard} />
-                        </div>
-                      )}
-                    </div>
+                    <ListItem
+                      key={card.id}
+                      selected={selectedCard?.id === card.id}
+                      onClick={() => selectCard(storage, card.id)}
+                      actions={<>
+                        <Button size="sm" variant="outline" onClick={handleSaveCard} disabled={!isCardDirty} title="Save">
+                          <Save className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={async () => {
+                          const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
+                          setCards(prev => [...prev, opt])
+                          setSelectedCard(opt)
+                          setSavedCardJson(JSON.stringify(opt))
+                          try {
+                            const copy = await storage.copyCard(gameId, collectionId, card.id)
+                            setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
+                            setSelectedCard(copy)
+                            setSavedCardJson(JSON.stringify(copy))
+                          } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
+                        }}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <ConfirmButton onConfirm={handleDeleteCard} />
+                      </>}
+                    >
+                      <span className="text-sm font-medium">{card.name}</span>
+                    </ListItem>
                   ))}
                 </CardContent>
               </Card>
@@ -444,14 +410,14 @@ export default function GameEditorPage() {
                         </div>
 
                         {game?.template?.root && (() => {
-                          const fields: { fieldId: string; itemName: string; itemType: string }[] = []
+                          const fields: { fieldId: string; itemName: string; itemType: string; values?: string[] }[] = []
                           const seen = new Set<string>()
                           const collectFields = (section: any) => {
                             section.items?.forEach((item: any) => {
                               const type = item.type ?? 'text'
-                              if ((type === 'text' || type === 'image') && item.fieldId && item.fieldId !== 'name' && !seen.has(item.fieldId)) {
+                              if ((type === 'text' || type === 'image' || type === 'emoji') && item.fieldId && item.fieldId !== 'name' && !seen.has(item.fieldId)) {
                                 seen.add(item.fieldId)
-                                fields.push({ fieldId: item.fieldId, itemName: item.name, itemType: type })
+                                fields.push({ fieldId: item.fieldId, itemName: item.name, itemType: type, values: Array.isArray(item.values) && item.values.length > 0 ? item.values : undefined })
                               }
                             })
                             section.children?.forEach(collectFields)
@@ -460,10 +426,19 @@ export default function GameEditorPage() {
                           if (fields.length === 0) return null
                           return (
                             <div className="space-y-3">
-                              {fields.map(({ fieldId, itemName, itemType }) => (
+                              {fields.map(({ fieldId, itemType, values }) => (
                                 <div key={fieldId} className="space-y-1">
-                                  <Label className="text-sm">{itemName} <span className="text-muted-foreground font-normal">({fieldId})</span></Label>
-                                  {itemType === 'image' ? (
+                                  <Label className="text-sm flex items-center gap-1.5">{{ text: <Type className="h-3.5 w-3.5 text-muted-foreground" />, image: <Image className="h-3.5 w-3.5 text-muted-foreground" />, emoji: <Smile className="h-3.5 w-3.5 text-muted-foreground" /> }[itemType]} {fieldId}</Label>
+                                  {values ? (
+                                    <select
+                                      value={selectedCard.fields?.[fieldId] ?? ''}
+                                      onChange={(e) => setSelectedCard({ ...selectedCard, fields: { ...selectedCard.fields, [fieldId]: e.target.value } })}
+                                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                    >
+                                      <option value="">— select —</option>
+                                      {values.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                  ) : itemType === 'image' ? (
                                     <div className="space-y-2">
                                       <div className="relative">
                                         <Input
@@ -521,7 +496,7 @@ export default function GameEditorPage() {
                                         </div>
                                       </div>
                                       {expandedImages.has(fieldId) && selectedCard.fields?.[fieldId] && (
-                                        <img
+                                        <LoadingImg
                                           src={selectedCard.fields[fieldId]}
                                           alt={fieldId}
                                           className="max-h-32 rounded border object-contain"
@@ -629,7 +604,6 @@ export default function GameEditorPage() {
             </div>
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+    </PageLayout>
   )
 }

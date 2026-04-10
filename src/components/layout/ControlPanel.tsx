@@ -3,6 +3,9 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { RgbaColorPicker } from 'react-colorful'
 import AnchorGrid from './AnchorGrid'
+import ListItem from '@/components/ListItem'
+import LoadingImg from '@/components/LoadingImg'
+import ConfirmButton from '@/components/ConfirmButton'
 import { findParentSection, findItemById, getNodeKind } from './templateHelpers'
 import type { CardTemplate } from '../../types'
 
@@ -15,7 +18,7 @@ type ControlPanelProps = {
 }
 
 type FieldMeta = {
-  type: 'number' | 'select' | 'anchor' | 'text' | 'color' | 'image-upload'
+  type: 'number' | 'select' | 'anchor' | 'text' | 'color' | 'image-upload' | 'emoji' | 'values'
   min?: number
   max?: number
   step?: number
@@ -24,6 +27,10 @@ type FieldMeta = {
 
 const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?: string): FieldMeta => {
   switch (property) {
+    case 'width': return { type: 'number', min: 50, max: 2000, step: 1 }
+    case 'height': return { type: 'number', min: 50, max: 2000, step: 1 }
+    case 'radius': return { type: 'number', min: 0, max: 100, step: 1 }
+    case 'bleed': return { type: 'number', min: 0, max: 50, step: 1 }
     case 'sizePct': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'gap': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'fontSize': return { type: 'number', min: 8, max: 120, step: 1 }
@@ -35,7 +42,9 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
       { value: 'row', label: 'Row' },
       { value: 'column', label: 'Column' },
       { value: 'stack', label: 'Stack' },
+      { value: 'grid', label: 'Grid' },
     ]}
+    case 'columns': return { type: 'number', min: 1, max: 12, step: 1 }
     case 'align': return { type: 'select', options: [
       { value: 'left', label: 'Left' },
       { value: 'center', label: 'Center' },
@@ -78,6 +87,8 @@ const getFieldMeta = (property: string, template: CardTemplate, selectedNodeId?:
       }
       return { type: 'text' }
     }
+    case 'emoji': return { type: 'emoji' }
+    case 'values': return { type: 'values' }
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
     default: return { type: 'text' }
@@ -180,6 +191,96 @@ function ColorControl({ value, onChange }: { value: string; onChange: (v: unknow
   )
 }
 
+function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown) => void }) {
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const pickerInstanceRef = useRef<any>(null)
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+
+  useEffect(() => {
+    let cancelled = false
+    const container = pickerRef.current
+    const init = async () => {
+      const mod = await import('emoji-picker-element')
+      if (cancelled) return
+      const Picker = 'default' in mod ? (mod as any).default : mod.Picker ?? (mod as any)
+      const picker = new Picker()
+      picker.style.width = '100%'
+      picker.addEventListener('emoji-click', (e: any) => {
+        onChangeRef.current(e.detail.unicode)
+      })
+      pickerInstanceRef.current = picker
+      container?.appendChild(picker)
+    }
+    init()
+    return () => {
+      cancelled = true
+      const picker = pickerInstanceRef.current
+      if (picker && container?.contains(picker)) container.removeChild(picker)
+      pickerInstanceRef.current = null
+    }
+  }, [])
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-3xl">{value || '⭐'}</span>
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Type or paste emoji"
+          className="flex-1"
+        />
+      </div>
+      <div ref={pickerRef} />
+    </div>
+  )
+}
+
+function ValuesEditor({ value, onChange, template, selectedNodeId }: { value: unknown; onChange: (v: unknown) => void; template: CardTemplate; selectedNodeId?: string }) {
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const arr: string[] = Array.isArray(value) ? value : []
+  const node = selectedNodeId ? findItemById(template.root, selectedNodeId) : null
+  const itemType = (node as any)?.type ?? 'text'
+
+  const updateAt = (i: number, v: string) => {
+    const next = [...arr]
+    next[i] = v
+    onChange(next)
+  }
+  const removeAt = (i: number) => {
+    onChange(arr.filter((_, j) => j !== i))
+    setSelectedIdx(null)
+  }
+  const add = () => {
+    onChange([...arr, ''])
+    setSelectedIdx(arr.length)
+  }
+
+  return (
+    <div className="space-y-2">
+      {arr.map((v, i) => (
+        <ListItem
+          key={i}
+          selected={selectedIdx === i}
+          onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
+          actions={<div className="flex-1 space-y-2">
+            {itemType === 'emoji' ? (
+              <EmojiPicker value={v} onChange={(val) => updateAt(i, String(val))} />
+            ) : (
+              <Input value={v} onChange={(e) => updateAt(i, e.target.value)} placeholder={`Value ${i + 1}`} />
+            )}
+            <ConfirmButton onConfirm={() => removeAt(i)} />
+          </div>}
+        >
+          <span className="text-sm">{v || <span className="text-muted-foreground italic">empty</span>}</span>
+        </ListItem>
+      ))}
+      <Button size="sm" variant="outline" className="w-full" onClick={add}>+ Add value</Button>
+    </div>
+  )
+}
+
 export default function ControlPanel({ property, value, template, selectedNodeId, onChange }: ControlPanelProps) {
   const meta = getFieldMeta(property, template, selectedNodeId)
 
@@ -237,7 +338,7 @@ export default function ControlPanel({ property, value, template, selectedNodeId
     return (
       <div className="space-y-2">
         {imgUrl && (
-          <img src={imgUrl} alt="Default" className="max-h-24 rounded border object-contain" />
+          <LoadingImg src={imgUrl} alt="Default" className="max-h-24 rounded border object-contain" />
         )}
         <Button
           size="sm"
@@ -268,6 +369,14 @@ export default function ControlPanel({ property, value, template, selectedNodeId
         )}
       </div>
     )
+  }
+
+  if (meta.type === 'emoji') {
+    return <EmojiPicker value={String(value ?? '')} onChange={onChange} />
+  }
+
+  if (meta.type === 'values') {
+    return <ValuesEditor value={value} onChange={onChange} template={template} selectedNodeId={selectedNodeId} />
   }
 
   if (meta.type === 'anchor') {

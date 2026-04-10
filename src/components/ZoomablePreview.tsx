@@ -19,6 +19,9 @@ type ViewState = { scale: number; x: number; y: number }
 export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitAreas, selectedHitAreaId, onHitAreaClick, extraButtons }: ZoomablePreviewProps) {
   const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 })
   const [unlocked, setUnlocked] = useState(false)
+  const [imgLoaded, setImgLoaded] = useState(false)
+  const [prevSrc, setPrevSrc] = useState(src)
+  if (src !== prevSrc) { setPrevSrc(src); setImgLoaded(false) }
   const dragging = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -129,11 +132,18 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
         onPointerUp={handlePointerUp}
         onClick={handleClick}
       >
+        {!imgLoaded && (
+          <div className="relative overflow-hidden rounded bg-muted/30 py-16">
+            <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-muted-foreground/[0.07] to-transparent" />
+          </div>
+        )}
         <img
           src={src}
           alt={alt}
-          className="max-w-full select-none"
+          className={`max-w-full select-none transition-opacity duration-200 ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
           draggable={false}
+          onLoad={() => setImgLoaded(true)}
+          onError={() => setImgLoaded(true)}
           style={{
             transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
             transformOrigin: '0 0',

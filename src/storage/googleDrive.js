@@ -3,6 +3,7 @@ const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
 import { normalizeCard, normalizeTemplate } from "../normalizeExport.js";
+import { putAsset, deleteAsset, listAssets } from "./assetCache.js";
 
 const loadGoogleScript = () =>
   new Promise((resolve, reject) => {
@@ -224,15 +225,6 @@ export const createGoogleDriveStorage = (options = {}) => {
     return r.id;
   };
 
-  const readBinaryAsDataUrl = async (fid) => {
-    const resp = await drv(`${DRIVE_API}/files/${fid}?alt=media`);
-    const blob = await resp.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
-  };
 
   // --- Folder resolution ---
   // Structure: root / <gameId> / { game.json, templates/, collections/<colId>/{collection.json, cards/}, images/ }
@@ -257,9 +249,14 @@ export const createGoogleDriveStorage = (options = {}) => {
   const collectionFolder = async (gameId, colId) => ensureFolder(await collectionsFolder(gameId), colId, `col:${gameId}:${colId}`, { type: "collection", collectionId: colId });
   const cardsFolder = async (gameId, colId) => ensureFolder(await collectionFolder(gameId, colId), "cards", `cards:${gameId}:${colId}`);
   const imagesFolder = async (gameId) => ensureFolder(await gameFolder(gameId), "images", `imgs:${gameId}`);
-  const fontsFolder = () => ensureFolder(rootParent(), "fonts", "fonts", { type: "fonts-folder" });
 
   // --- File helpers ---
+
+  const findFile = async (name, folderId) => {
+    const files = await filesInFolder(folderId);
+    const found = files.find(f => f.name === name);
+    return found ? found.id : null;
+  };
 
   const findOrCreate = async (folderId, name, cacheKey, defaultContent, props = {}) => {
     const cached = fileIds.get(cacheKey);
@@ -501,44 +498,60 @@ export const createGoogleDriveStorage = (options = {}) => {
     return await saveCard(gameId, collectionId, id, { ...card, id, name });
   };
 
-  // --- Fonts (global) ---
+  // --- Fonts (per-game) ---
 
-  const fontsManifest = async () => {
-    const ff = await fontsFolder();
-    const fid = await findOrCreate(ff, "fonts.json", "fonts-manifest", {});
-    return { fid, data: await readFile(fid) };
+  const gameFontsFolder = async (gameId) => {
+    const gf = await gameFolder(gameId);
+    return ensureFolder(gf, "fonts", `fonts:${gameId}`, { type: "fonts", gameId });
   };
 
-  const listFonts = async () => {
-    try { return (await fontsManifest()).data; } catch { return {}; }
+  const gameFontsManifest = async (gameId) => {
+    const folder = await gameFontsFolder(gameId);
+    let fid = await findFile("fonts.json", folder);
+    if (!fid) {
+      fid = await mkFile("fonts.json", {}, folder, { type: "fonts-manifest", gameId });
+    }
+    const data = await readFile(fid);
+    return { fid, data: typeof data === "object" && data !== null ? data : {} };
   };
 
-  const addGoogleFont = async (name, slotName) => {
-    // Google Fonts fetching would need a proxy or be done client-side
-    // For now, store the font reference without the file
-    const { fid, data } = await fontsManifest();
+  const listFonts = async (gameId) => {
+    const { data } = await gameFontsManifest(gameId);
+    return data;
+  };
+
+  const addGoogleFont = async (gameId, name, slotName) => {
+    // Store reference only — actual download requires server
+    const { fid, data } = await gameFontsManifest(gameId);
     const slot = slotName || name.toLowerCase().replace(/\s+/g, "-");
     data[slot] = { name, file: "", source: "google" };
     await writeFile(fid, data);
     return { fonts: data };
   };
 
-  const uploadFont = async (file, slotName) => {
-    // Font file upload to Drive would require binary upload
-    // For now, store the reference
-    const { fid, data } = await fontsManifest();
+  const uploadFont = async (gameId, file, slotName) => {
+    const folder = await gameFontsFolder(gameId);
+    const mimeType = file.type || "application/octet-stream";
+    const arrayBuf = await file.arrayBuffer();
+    await mkBinaryFile(file.name, mimeType, arrayBuf, folder, { type: "font", gameId });
+    // Store in asset cache for SW to serve
+    const urlPath = `/api/games/${gameId}/fonts/${file.name}`;
+    await putAsset(urlPath, new Blob([arrayBuf], { type: mimeType }), mimeType);
+    // Update manifest
+    const { fid, data } = await gameFontsManifest(gameId);
     const slot = slotName || file.name.replace(/\.[^.]+$/, "");
-    data[slot] = { name: file.name, file: "", source: "upload" };
+    data[slot] = { name: file.name.replace(/\.[^.]+$/, ""), file: file.name, source: "upload" };
     await writeFile(fid, data);
     return { fonts: data };
   };
 
-  const deleteFont = async (file) => {
-    const { fid, data } = await fontsManifest();
+  const deleteFont = async (gameId, file) => {
+    const { fid, data } = await gameFontsManifest(gameId);
     for (const [k, v] of Object.entries(data)) {
       if (v.file === file) delete data[k];
     }
     await writeFile(fid, data);
+    await deleteAsset(`/api/games/${gameId}/fonts/${file}`);
     return { fonts: data };
   };
 
@@ -547,10 +560,11 @@ export const createGoogleDriveStorage = (options = {}) => {
   const uploadImage = async (gameId, file) => {
     const imgFolder = await imagesFolder(gameId);
     const mimeType = file.type || "application/octet-stream";
-    const data = await file.arrayBuffer();
-    const fid = await mkBinaryFile(file.name, mimeType, data, imgFolder, { type: "image", gameId });
-    // Return a data URI since Drive files need auth to access
-    return await readBinaryAsDataUrl(fid);
+    const arrayBuf = await file.arrayBuffer();
+    await mkBinaryFile(file.name, mimeType, arrayBuf, imgFolder, { type: "image", gameId });
+    const urlPath = `/api/games/${gameId}/images/${file.name}`;
+    await putAsset(urlPath, new Blob([arrayBuf], { type: mimeType }), mimeType);
+    return urlPath;
   };
 
   return {

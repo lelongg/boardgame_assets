@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem, FontSlot } from "./types";
+import type { AnchorPoint, CardData, CardTemplate, CardTemplateItem, CardTemplateSection, CardTemplateFrameItem, CardTemplateImageItem, CardTemplateTextItem, CardTemplateEmojiItem, FontSlot } from "./types";
 
 /**
  * Safely parse a number from a value that might be empty, null, or undefined.
@@ -86,7 +86,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
     const heightPct = safeNumber(obj.heightPct, 50);
     // Determine item type - only if explicitly set
     const hasType = obj.type !== undefined && obj.type !== null && obj.type !== "";
-    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image"] as const, "text" as const) : null;
+    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image", "emoji"] as const, "text" as const) : null;
     // Common base
     const base = {
         id,
@@ -117,10 +117,22 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
             type: "image" as const,
             fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
             defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
+            values: Array.isArray(obj.values) ? obj.values.filter((v: unknown) => typeof v === 'string') : undefined,
             fit: obj.fit !== undefined && obj.fit !== null ? safeEnum(obj.fit, ["cover", "contain", "fill"] as const, "cover" as const) : undefined,
             cornerRadius: obj.cornerRadius !== undefined && obj.cornerRadius !== null ? safeNumber(obj.cornerRadius, 0) : undefined
         };
         return imageItem;
+    }
+    if (type === "emoji") {
+        const emojiItem: CardTemplateEmojiItem = {
+            ...base,
+            type: "emoji" as const,
+            fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
+            emoji: typeof obj.emoji === 'string' ? obj.emoji : '⭐',
+            values: Array.isArray(obj.values) ? obj.values.filter((v: unknown) => typeof v === 'string') : undefined,
+            fontSize: safeNumber(obj.fontSize, 32)
+        };
+        return emojiItem;
     }
     // Default to text item (with optional type for legacy support)
     const textItem: CardTemplateTextItem = {
@@ -128,6 +140,7 @@ const normalizeItem = (item: unknown): CardTemplateItem => {
         type: type === "text" ? ("text" as const) : undefined,
         fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
         defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
+        values: Array.isArray(obj.values) ? obj.values.filter((v: unknown) => typeof v === 'string') : undefined,
         fontSize: safeNumber(obj.fontSize, 16),
         align: safeEnum(obj.align, ["left", "center", "right"] as const, "center" as const),
         verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
@@ -143,7 +156,8 @@ const normalizeSection = (section: unknown): CardTemplateSection => {
     const obj = section && typeof section === "object" ? section as Record<string, unknown> : {};
     const id = safeString(obj.id, `section-${Date.now()}`);
     const name = safeString(obj.name, "New Section");
-    const layout = safeEnum(obj.layout, ["row", "column", "stack"] as const, "stack" as const);
+    const layout = safeEnum(obj.layout, ["row", "column", "stack", "grid"] as const, "stack" as const);
+    const columns = typeof obj.columns === 'number' && obj.columns >= 1 ? Math.round(obj.columns) : 2;
     const sizePct = safeNumber(obj.sizePct, 100);
     const gap = safeNumber(obj.gap, 0);
     const children = Array.isArray(obj.children)
@@ -156,6 +170,7 @@ const normalizeSection = (section: unknown): CardTemplateSection => {
         id,
         name,
         layout,
+        columns,
         sizePct,
         gap,
         children,
