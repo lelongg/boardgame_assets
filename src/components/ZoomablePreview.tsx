@@ -98,13 +98,13 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   const isTransformed = view.scale !== 1 || view.x !== 0 || view.y !== 0
 
   return (
-    <div className="relative">
-      <div className="absolute top-2 right-2 z-10 flex gap-1">
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="flex items-center justify-end gap-1 px-3 py-2 border-b">
         {extraButtons}
         {isTransformed && (
           <button
             onClick={() => setView({ scale: 1, x: 0, y: 0 })}
-            className="rounded-md bg-background/80 border p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="rounded-md border p-1.5 text-muted-foreground hover:text-foreground transition-colors"
             title="Reset view"
           >
             <Home className="h-4 w-4" />
@@ -115,7 +115,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
           className={`rounded-md border p-1.5 transition-colors ${
             unlocked
               ? 'bg-primary text-primary-foreground border-primary'
-              : 'bg-background/80 text-muted-foreground hover:text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
           }`}
           title={unlocked ? 'Lock pan/zoom' : 'Unlock pan/zoom'}
         >
@@ -124,7 +124,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
       </div>
       <div
         ref={containerRef}
-        className={`rounded-lg border bg-card p-3 shadow-inner overflow-hidden ${
+        className={`p-3 overflow-hidden ${
           unlocked ? 'touch-none cursor-grab active:cursor-grabbing' : ''
         }`}
         onPointerDown={handlePointerDown}
