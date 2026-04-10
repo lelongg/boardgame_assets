@@ -186,7 +186,7 @@ export default function CollectionsPage() {
   const handleCreateLayout = async () => {
     if (!storage || !gameId) return
     const name = `Layout ${layouts.length + 1}`
-    const optimistic = { version: 2 as const, id: `temp-${Date.now()}`, name, width: 750, height: 1050, radius: 28, bleed: 18, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
+    const optimistic = { version: 2 as const, id: `temp-${Date.now()}`, name, width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
     setLayouts(prev => [...prev, optimistic])
     setSelectedLayoutId(optimistic.id)
     try {

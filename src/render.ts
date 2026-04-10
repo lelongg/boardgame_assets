@@ -1,6 +1,17 @@
 import { theme } from "./theme.js";
 import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection } from "./types.js";
 
+// 300 DPI: 1mm = 300/25.4 ≈ 11.811 pixels
+const PX_PER_MM = 300 / 25.4;
+const mmToPx = (mm: number) => Math.round(mm * PX_PER_MM);
+const layoutToPx = (layout: CardLayout): CardLayout => ({
+  ...layout,
+  width: mmToPx(layout.width),
+  height: mmToPx(layout.height),
+  radius: mmToPx(layout.radius),
+  bleed: mmToPx(layout.bleed),
+});
+
 type Rect = {
   x: number;
   y: number;
@@ -217,7 +228,7 @@ const layoutItems = (layout: CardLayout, result: LayoutResult): void => {
   });
 };
 
-export const computeLayout = (layout: CardLayout): LayoutResult => {
+const computeLayoutPx = (layout: CardLayout): LayoutResult => {
   const result = {
     sections: new Map(),
     items: new Map()
@@ -235,6 +246,9 @@ export const computeLayout = (layout: CardLayout): LayoutResult => {
 
   return result;
 };
+
+export const computeLayout = (layoutMm: CardLayout): LayoutResult =>
+  computeLayoutPx(layoutToPx(layoutMm));
 
 const collectItems = (section: CardLayoutSection, list: CardLayoutItem[]): void => {
   list.push(...section.items);
@@ -260,11 +274,12 @@ const findItem = (section: CardLayoutSection, id: string): CardLayoutItem | null
   return null;
 };
 
-export const renderCardSvg = (card: CardData, layout: CardLayout, options: RenderOptions = {}): string => {
+export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: RenderOptions = {}): string => {
+  const layout = layoutToPx(layoutMm);
   const { palette } = theme;
   const { width, height, radius } = layout;
   const fontSlots = Object.keys(layout.fonts ?? {});
-  const computed = computeLayout(layout);
+  const computed = computeLayoutPx(layout);
   const items: CardLayoutItem[] = [];
   collectItems(layout.root, items);
 
@@ -396,16 +411,17 @@ export const renderCardSvg = (card: CardData, layout: CardLayout, options: Rende
 </svg>`;
 };
 
-export const renderLayoutSvg = (layout: CardLayout, options: {
+export const renderLayoutSvg = (layoutMm: CardLayout, options: {
   showSections?: boolean;
   showItems?: boolean;
   selectedNodeId?: string | null;
 } = {}): string => {
+  const layout = layoutToPx(layoutMm);
   const { showSections = true, showItems = true, selectedNodeId = null } = options;
   const { palette } = theme;
   const { width, height, radius } = layout;
   const fontSlots = Object.keys(layout.fonts ?? {});
-  const computed = computeLayout(layout);
+  const computed = computeLayoutPx(layout);
 
   // Render card content using empty card (defaults will show)
   const emptyCard: CardData = { id: '', name: 'Card Name', fields: {} };

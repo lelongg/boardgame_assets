@@ -1,5 +1,15 @@
 import { theme } from "./theme.js";
 
+const PX_PER_MM = 300 / 25.4;
+const mmToPx = (mm) => Math.round(mm * PX_PER_MM);
+const layoutToPx = (layout) => ({
+  ...layout,
+  width: mmToPx(layout.width),
+  height: mmToPx(layout.height),
+  radius: mmToPx(layout.radius),
+  bleed: mmToPx(layout.bleed),
+});
+
 const escape = (value) =>
   String(value)
     .replaceAll("&", "&amp;")
@@ -182,17 +192,18 @@ const findItem = (section, id) => {
   return null;
 };
 
-export const renderCardSvg = (card, layout, options = {}) => {
+export const renderCardSvg = (card, layoutMm, options = {}) => {
+  const layout = layoutToPx(layoutMm);
   const { palette } = theme;
   const typography = { title: "'Fraunces', serif", body: "'Space Grotesk', sans-serif" };
   const { width, height, radius } = layout;
-  const layout = computeLayout(layout);
+  const computed = computeLayout(layout);
   const items = [];
   collectItems(layout.root, items);
 
   const renderedItems = items
     .map((item) => {
-      const rect = layout.items.get(item.id);
+      const rect = computed.items.get(item.id);
       if (!rect) return "";
       
       const itemType = item.type ?? "text"; // Default to text for legacy items
@@ -241,7 +252,7 @@ export const renderCardSvg = (card, layout, options = {}) => {
   const debugRects = options.debug
     ? items
         .map((item) => {
-          const rect = layout.items.get(item.id);
+          const rect = computed.items.get(item.id);
           if (!rect) return "";
           const anchors = anchorPoints
             .map((anchor) => {
@@ -259,12 +270,12 @@ export const renderCardSvg = (card, layout, options = {}) => {
   const debugAnchors = options.debug
     ? items
         .map((item) => {
-          const rect = layout.items.get(item.id);
+          const rect = computed.items.get(item.id);
           if (!rect) return "";
           const targetRect =
             item.attach.targetType === "item"
-              ? layout.items.get(item.attach.targetId)
-              : layout.sections.get(item.attach.targetId);
+              ? computed.items.get(item.attach.targetId)
+              : computed.sections.get(item.attach.targetId);
           const targetPoint = targetRect
             ? anchorPosition(targetRect, item.attach.anchor)
             : { x: 16, y: 16 };
@@ -294,12 +305,13 @@ export const renderCardSvg = (card, layout, options = {}) => {
 </svg>`;
 };
 
-export const renderLayoutSvg = (layout, selectedNode = null) => {
+export const renderLayoutSvg = (layoutMm, selectedNode = null) => {
+  const layout = layoutToPx(layoutMm);
   const { palette } = theme;
   const { width, height, radius } = layout;
-  const layout = computeLayout(layout);
+  const computed = computeLayout(layout);
 
-  const sectionRects = Array.from(layout.sections.entries())
+  const sectionRects = Array.from(computed.sections.entries())
     .map(([id, rect]) => {
       const section = findSection(layout.root, id);
       const isSelected = selectedNode && selectedNode.type === "section" && selectedNode.id === id;
@@ -319,7 +331,7 @@ export const renderLayoutSvg = (layout, selectedNode = null) => {
     })
     .join("");
 
-  const itemRects = Array.from(layout.items.entries())
+  const itemRects = Array.from(computed.items.entries())
     .map(([id, rect]) => {
       const item = findItem(layout.root, id);
       const isSelected = selectedNode && selectedNode.type === "item" && selectedNode.id === id;

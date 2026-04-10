@@ -450,8 +450,8 @@ test("Google Drive storage layout operations", async () => {
     id: "default",
     version: 2,
     name: "Default Layout",
-    width: 750,
-    height: 1050,
+    width: 63.5,
+    height: 88.9,
     root: { id: "root", children: [], items: [] },
   });
 

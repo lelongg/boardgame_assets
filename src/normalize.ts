@@ -181,16 +181,30 @@ const normalizeSection = (section: unknown): CardLayoutSection => {
  * Normalize a card layout to ensure all fields have valid values.
  * This protects against empty strings, null, or undefined values in JSON files.
  */
+// Convert old pixel values to mm (300 DPI)
+const pxToMm = (px: number) => Math.round(px * 25.4 / 300 * 10) / 10;
+
 export const normalizeLayout = (layout: unknown): CardLayout => {
     const obj = layout && typeof layout === "object" ? layout as Record<string, unknown> : {};
+    let width = safeNumber(obj.width, 63.5);
+    let height = safeNumber(obj.height, 88.9);
+    let radius = safeNumber(obj.radius, 2.5);
+    let bleed = safeNumber(obj.bleed, 1.5);
+    // Migrate old pixel-based layouts (width > 300 is clearly pixels, not mm)
+    if (width > 300) {
+        width = pxToMm(width);
+        height = pxToMm(height);
+        radius = pxToMm(radius);
+        bleed = pxToMm(bleed);
+    }
     return {
         version: 2,
         id: safeString(obj.id, "default"),
         name: safeString(obj.name, "Default"),
-        width: safeNumber(obj.width, 750),
-        height: safeNumber(obj.height, 1050),
-        radius: safeNumber(obj.radius, 28),
-        bleed: safeNumber(obj.bleed, 18),
+        width,
+        height,
+        radius,
+        bleed,
         fonts: normalizeFonts(obj.fonts),
         root: normalizeSection(obj.root)
     };

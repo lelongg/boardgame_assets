@@ -55,10 +55,10 @@ test("normalizeLayout handles empty numeric fields", () => {
     bleed: "",
     root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
   });
-  assert.equal(layout.width, 750);
-  assert.equal(layout.height, 1050);
-  assert.equal(layout.radius, 28);
-  assert.equal(layout.bleed, 18);
+  assert.equal(layout.width, 63.5);
+  assert.equal(layout.height, 88.9);
+  assert.equal(layout.radius, 2.5);
+  assert.equal(layout.bleed, 1.5);
 });
 
 test("normalizeLayout handles missing fields", () => {
@@ -66,10 +66,10 @@ test("normalizeLayout handles missing fields", () => {
   assert.equal(layout.version, 2);
   assert.equal(layout.id, "default");
   assert.equal(layout.name, "Default");
-  assert.equal(layout.width, 750);
-  assert.equal(layout.height, 1050);
-  assert.equal(layout.radius, 28);
-  assert.equal(layout.bleed, 18);
+  assert.equal(layout.width, 63.5);
+  assert.equal(layout.height, 88.9);
+  assert.equal(layout.radius, 2.5);
+  assert.equal(layout.bleed, 1.5);
   assert.ok(layout.root);
 });
 
@@ -78,10 +78,10 @@ test("normalizeLayout handles section with empty layout", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",
@@ -102,10 +102,10 @@ test("normalizeLayout handles item with empty anchor points", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",
@@ -145,10 +145,10 @@ test("normalizeLayout handles text item with empty values", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",
@@ -192,10 +192,10 @@ test("normalizeLayout handles frame item with empty values", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",
@@ -233,10 +233,10 @@ test("normalizeLayout handles image item with empty values", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",
@@ -276,10 +276,10 @@ test("normalizeLayout handles legacy item without type", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",
@@ -319,10 +319,10 @@ test("normalizeLayout handles nested sections", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",
@@ -356,10 +356,10 @@ test("normalizeLayout adds default fonts when missing", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
   });
   assert.ok(layout.fonts, "Should have fonts field");
@@ -378,10 +378,10 @@ test("normalizeLayout preserves existing fonts", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     fonts: {
       heading: { name: "Cinzel", file: "abc123.woff2", source: "google" },
       flavor: { name: "MyFont", file: "def456.otf", source: "upload" }
@@ -399,10 +399,10 @@ test("normalizeLayout text item font accepts arbitrary string", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",
@@ -436,10 +436,10 @@ test("normalizeLayout handles anchor point rounding", () => {
     version: 2,
     id: "test",
     name: "Test",
-    width: 750,
-    height: 1050,
-    radius: 28,
-    bleed: 18,
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
     root: {
       id: "root",
       name: "Root",

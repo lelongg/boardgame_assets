@@ -3,6 +3,18 @@ import { theme } from "../theme.js";
 
 const DEBUG_FONT = "'Space Grotesk', sans-serif";
 
+// 300 DPI: 1mm = 300/25.4 ≈ 11.811 pixels
+export const PX_PER_MM = 300 / 25.4;
+const mmToPx = (mm: number) => Math.round(mm * PX_PER_MM);
+
+const layoutToPx = (layout: CardLayout): CardLayout => ({
+  ...layout,
+  width: mmToPx(layout.width),
+  height: mmToPx(layout.height),
+  radius: mmToPx(layout.radius),
+  bleed: mmToPx(layout.bleed),
+});
+
 const escape = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -253,7 +265,8 @@ const findItem = (section: CardLayoutSection, id: string): CardLayoutItem | null
   return null;
 };
 
-export const renderCardSvg = (card: CardData, layout: CardLayout, options: RenderOptions = {}): string => {
+export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: RenderOptions = {}): string => {
+  const layout = layoutToPx(layoutMm);
   const { palette } = theme;
   const { width, height, radius } = layout;
   const computed = computeLayout(layout);
@@ -377,7 +390,8 @@ type LayoutSvgOptions = {
   selectedNodeId?: string | null;
 };
 
-export const renderLayoutSvg = (layout: CardLayout, options: LayoutSvgOptions = {}): string => {
+export const renderLayoutSvg = (layoutMm: CardLayout, options: LayoutSvgOptions = {}): string => {
+  const layout = layoutToPx(layoutMm);
   const { showWireframes = true, selectedNodeId = null } = options;
   const { palette } = theme;
   const { width, height, radius } = layout;
