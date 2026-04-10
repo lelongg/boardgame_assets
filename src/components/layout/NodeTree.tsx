@@ -223,7 +223,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
             } ${
               isSelected
                 ? 'bg-primary text-primary-foreground'
-                : idx % 2 === 1 ? 'bg-accent/50 hover:bg-accent/70' : 'hover:bg-accent/50'
+                : idx % 2 === 1 ? 'bg-accent hover:bg-accent/80' : 'hover:bg-accent/50'
             } ${
               !isSelected && isSection ? 'text-muted-foreground' : ''
             } ${dropClass}`}
