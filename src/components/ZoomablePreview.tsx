@@ -20,8 +20,6 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 })
   const [unlocked, setUnlocked] = useState(false)
   const [imgLoaded, setImgLoaded] = useState(false)
-  const [prevSrc, setPrevSrc] = useState(src)
-  if (src !== prevSrc) { setPrevSrc(src); setImgLoaded(false) }
   const dragging = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -99,12 +97,12 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
-      <div className="flex items-center justify-end gap-1 px-3 py-2 border-b">
+      <div className="flex items-center justify-end gap-0.5 px-1 py-1 border-b">
         {extraButtons}
         {isTransformed && (
           <button
             onClick={() => setView({ scale: 1, x: 0, y: 0 })}
-            className="rounded-md border p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
             title="Reset view"
           >
             <Home className="h-4 w-4" />
@@ -112,9 +110,9 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
         )}
         <button
           onClick={toggle}
-          className={`rounded-md border p-1.5 transition-colors ${
+          className={`rounded p-1 transition-colors ${
             unlocked
-              ? 'bg-primary text-primary-foreground border-primary'
+              ? 'bg-primary text-primary-foreground'
               : 'text-muted-foreground hover:text-foreground'
           }`}
           title={unlocked ? 'Lock pan/zoom' : 'Unlock pan/zoom'}

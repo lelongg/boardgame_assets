@@ -718,14 +718,14 @@ export default function CollectionsPage() {
                       extraButtons={<>
                         <button
                           onClick={() => setShowSections(s => !s)}
-                          className={`rounded-md border p-1.5 transition-colors ${showSections ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 text-muted-foreground hover:text-foreground'}`}
+                          className={`rounded p-1 transition-colors ${showSections ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                           title={showSections ? 'Hide sections' : 'Show sections'}
                         >
                           <LayoutGrid className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => setShowItemWires(s => !s)}
-                          className={`rounded-md border p-1.5 transition-colors ${showItemWires ? 'bg-primary text-primary-foreground border-primary' : 'bg-background/80 text-muted-foreground hover:text-foreground'}`}
+                          className={`rounded p-1 transition-colors ${showItemWires ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                           title={showItemWires ? 'Hide items' : 'Show items'}
                         >
                           <Layers className="h-4 w-4" />

@@ -149,7 +149,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
           )}
         </div>
       </div>
-      {nodes.map((node) => {
+      {nodes.map((node, idx) => {
         const isSelected = node.id === selectedNodeId
         const isDragging = node.id === dragId
         const isRoot = node.id === root.id
@@ -224,7 +224,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
             } ${
               isSelected
                 ? 'bg-primary text-primary-foreground'
-                : 'hover:bg-accent/50'
+                : idx % 2 === 1 ? 'bg-accent/30 hover:bg-accent/50' : 'hover:bg-accent/50'
             } ${
               !isSelected && isSection ? 'text-muted-foreground' : ''
             } ${dropClass}`}
