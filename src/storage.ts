@@ -24,8 +24,14 @@ const providers: Record<string, Function> = {
 
 const PROVIDER_KEY = "boardgame_assets_provider";
 
+const detectDefaultProvider = (): string => {
+  // On GitHub Pages or static hosting, local disk backend is not available
+  if (!window.location.hostname.match(/^localhost$|^127\./)) return "indexedDB";
+  return "localFile";
+};
+
 export const getProvider = (): string =>
-  localStorage.getItem(PROVIDER_KEY) ?? "localFile";
+  localStorage.getItem(PROVIDER_KEY) ?? detectDefaultProvider();
 
 export const setProvider = (provider: string) =>
   localStorage.setItem(PROVIDER_KEY, provider);
