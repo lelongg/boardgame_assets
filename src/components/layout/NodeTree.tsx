@@ -89,7 +89,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-0.5 px-1 py-1 border-b mb-1">
+      <div className="flex items-center justify-end gap-0.5 px-1 h-8 border-b">
           {canCollapse && (
             <button
               onClick={() => updateCollapsed(prev => {
@@ -223,7 +223,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
             } ${
               isSelected
                 ? 'bg-primary text-primary-foreground'
-                : idx % 2 === 1 ? 'bg-accent/30 hover:bg-accent/50' : 'hover:bg-accent/50'
+                : idx % 2 === 1 ? 'bg-accent/50 hover:bg-accent/70' : 'hover:bg-accent/50'
             } ${
               !isSelected && isSection ? 'text-muted-foreground' : ''
             } ${dropClass}`}

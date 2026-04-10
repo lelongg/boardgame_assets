@@ -97,7 +97,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
-      <div className="flex items-center justify-end gap-0.5 px-1 py-1 border-b">
+      <div className="flex items-center justify-end gap-0.5 px-1 h-8 border-b">
         {extraButtons}
         {isTransformed && (
           <button
