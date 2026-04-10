@@ -35,35 +35,12 @@ function openDB() {
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
 
-      // "assets" already exists from v1 — only create new stores
+      // Create all stores first (order matters for migration below)
       if (!db.objectStoreNames.contains("games")) {
         db.createObjectStore("games");
       }
       if (!db.objectStoreNames.contains("layouts")) {
         db.createObjectStore("layouts");
-      }
-      // Migrate v2 "templates" store to "layouts" and rename templateId in collections
-      if (db.objectStoreNames.contains("templates")) {
-        const tx = event.target.transaction;
-        const oldStore = tx.objectStore("templates");
-        const newStore = tx.objectStore("layouts");
-        const cursorReq = oldStore.openCursor();
-        cursorReq.onsuccess = (e) => {
-          const cursor = e.target.result;
-          if (cursor) { newStore.put(cursor.value, cursor.key); cursor.continue(); }
-        };
-        db.deleteObjectStore("templates");
-        // Rename templateId → layoutId in existing collections
-        const colStore = tx.objectStore("collections");
-        const colCursor = colStore.openCursor();
-        colCursor.onsuccess = (e) => {
-          const cursor = e.target.result;
-          if (cursor) {
-            const val = cursor.value;
-            if (val.templateId && !val.layoutId) { val.layoutId = val.templateId; delete val.templateId; cursor.update(val); }
-            cursor.continue();
-          }
-        };
       }
       if (!db.objectStoreNames.contains("collections")) {
         db.createObjectStore("collections");
@@ -71,9 +48,44 @@ function openDB() {
       if (!db.objectStoreNames.contains("cards")) {
         db.createObjectStore("cards");
       }
-      // Keep "assets" store if present (created in v1)
       if (!db.objectStoreNames.contains("assets")) {
         db.createObjectStore("assets");
+      }
+
+      // Migrate v2 "templates" → "layouts" and rename templateId in collections
+      if (db.objectStoreNames.contains("templates")) {
+        const tx = event.target.transaction;
+        const oldStore = tx.objectStore("templates");
+        const newStore = tx.objectStore("layouts");
+        const colStore = tx.objectStore("collections");
+
+        // Copy templates to layouts
+        const cursorReq = oldStore.openCursor();
+        cursorReq.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            newStore.put(cursor.value, cursor.key);
+            cursor.continue();
+          } else {
+            // Cursor done — safe to delete the old store
+            db.deleteObjectStore("templates");
+          }
+        };
+
+        // Rename templateId → layoutId in existing collections
+        const colCursor = colStore.openCursor();
+        colCursor.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            const val = cursor.value;
+            if (val.templateId && !val.layoutId) {
+              val.layoutId = val.templateId;
+              delete val.templateId;
+              cursor.update(val);
+            }
+            cursor.continue();
+          }
+        };
       }
     };
 

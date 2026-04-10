@@ -1,10 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createStorage } from '../storage'
 
 export default function useStorage() {
   const [storage, setStorage] = useState<any>(null)
   const [status, setStatus] = useState('Loading...')
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
   const [isAuthorized, setIsAuthorized] = useState(false)
+
+  const setError = useCallback((message: string, error: unknown) => {
+    const detail = error instanceof Error ? error.message : String(error)
+    setStatus(message)
+    setErrorDetail(detail)
+  }, [])
+
+  const clearError = useCallback(() => setErrorDetail(null), [])
 
   useEffect(() => {
     let cancelled = false
@@ -17,13 +26,12 @@ export default function useStorage() {
         setStatus('Ready.')
       } catch (error) {
         if (cancelled) return
-        setStatus('Error initializing storage.')
-        console.error('Storage initialization failed:', error)
+        setError('Storage initialization failed', error)
       }
     }
     init()
     return () => { cancelled = true }
   }, [])
 
-  return { storage, status, setStatus, isAuthorized, setIsAuthorized }
+  return { storage, status, setStatus, setError, errorDetail, clearError, isAuthorized, setIsAuthorized }
 }

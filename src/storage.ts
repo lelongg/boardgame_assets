@@ -5,6 +5,7 @@ import { createGoogleDriveStorage } from "./storage/googleDrive";
 import { createLocalFileStorage } from "./storage/localFile";
 import { createIndexedDBStorage } from "./storage/indexedDB";
 import { createS3Storage } from "./storage/s3";
+import { seedIfEmpty } from "./seedDefaultGame";
 
 export const BACKENDS = [
   { key: 'localFile', name: 'Local Disk', description: 'Requires the dev server running', icon: HardDrive },
@@ -59,4 +60,19 @@ export const createStorageFor = async (providerKey: string) => {
   return storage;
 };
 
-export const createStorage = async () => createStorageFor(getProvider());
+let pendingStorage: Promise<any> | null = null;
+
+export const createStorage = () => {
+  if (!pendingStorage) {
+    pendingStorage = (async () => {
+      const storage = await createStorageFor(getProvider());
+      try {
+        await seedIfEmpty(storage);
+      } catch {
+        // Non-fatal: seed failure should not block storage usage
+      }
+      return storage;
+    })();
+  }
+  return pendingStorage;
+};

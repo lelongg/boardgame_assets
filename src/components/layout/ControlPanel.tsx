@@ -6,6 +6,7 @@ import AnchorGrid from './AnchorGrid'
 import ListItem from '@/components/ListItem'
 import LoadingImg from '@/components/LoadingImg'
 import ConfirmButton from '@/components/ConfirmButton'
+import RichTextField from '@/components/RichTextField'
 import { findParentSection, findItemById, getNodeKind } from './layoutHelpers'
 import type { CardLayout } from '../../types'
 
@@ -18,7 +19,7 @@ type ControlPanelProps = {
 }
 
 type FieldMeta = {
-  type: 'number' | 'select' | 'anchor' | 'text' | 'color' | 'image-upload' | 'emoji' | 'values'
+  type: 'number' | 'select' | 'anchor' | 'text' | 'richtext' | 'color' | 'image-upload' | 'emoji' | 'values'
   min?: number
   max?: number
   step?: number
@@ -85,7 +86,7 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
         const item = findItemById(layout.root, selectedNodeId)
         if (item && (item as any).type === 'image') return { type: 'image-upload' }
       }
-      return { type: 'text' }
+      return { type: 'richtext' }
     }
     case 'emoji': return { type: 'emoji' }
     case 'values': return { type: 'values' }
@@ -369,6 +370,10 @@ export default function ControlPanel({ property, value, layout, selectedNodeId, 
         )}
       </div>
     )
+  }
+
+  if (meta.type === 'richtext') {
+    return <RichTextField value={String(value ?? '')} onChange={(html) => onChange(html)} />
   }
 
   if (meta.type === 'emoji') {

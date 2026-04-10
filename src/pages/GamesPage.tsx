@@ -13,7 +13,7 @@ export default function GamesPage() {
   const [games, setGames] = useState<any[]>([])
   const [expandedGame, setExpandedGame] = useState<string | null>(null)
   const navigate = useNavigate()
-  const { storage, status, setStatus } = useStorage()
+  const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
 
   useEffect(() => {
     if (!storage) return
@@ -30,8 +30,7 @@ export default function GamesPage() {
       }
       setStatus(`Loaded ${gameList.length} games.`)
     } catch (error) {
-      setStatus('Error loading games.')
-      console.error(error)
+      setError('Error loading games', error)
     }
   }
 
@@ -46,8 +45,7 @@ export default function GamesPage() {
       const created = await storage.createGame(name)
       navigate(`/game/${created.id}`)
     } catch (error) {
-      setStatus('Error creating game.')
-      console.error(error)
+      setError('Error creating game', error)
     }
   }
 
@@ -63,8 +61,8 @@ export default function GamesPage() {
       a.click()
       URL.revokeObjectURL(a.href)
       setStatus('Export complete.')
-    } catch (err: any) {
-      setStatus(`Export error: ${err.message}`)
+    } catch (err) {
+      setError('Export error', err)
     }
   }
 
@@ -81,8 +79,8 @@ export default function GamesPage() {
         await importGameZip(storage, file, setStatus)
         await loadGames(storage)
         setStatus('Import complete.')
-      } catch (err: any) {
-        setStatus(`Import error: ${err.message}`)
+      } catch (err) {
+        setError('Import error', err)
       }
     }
     input.click()
@@ -99,6 +97,8 @@ export default function GamesPage() {
           </Button>
         </div>
       </>}
+      errorDetail={errorDetail}
+      onDismissError={clearError}
       maxWidth="max-w-4xl"
     >
         <Card>
@@ -139,9 +139,9 @@ export default function GamesPage() {
                       setExpandedGame(null)
                       try {
                         await storage.deleteGame(game.id)
-                      } catch {
+                      } catch (err) {
                         setGames(prev)
-                        setStatus('Error deleting game.')
+                        setError('Error deleting game', err)
                       }
                     }} />
                   </>}

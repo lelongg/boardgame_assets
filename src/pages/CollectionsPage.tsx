@@ -18,7 +18,7 @@ import useStorage from '../hooks/useStorage'
 export default function CollectionsPage() {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
-  const { storage, status, setStatus } = useStorage()
+  const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
   const [game, setGame] = useState<any>(null)
   const [collections, setCollections] = useState<any[]>([])
   const [layouts, setLayouts] = useState<any[]>([])
@@ -161,8 +161,8 @@ export default function CollectionsPage() {
       }
 
       setStatus('Ready.')
-    } catch {
-      setStatus('Error loading game.')
+    } catch (error) {
+      setError('Error loading game', error)
     }
   }
 
@@ -367,6 +367,8 @@ export default function CollectionsPage() {
         )}
       </>}
       status={status}
+      errorDetail={errorDetail}
+      onDismissError={clearError}
     >
         <Tabs defaultValue={localStorage.getItem(`game:${gameId}:tab`) || 'collections'} onValueChange={(v) => localStorage.setItem(`game:${gameId}:tab`, v)} className="w-full">
           <TabsList className="mb-4">

@@ -464,10 +464,10 @@ async function createFullTestGame(storage) {
   const layouts = await storage.listLayouts(gameId);
   const tpl = layouts[0];
   tpl.name = "Full Layout";
-  tpl.width = 800;
-  tpl.height = 1200;
-  tpl.radius = 16;
-  tpl.bleed = 10;
+  tpl.width = 70;
+  tpl.height = 120;
+  tpl.radius = 3;
+  tpl.bleed = 2;
   tpl.root = {
     id: "root", name: "Root", layout: "column", sizePct: 100, gap: 12, columns: 2,
     children: [
@@ -536,10 +536,10 @@ async function verifyFullTestGame(storage, gameId) {
   assert.equal(layouts.length, 1);
   const tpl = layouts[0];
   assert.equal(tpl.name, "Full Layout");
-  assert.equal(tpl.width, 800);
-  assert.equal(tpl.height, 1200);
-  assert.equal(tpl.radius, 16);
-  assert.equal(tpl.bleed, 10);
+  assert.equal(tpl.width, 70);
+  assert.equal(tpl.height, 120);
+  assert.equal(tpl.radius, 3);
+  assert.equal(tpl.bleed, 2);
 
   // Collect all items
   const items = [];

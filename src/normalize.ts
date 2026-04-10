@@ -130,7 +130,7 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
             fieldId: obj.fieldId !== undefined && obj.fieldId !== null && obj.fieldId !== '' ? safeString(obj.fieldId, "") : undefined,
             emoji: typeof obj.emoji === 'string' ? obj.emoji : '⭐',
             values: Array.isArray(obj.values) ? obj.values.filter((v: unknown) => typeof v === 'string') : undefined,
-            fontSize: safeNumber(obj.fontSize, 32)
+            fontSize: safeNumber(obj.fontSize, 32),
         };
         return emojiItem;
     }
@@ -145,7 +145,7 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
         align: safeEnum(obj.align, ["left", "center", "right"] as const, "center" as const),
         verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
         font: obj.font !== undefined && obj.font !== null && obj.font !== "" ? safeString(obj.font, "body") : undefined,
-        color: safeString(obj.color, "#000000")
+        color: safeString(obj.color, "#000000"),
     };
     return textItem;
 };

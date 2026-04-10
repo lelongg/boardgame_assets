@@ -20,7 +20,7 @@ import useStorage from '../hooks/useStorage'
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
   const navigate = useNavigate()
-  const { storage, status, setStatus } = useStorage()
+  const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
   const [game, setGame] = useState<any>(null)
   const [collection, setCollection] = useState<any>(null)
   const [cards, setCards] = useState<any[]>([])
@@ -131,8 +131,7 @@ export default function GameEditorPage() {
 
       setStatus('Ready.')
     } catch (error) {
-      setStatus('Error loading game.')
-      console.error(error)
+      setError('Error loading game', error)
     }
   }
 
@@ -145,8 +144,7 @@ export default function GameEditorPage() {
       setStatus('Card saved.')
       await loadGame(storage)
     } catch (error) {
-      setStatus('Error saving card.')
-      console.error(error)
+      setError('Error saving card', error)
     }
   }
 
@@ -349,6 +347,8 @@ export default function GameEditorPage() {
         )}
       </>}
       status={status}
+      errorDetail={errorDetail}
+      onDismissError={clearError}
     >
         <Tabs defaultValue={localStorage.getItem(`editor:${gameId}:tab`) || 'cards'} onValueChange={(v) => localStorage.setItem(`editor:${gameId}:tab`, v)} className="w-full">
           <TabsList className="mb-4">
