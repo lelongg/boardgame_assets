@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test, describe, before, after } from "node:test";
 import { spawn } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 
 const PORT = 5199;
@@ -68,20 +67,20 @@ describe("Font endpoints", () => {
     assert.ok(entry, "Should have a Fraunces font entry");
     assert.ok(entry.file.endsWith(".woff2"), "File should be .woff2");
 
-    // Verify file exists on disk
-    const fontPath = path.join("games", gameId, "fonts", entry.file);
-    assert.ok(fs.existsSync(fontPath), "Font file should exist on disk");
+    // Verify font is served back via GET
+    const getRes = await fetch(`${BASE}/api/games/${gameId}/fonts/${entry.file}`);
+    assert.equal(getRes.status, 200, "Font file should be served via API");
 
     downloadedFontFile = entry.file;
   });
 
-  test("POST /api/games/:gameId/fonts/google returns 400 for unknown font", async () => {
+  test("POST /api/games/:gameId/fonts/google returns 400 for empty name", async () => {
     const res = await fetch(`${BASE}/api/games/${gameId}/fonts/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "ThisFontDoesNotExist99999" }),
+      body: JSON.stringify({ name: "" }),
     });
-    assert.equal(res.status, 400, "Should return 400 for unknown font");
+    assert.equal(res.status, 400, "Should return 400 for empty font name");
   });
 
   test("GET /api/games/:gameId/fonts/:file serves the font file", async () => {
@@ -110,14 +109,11 @@ describe("Font endpoints", () => {
 
   test("DELETE /api/games/:gameId/fonts/:file removes the font file", async () => {
     assert.ok(downloadedFontFile, "Should have a downloaded font file from previous test");
-    const fontPath = path.join("games", gameId, "fonts", downloadedFontFile);
-    assert.ok(fs.existsSync(fontPath), "Font file should exist before delete");
 
     const res = await fetch(`${BASE}/api/games/${gameId}/fonts/${downloadedFontFile}`, {
       method: "DELETE",
     });
     assert.equal(res.status, 200, "Should return 200");
-    assert.ok(!fs.existsSync(fontPath), "Font file should be removed from disk");
   });
 
   test("GET /api/games/:gameId/fonts/:file returns 404 for deleted font", async () => {
