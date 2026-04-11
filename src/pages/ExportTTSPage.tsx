@@ -25,6 +25,7 @@ export default function ExportTTSPage() {
   const [status, setStatus] = useState('Loading...')
   const [atlasUrl, setAtlasUrl] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -32,6 +33,8 @@ export default function ExportTTSPage() {
       try {
         const s = await createStorage()
         if (!gameId) return
+        const fonts = await s.listFonts(gameId)
+        setGameFonts(fonts)
         const collections = await s.listCollections(gameId)
         const all: DeckEntry[] = []
         for (const col of collections) {
@@ -88,8 +91,8 @@ export default function ExportTTSPage() {
       for (let i = 0; i < cardCount; i++) {
         setStatus(`Rendering card ${i + 1}/${cardCount}...`)
         const { card, layout } = entries[i]
-        let svg = renderCardSvg(card, layout)
-        svg = await embedFontsInSvg(svg, layout, gameId!)
+        let svg = renderCardSvg(card, layout, { fonts: gameFonts })
+        svg = await embedFontsInSvg(svg, gameId!, gameFonts)
         svg = await embedImagesInSvg(svg)
 
         const img = await svgToImage(svg)

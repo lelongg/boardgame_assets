@@ -73,8 +73,7 @@ const normalizeAnchorPoint = (anchor: unknown): AnchorPoint => {
 /**
  * Normalize bindings map, migrating legacy fieldId+values if present.
  */
-const normalizeBindings = (obj: Record<string, unknown>, bindingTarget: string): Record<string, PropertyBinding> | undefined => {
-    // Start from existing bindings if present
+const normalizeBindings = (obj: Record<string, unknown>): Record<string, PropertyBinding> | undefined => {
     const raw = obj.bindings && typeof obj.bindings === "object" && !Array.isArray(obj.bindings)
         ? obj.bindings as Record<string, unknown>
         : {};
@@ -83,18 +82,8 @@ const normalizeBindings = (obj: Record<string, unknown>, bindingTarget: string):
         if (val && typeof val === "object" && !Array.isArray(val)) {
             const b = val as Record<string, unknown>;
             const field = safeString(b.field, "");
-            if (field) {
-                result[key] = {
-                    field,
-                    values: Array.isArray(b.values) ? b.values.filter((v: unknown) => typeof v === 'string') : undefined,
-                };
-            }
+            if (field) result[key] = { field };
         }
-    }
-    // Migrate legacy fieldId → bindings
-    if (typeof obj.fieldId === "string" && obj.fieldId && !result[bindingTarget]) {
-        const values = Array.isArray(obj.values) ? obj.values.filter((v: unknown) => typeof v === 'string') : undefined;
-        result[bindingTarget] = { field: obj.fieldId, values: values?.length ? values : undefined };
     }
     return Object.keys(result).length > 0 ? result : undefined;
 };
@@ -115,7 +104,7 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
     const heightPct = safeNumber(obj.heightPct, 50);
     // Determine item type - only if explicitly set
     const hasType = obj.type !== undefined && obj.type !== null && obj.type !== "";
-    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image", "emoji"] as const, "text" as const) : null;
+    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image", "emoji", "copy"] as const, "text" as const) : null;
     // Common base
     const base = {
         id,
@@ -128,11 +117,13 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
         },
         widthPct,
         heightPct,
+        offsetX: obj.offsetX !== undefined && obj.offsetX !== null ? safeNumber(obj.offsetX, 0) : undefined,
+        offsetY: obj.offsetY !== undefined && obj.offsetY !== null ? safeNumber(obj.offsetY, 0) : undefined,
     };
     if (type === "frame") {
         const frameItem: CardLayoutFrameItem = {
             ...base,
-            bindings: normalizeBindings(obj, "fillColor"),
+            bindings: normalizeBindings(obj),
             type: "frame" as const,
             strokeWidth: safeNumber(obj.strokeWidth, 2),
             strokeColor: safeString(obj.strokeColor, "#000000"),
@@ -144,7 +135,7 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
     if (type === "image") {
         const imageItem: CardLayoutImageItem = {
             ...base,
-            bindings: normalizeBindings(obj, "defaultValue"),
+            bindings: normalizeBindings(obj),
             type: "image" as const,
             defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
             fit: obj.fit !== undefined && obj.fit !== null ? safeEnum(obj.fit, ["cover", "contain", "fill"] as const, "cover" as const) : undefined,
@@ -155,17 +146,25 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
     if (type === "emoji") {
         const emojiItem: CardLayoutEmojiItem = {
             ...base,
-            bindings: normalizeBindings(obj, "emoji"),
+            bindings: normalizeBindings(obj),
             type: "emoji" as const,
             emoji: typeof obj.emoji === 'string' ? obj.emoji : '⭐',
             fontSize: safeNumber(obj.fontSize, 32),
         };
         return emojiItem;
     }
+    if (type === "copy") {
+        return {
+            ...base,
+            bindings: normalizeBindings(obj),
+            type: "copy" as const,
+            copyTargetId: typeof obj.copyTargetId === 'string' ? obj.copyTargetId : undefined,
+        };
+    }
     // Default to text item (with optional type for legacy support)
     const textItem: CardLayoutTextItem = {
         ...base,
-        bindings: normalizeBindings(obj, "defaultValue"),
+        bindings: normalizeBindings(obj),
         type: type === "text" ? ("text" as const) : undefined,
         defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
         fontSize: safeNumber(obj.fontSize, 16),
@@ -185,6 +184,9 @@ const normalizeSection = (section: unknown): CardLayoutSection => {
     const name = safeString(obj.name, "New Section");
     const layout = safeEnum(obj.layout, ["row", "column", "stack", "grid"] as const, "stack" as const);
     const columns = typeof obj.columns === 'number' && obj.columns >= 1 ? Math.round(obj.columns) : 2;
+    const repeatCount = obj.repeatCount !== undefined && obj.repeatCount !== null ? safeNumber(obj.repeatCount, 1) : undefined;
+    const repeatOffsetX = obj.repeatOffsetX !== undefined && obj.repeatOffsetX !== null ? safeNumber(obj.repeatOffsetX, 0) : undefined;
+    const repeatOffsetY = obj.repeatOffsetY !== undefined && obj.repeatOffsetY !== null ? safeNumber(obj.repeatOffsetY, 0) : undefined;
     const sizePct = safeNumber(obj.sizePct, 100);
     const gap = safeNumber(obj.gap, 0);
     const children = Array.isArray(obj.children)
@@ -196,8 +198,12 @@ const normalizeSection = (section: unknown): CardLayoutSection => {
     return {
         id,
         name,
+        bindings: normalizeBindings(obj),
         layout,
         columns,
+        repeatCount,
+        repeatOffsetX,
+        repeatOffsetY,
         sizePct,
         gap,
         children,
@@ -224,6 +230,20 @@ export const normalizeLayout = (layout: unknown): CardLayout => {
         radius = pxToMm(radius);
         bleed = pxToMm(bleed);
     }
+    const root = normalizeSection(obj.root);
+    // Parse bindingMeta
+    const bindingMeta: Record<string, { default?: string; values?: string[] }> = {};
+    const existingMeta = obj.bindingMeta && typeof obj.bindingMeta === "object" && !Array.isArray(obj.bindingMeta)
+        ? obj.bindingMeta as Record<string, unknown> : {};
+    for (const [k, v] of Object.entries(existingMeta)) {
+        if (v && typeof v === "object" && !Array.isArray(v)) {
+            const m = v as Record<string, unknown>;
+            const entry: { default?: string; values?: string[] } = {};
+            if (typeof m.default === 'string') entry.default = m.default;
+            if (Array.isArray(m.values)) entry.values = m.values.filter((s: unknown) => typeof s === 'string');
+            if (entry.default || entry.values?.length) bindingMeta[k] = entry;
+        }
+    }
     return {
         version: 2,
         id: safeString(obj.id, "default"),
@@ -232,8 +252,8 @@ export const normalizeLayout = (layout: unknown): CardLayout => {
         height,
         radius,
         bleed,
-        fonts: normalizeFonts(obj.fonts),
-        root: normalizeSection(obj.root)
+        bindingMeta: Object.keys(bindingMeta).length > 0 ? bindingMeta : undefined,
+        root,
     };
 };
 /**

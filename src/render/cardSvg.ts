@@ -71,9 +71,20 @@ const renderStyledLine = (runs: StyledRun[]): string => {
   }).join('');
 };
 
-/** Resolve a property value: check bindings first, fall back to static value.
+const renderStyledLineHtml = (runs: StyledRun[]): string => {
+  return runs.map(run => {
+    const text = escape(run.text);
+    if (!text && runs.length === 1) return '&nbsp;';
+    let result = text;
+    if (run.bold) result = `<b>${result}</b>`;
+    if (run.italic) result = `<i>${result}</i>`;
+    return result;
+  }).join('');
+};
+
+/** Resolve a property value: card data → binding default → item static value.
  *  Field key is scoped as "prop:field" to avoid collisions, with fallback to plain "field" for compat. */
-const resolve = (item: CardLayoutItem, prop: string, card: CardData): unknown => {
+const resolve = (item: CardLayoutItem, prop: string, card: CardData, layout?: CardLayout): unknown => {
   const binding = item.bindings?.[prop];
   if (binding) {
     if (binding.field === "name") return card.name || (item as any)[prop];
@@ -81,6 +92,9 @@ const resolve = (item: CardLayoutItem, prop: string, card: CardData): unknown =>
     if (scoped !== undefined && scoped !== "") return scoped;
     const plain = card.fields[binding.field];
     if (plain !== undefined && plain !== "") return plain;
+    // Fall back to binding default from layout meta
+    const meta = layout?.bindingMeta?.[`${prop}:${binding.field}`];
+    if (meta?.default !== undefined && meta.default !== "") return meta.default;
   }
   return (item as any)[prop];
 };
@@ -95,6 +109,9 @@ type FontData = { name: string; data: Buffer };
 type RenderOptions = {
   debug?: boolean;
   fonts?: Record<string, FontData>;
+  fontSlots?: Record<string, { name: string; file?: string }>;
+  back?: string;
+  backFit?: "cover" | "contain" | "fill";
 };
 
 
@@ -179,6 +196,14 @@ const collectItemPlacements = (
 ) => {
   if (section.visible === false) return;
   section.items.forEach((item) => list.push({ item, sectionId: section.id }));
+  const rCount = section.repeatCount ?? 1;
+  if (rCount > 1) {
+    for (let i = 1; i < rCount; i++) {
+      section.items.forEach((item) => {
+        list.push({ item: { ...item, id: `${item.id}__repeat_${i}` } as CardLayoutItem, sectionId: section.id });
+      });
+    }
+  }
   section.children.forEach((child) => collectItemPlacements(child, result, list));
 };
 
@@ -256,9 +281,50 @@ const computeLayout = (layout: CardLayout): LayoutResult => {
   return result;
 };
 
-const collectItems = (section: CardLayoutSection, list: CardLayoutItem[]) => {
+const resolveSection = (section: CardLayoutSection, prop: string, card?: CardData, layout?: CardLayout): unknown => {
+  const binding = section.bindings?.[prop];
+  if (binding && card) {
+    const scoped = card.fields[`${prop}:${binding.field}`];
+    if (scoped !== undefined && scoped !== "") return scoped;
+    const plain = card.fields[binding.field];
+    if (plain !== undefined && plain !== "") return plain;
+    const meta = layout?.bindingMeta?.[`${prop}:${binding.field}`];
+    if (meta?.default !== undefined && meta.default !== "") return meta.default;
+  }
+  return (section as any)[prop];
+};
+
+const computeRepeatPositions = (section: CardLayoutSection, result: LayoutResult, card?: CardData, layout?: CardLayout) => {
+  const rCount = Number(resolveSection(section, 'repeatCount', card, layout)) || 1;
+  if (rCount > 1) {
+    const rox = mmToPx(Number(resolveSection(section, 'repeatOffsetX', card, layout)) || 0);
+    const roy = mmToPx(Number(resolveSection(section, 'repeatOffsetY', card, layout)) || 0);
+    for (let i = 1; i < rCount; i++) {
+      section.items.forEach((item) => {
+        const original = result.items.get(item.id);
+        if (original) {
+          result.items.set(`${item.id}__repeat_${i}`, {
+            x: original.x + rox * i,
+            y: original.y + roy * i,
+            width: original.width,
+            height: original.height,
+          });
+        }
+      });
+    }
+  }
+  section.children.forEach((child) => computeRepeatPositions(child, result, card, layout));
+};
+
+const collectItems = (section: CardLayoutSection, list: CardLayoutItem[], card?: CardData, layout?: CardLayout) => {
   list.push(...section.items);
-  section.children.forEach((child) => collectItems(child, list));
+  const rCount = Number(resolveSection(section, 'repeatCount', card, layout)) || 1;
+  if (rCount > 1) {
+    for (let i = 1; i < rCount; i++) {
+      section.items.forEach((item) => list.push({ ...item, id: `${item.id}__repeat_${i}` } as CardLayoutItem));
+    }
+  }
+  section.children.forEach((child) => collectItems(child, list, card, layout));
 };
 
 const findSection = (section: CardLayoutSection, id: string): CardLayoutSection | null => {
@@ -268,6 +334,12 @@ const findSection = (section: CardLayoutSection, id: string): CardLayoutSection 
     if (found) return found;
   }
   return null;
+};
+
+const getAllSectionItems = (section: CardLayoutSection): CardLayoutItem[] => {
+  const items: CardLayoutItem[] = [...section.items];
+  section.children.forEach(c => items.push(...getAllSectionItems(c)));
+  return items;
 };
 
 const findItem = (section: CardLayoutSection, id: string): CardLayoutItem | null => {
@@ -285,62 +357,59 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
   const { palette } = theme;
   const { width, height, radius } = layout;
   const computed = computeLayout(layout);
-  const fontSlots = Object.keys(layout.fonts ?? {});
+  computeRepeatPositions(layout.root, computed, card, layout);
+  const fontSlots = Object.keys(options.fontSlots ?? {});
   const items: CardLayoutItem[] = [];
-  collectItems(layout.root, items);
+  collectItems(layout.root, items, card, layout);
 
   // Collect clip paths for images with rounded corners (to avoid duplicates in defs)
   const clipPaths: string[] = [];
   const itemElements: string[] = [];
 
   items.forEach((item) => {
-    const vis = resolve(item, "visible", card);
+    const vis = resolve(item, "visible", card, layout);
     if (vis === false || vis === "false") return;
-    const rect = computed.items.get(item.id);
-    if (!rect) return;
+    const baseRect = computed.items.get(item.id);
+    if (!baseRect) return;
+    const ox = mmToPx(Number(resolve(item, "offsetX", card, layout)) || 0);
+    const oy = mmToPx(Number(resolve(item, "offsetY", card, layout)) || 0);
+    const rect = (ox || oy) ? { ...baseRect, x: baseRect.x + ox, y: baseRect.y + oy } : baseRect;
 
     // Handle different item types (default to text for backward compatibility)
     const itemType = item.type ?? "text";
     
     if (itemType === "text") {
-      const value = String(resolve(item, "defaultValue", card) ?? "");
+      const value = String(resolve(item, "defaultValue", card, layout) ?? "");
       if (!value) return;
-      const fontSize = Number(resolve(item, "fontSize", card)) || 16;
-      const align = String(resolve(item, "align", card) ?? "center") as "left" | "center" | "right";
-      const vAlign = String(resolve(item, "verticalAlign", card) ?? "middle");
-      const color = String(resolve(item, "color", card) ?? palette.ink);
-      const fontKey = String(resolve(item, "font", card) ?? "");
-      const slotName = fontKey && layout.fonts?.[fontKey] ? fontKey : fontSlots[0];
-      const fontSlot = layout.fonts?.[slotName];
+      const fontSize = Number(resolve(item, "fontSize", card, layout)) || 16;
+      const align = String(resolve(item, "align", card, layout) ?? "center") as "left" | "center" | "right";
+      const vAlign = String(resolve(item, "verticalAlign", card, layout) ?? "middle");
+      const color = String(resolve(item, "color", card, layout) ?? palette.ink);
+      const fontKey = String(resolve(item, "font", card, layout) ?? "");
+      const slotName = fontKey && options.fontSlots?.[fontKey] ? fontKey : fontSlots[0];
+      const fontSlot = options.fontSlots?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
-      const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
-      const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
+      const justify = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
+      const alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
       const styledLines = parseRichText(value);
-      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign as any)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"`;
-      if (styledLines.length === 1) {
-        itemElements.push(`<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`);
-      } else {
-        const tspans = styledLines.map((line, i) =>
-          `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
-        ).join('');
-        itemElements.push(`<text ${baseAttrs}>${tspans}</text>`);
-      }
+      const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
+      itemElements.push(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
     }
 
     if (itemType === "frame") {
-      const strokeWidth = Number(resolve(item, "strokeWidth", card)) || 2;
-      const strokeColor = String(resolve(item, "strokeColor", card) ?? palette.ink);
-      const fillColor = String(resolve(item, "fillColor", card) ?? "none");
-      const cornerRadius = Number(resolve(item, "cornerRadius", card)) || 8;
+      const strokeWidth = Number(resolve(item, "strokeWidth", card, layout)) || 2;
+      const strokeColor = String(resolve(item, "strokeColor", card, layout) ?? palette.ink);
+      const fillColor = String(resolve(item, "fillColor", card, layout) ?? "none");
+      const cornerRadius = Number(resolve(item, "cornerRadius", card, layout)) || 8;
       itemElements.push(`<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
     }
 
     if (itemType === "image") {
-      const imageUrl = String(resolve(item, "defaultValue", card) ?? "");
+      const imageUrl = String(resolve(item, "defaultValue", card, layout) ?? "");
       if (!imageUrl) return;
-      const cornerRadius = Number(resolve(item, "cornerRadius", card)) || 0;
+      const cornerRadius = Number(resolve(item, "cornerRadius", card, layout)) || 0;
       const clipId = `clip-${item.id}`;
-      const fit = String(resolve(item, "fit", card) ?? "cover");
+      const fit = String(resolve(item, "fit", card, layout) ?? "cover");
 
       let imageProps = "";
       if (fit === "cover" || fit === "contain") {
@@ -358,11 +427,67 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     }
 
     if (itemType === "emoji") {
-      const emoji = String(resolve(item, "emoji", card) ?? "⭐");
-      const fontSize = Number(resolve(item, "fontSize", card)) || 32;
+      const emoji = String(resolve(item, "emoji", card, layout) ?? "⭐");
+      const fontSize = Number(resolve(item, "fontSize", card, layout)) || 32;
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2;
       itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
+    }
+
+    if (itemType === "copy") {
+      const targetId = (item as any).copyTargetId;
+      if (!targetId) return;
+      // Find target items: either a single item or all items in a section
+      const targetItem = findItem(layout.root, targetId);
+      const targetSection = targetItem ? null : findSection(layout.root, targetId);
+      const targets = targetItem ? [targetItem] : (targetSection ? getAllSectionItems(targetSection) : []);
+      if (!targets.length) return;
+      // Render each target's content at the copy's rect, scaled to fit
+      const targetRects = targets.map(t => computed.items.get(t.id)).filter(Boolean) as Rect[];
+      if (!targetRects.length) return;
+      const bounds = targetRects.reduce((b, r) => ({
+        x: Math.min(b.x, r.x), y: Math.min(b.y, r.y),
+        x2: Math.max(b.x2, r.x + r.width), y2: Math.max(b.y2, r.y + r.height),
+      }), { x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity });
+      const srcW = bounds.x2 - bounds.x || 1;
+      const srcH = bounds.y2 - bounds.y || 1;
+      const scaleX = rect.width / srcW;
+      const scaleY = rect.height / srcH;
+      const tx = rect.x - bounds.x * scaleX;
+      const ty = rect.y - bounds.y * scaleY;
+      itemElements.push(`<g transform="translate(${tx},${ty}) scale(${scaleX},${scaleY})">`);
+      // Re-render targets inside the group (they'll use their original rects, scaled by the group transform)
+      targets.forEach(t => {
+        const tRect = computed.items.get(t.id);
+        if (!tRect) return;
+        const tType = t.type ?? "text";
+        if (tType === "text") {
+          const value = String(resolve(t, "defaultValue", card, layout) ?? "");
+          if (!value) return;
+          const fontSize = Number(resolve(t, "fontSize", card, layout)) || 16;
+          const align = String(resolve(t, "align", card, layout) ?? "center") as "left" | "center" | "right";
+          const vAlign = String(resolve(t, "verticalAlign", card, layout) ?? "middle");
+          const color = String(resolve(t, "color", card, layout) ?? palette.ink);
+          const fontKey = String(resolve(t, "font", card, layout) ?? "");
+          const slotName = fontKey && options.fontSlots?.[fontKey] ? fontKey : fontSlots[0];
+          const fontSlot = options.fontSlots?.[slotName];
+          const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
+          const textX = align === "left" ? tRect.x : align === "right" ? tRect.x + tRect.width : tRect.x + tRect.width / 2;
+          const textY = vAlign === "top" ? tRect.y : vAlign === "bottom" ? tRect.y + tRect.height : tRect.y + tRect.height / 2;
+          itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign as any)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`);
+        } else if (tType === "emoji") {
+          const emoji = String(resolve(t, "emoji", card, layout) ?? "⭐");
+          const fontSize = Number(resolve(t, "fontSize", card, layout)) || 32;
+          itemElements.push(`<text x="${tRect.x + tRect.width / 2}" y="${tRect.y + tRect.height / 2}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
+        } else if (tType === "frame") {
+          const sw = Number(resolve(t, "strokeWidth", card, layout)) || 2;
+          const sc = String(resolve(t, "strokeColor", card, layout) ?? palette.ink);
+          const fc = String(resolve(t, "fillColor", card, layout) ?? "none");
+          const cr = Number(resolve(t, "cornerRadius", card, layout)) || 0;
+          itemElements.push(`<rect x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`);
+        }
+      });
+      itemElements.push(`</g>`);
     }
   });
 
@@ -372,7 +497,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
   items.forEach((item) => {
     if ((item.type ?? "text") === "text") {
       const textItem = item as CardLayoutTextItem;
-      const slotName = textItem.font && layout.fonts?.[textItem.font] ? textItem.font : fontSlots[0];
+      const slotName = textItem.font && options.fontSlots?.[textItem.font] ? textItem.font : fontSlots[0];
       if (slotName) usedSlots.add(slotName);
     }
   });
@@ -392,11 +517,18 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
 
   const defs = (clipPaths.length > 0 || fontStyles) ? `<defs>${fontStyles}${clipPaths.join("")}</defs>` : "";
 
+  // Inject font CSS into each foreignObject's HTML for proper font rendering
+  let renderedItems = itemTexts;
+  if (fontStyles) {
+    renderedItems = renderedItems.replace(/(<div xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"[^>]*>)/g, `$1${fontStyles}`);
+  }
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">
   ${defs}
   <rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" fill="${palette.paper}" />
-  ${itemTexts}
+  ${options.back ? `<clipPath id="card-clip"><rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" /></clipPath><image x="0" y="0" width="${width}" height="${height}" href="${escape(options.back)}" preserveAspectRatio="${options.backFit === 'contain' ? 'xMidYMid meet' : options.backFit === 'fill' ? 'none' : 'xMidYMid slice'}" clip-path="url(#card-clip)" />` : ''}
+  ${renderedItems}
 </svg>`;
 };
 

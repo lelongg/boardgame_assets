@@ -31,6 +31,9 @@ type ItemPlacement = {
 
 type RenderOptions = {
   debug?: boolean;
+  back?: string;
+  backFit?: "cover" | "contain" | "fill";
+  fonts?: Record<string, { name: string; file: string }>;
 };
 
 
@@ -76,6 +79,17 @@ const renderStyledLine = (runs: StyledRun[]): string => {
   }).join('');
 };
 
+const renderStyledLineHtml = (runs: StyledRun[]): string => {
+  return runs.map(run => {
+    const text = escape(run.text);
+    if (!text && runs.length === 1) return '&nbsp;';
+    let result = text;
+    if (run.bold) result = `<b>${result}</b>`;
+    if (run.italic) result = `<i>${result}</i>`;
+    return result;
+  }).join('');
+};
+
 // Selection highlight styling
 const SELECTION_COLOR = "#c65a32";
 const SELECTION_STROKE_WIDTH = "2.5";
@@ -94,9 +108,8 @@ const anchorPoints: AnchorPoint[] = [
   { x: 1, y: 1 }
 ];
 
-/** Resolve a property value: check bindings first, fall back to static value.
- *  Field key is scoped as "prop:field" to avoid collisions, with fallback to plain "field" for compat. */
-const resolve = (item: CardLayoutItem, prop: string, card: CardData): unknown => {
+/** Resolve a property value: card data → binding default → item static value. */
+const resolve = (item: CardLayoutItem, prop: string, card: CardData, layoutRef?: CardLayout): unknown => {
   const binding = (item as any).bindings?.[prop];
   if (binding) {
     if (binding.field === "name") return card.name || (item as any)[prop];
@@ -104,6 +117,8 @@ const resolve = (item: CardLayoutItem, prop: string, card: CardData): unknown =>
     if (scoped !== undefined && scoped !== "") return scoped;
     const plain = card.fields[binding.field];
     if (plain !== undefined && plain !== "") return plain;
+    const meta = layoutRef?.bindingMeta?.[`${prop}:${binding.field}`];
+    if (meta?.default !== undefined && meta.default !== "") return meta.default;
   }
   return (item as any)[prop];
 };
@@ -185,6 +200,14 @@ const layoutSections = (section: CardLayoutSection, rect: Rect, result: LayoutRe
 const collectItemPlacements = (section: CardLayoutSection, result: LayoutResult, list: ItemPlacement[]): void => {
   if (section.visible === false) return;
   section.items.forEach((item) => list.push({ item, sectionId: section.id }));
+  const rCount = section.repeatCount ?? 1;
+  if (rCount > 1) {
+    for (let i = 1; i < rCount; i++) {
+      section.items.forEach((item) => {
+        list.push({ item: { ...item, id: `${item.id}__repeat_${i}` } as CardLayoutItem, sectionId: section.id });
+      });
+    }
+  }
   section.children.forEach((child) => collectItemPlacements(child, result, list));
 };
 
@@ -262,12 +285,53 @@ const computeLayoutPx = (layout: CardLayout): LayoutResult => {
   return result;
 };
 
+const resolveSection = (section: CardLayoutSection, prop: string, card?: CardData, layoutRef?: CardLayout): unknown => {
+  const binding = section.bindings?.[prop];
+  if (binding && card) {
+    const scoped = card.fields[`${prop}:${binding.field}`];
+    if (scoped !== undefined && scoped !== "") return scoped;
+    const plain = card.fields[binding.field];
+    if (plain !== undefined && plain !== "") return plain;
+    const meta = layoutRef?.bindingMeta?.[`${prop}:${binding.field}`];
+    if (meta?.default !== undefined && meta.default !== "") return meta.default;
+  }
+  return (section as any)[prop];
+};
+
+const computeRepeatPositions = (section: CardLayoutSection, result: LayoutResult, card?: CardData, layoutRef?: CardLayout): void => {
+  const rCount = Number(resolveSection(section, 'repeatCount', card, layoutRef)) || 1;
+  if (rCount > 1) {
+    const rox = mmToPx(Number(resolveSection(section, 'repeatOffsetX', card, layoutRef)) || 0);
+    const roy = mmToPx(Number(resolveSection(section, 'repeatOffsetY', card, layoutRef)) || 0);
+    for (let i = 1; i < rCount; i++) {
+      section.items.forEach((item) => {
+        const original = result.items.get(item.id);
+        if (original) {
+          result.items.set(`${item.id}__repeat_${i}`, {
+            x: original.x + rox * i,
+            y: original.y + roy * i,
+            width: original.width,
+            height: original.height,
+          });
+        }
+      });
+    }
+  }
+  section.children.forEach((child) => computeRepeatPositions(child, result, card, layoutRef));
+};
+
 export const computeLayout = (layoutMm: CardLayout): LayoutResult =>
   computeLayoutPx(layoutToPx(layoutMm));
 
-const collectItems = (section: CardLayoutSection, list: CardLayoutItem[]): void => {
+const collectItems = (section: CardLayoutSection, list: CardLayoutItem[], card?: CardData, layoutRef?: CardLayout): void => {
   list.push(...section.items);
-  section.children.forEach((child) => collectItems(child, list));
+  const rCount = Number(resolveSection(section, 'repeatCount', card, layoutRef)) || 1;
+  if (rCount > 1) {
+    for (let i = 1; i < rCount; i++) {
+      section.items.forEach((item) => list.push({ ...item, id: `${item.id}__repeat_${i}` } as CardLayoutItem));
+    }
+  }
+  section.children.forEach((child) => collectItems(child, list, card, layoutRef));
 };
 
 const findSection = (section: CardLayoutSection, id: string): CardLayoutSection | null => {
@@ -277,6 +341,12 @@ const findSection = (section: CardLayoutSection, id: string): CardLayoutSection 
     if (found) return found;
   }
   return null;
+};
+
+const getAllSectionItems = (section: CardLayoutSection): CardLayoutItem[] => {
+  const items: CardLayoutItem[] = [...section.items];
+  section.children.forEach(c => items.push(...getAllSectionItems(c)));
+  return items;
 };
 
 const findItem = (section: CardLayoutSection, id: string): CardLayoutItem | null => {
@@ -293,17 +363,21 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
   const layout = layoutToPx(layoutMm);
   const { palette } = theme;
   const { width, height, radius } = layout;
-  const fontSlots = Object.keys(layout.fonts ?? {});
+  const fontSlots = Object.keys(options.fonts ?? {});
   const computed = computeLayoutPx(layout);
+  computeRepeatPositions(layout.root, computed, card, layoutMm);
   const items: CardLayoutItem[] = [];
-  collectItems(layout.root, items);
+  collectItems(layout.root, items, card, layoutMm);
 
   const renderedItems = items
     .map((item) => {
-      const vis = resolve(item, "visible", card);
+      const vis = resolve(item, "visible", card, layoutMm);
       if (vis === false || vis === "false") return "";
-      const rect = computed.items.get(item.id);
-      if (!rect) return "";
+      const baseRect = computed.items.get(item.id);
+      if (!baseRect) return "";
+      const ox = mmToPx(Number(resolve(item, "offsetX", card, layoutMm)) || 0);
+      const oy = mmToPx(Number(resolve(item, "offsetY", card, layoutMm)) || 0);
+      const rect = (ox || oy) ? { ...baseRect, x: baseRect.x + ox, y: baseRect.y + oy } : baseRect;
 
       const itemType = item.type ?? "text"; // Default to text for legacy items
       
@@ -320,56 +394,100 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       if (itemType === "image") {
         // Render image item - type guard
         if (item.type !== "image") return "";
-        const value = String(resolve(item, "defaultValue", card) ?? "");
+        const value = String(resolve(item, "defaultValue", card, layoutMm) ?? "");
         if (!value) return "";
         const cornerRadius = item.cornerRadius ?? 0;
         const fit = item.fit ?? "cover";
-        
-        // Create a clip path for the image - sanitize ID to only contain safe characters
+
         const clipId = `clip-${String(item.id).replace(/[^a-zA-Z0-9-_]/g, '')}`;
-        const clipPath = cornerRadius > 0 
+        const clipPath = cornerRadius > 0
           ? `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" /></clipPath>`
           : "";
-        
-        // Map fit values to preserveAspectRatio
         const preserveAspectRatio = fit === "contain" ? "xMidYMid meet" : fit === "fill" ? "none" : "xMidYMid slice";
         const clipAttr = cornerRadius > 0 ? ` clip-path="url(#${clipId})"` : "";
-        
+
         return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${preserveAspectRatio}"${clipAttr} />`;
       }
       
       if (itemType === "emoji") {
         if (item.type !== "emoji") return "";
-        const emoji = String(resolve(item, "emoji", card) ?? "⭐");
+        const emoji = String(resolve(item, "emoji", card, layoutMm) ?? "⭐");
         const fontSize = item.fontSize ?? 32;
         const textX = rect.x + rect.width / 2;
         const textY = rect.y + rect.height / 2;
         return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`;
       }
 
-      // Render text item (default) - type guard
-      if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
-      const value = String(resolve(item, "defaultValue", card) ?? "");
-      if (!value) return "";
-      const fontKey = String(resolve(item, "font", card) ?? "");
-      const slotName = fontKey && layout.fonts?.[fontKey] ? fontKey : fontSlots[0];
-      const fontSlot = layout.fonts?.[slotName];
-      const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
-      const fontSize = Number(resolve(item, "fontSize", card)) || 20;
-      const align = String(resolve(item, "align", card) ?? "center");
-      const vAlign = String(resolve(item, "verticalAlign", card) ?? "middle");
-      const color = escape(String(resolve(item, "color", card) ?? palette.ink));
-      const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
-      const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
-      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"`;
-      const styledLines = parseRichText(value);
-      if (styledLines.length === 1) {
-        return `<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`;
+      if (itemType === "copy") {
+        const targetId = (item as any).copyTargetId;
+        if (!targetId) return "";
+        const targetItem = findItem(layout.root, targetId);
+        const targetSection = targetItem ? null : findSection(layout.root, targetId);
+        const targets = targetItem ? [targetItem] : (targetSection ? getAllSectionItems(targetSection) : []);
+        if (!targets.length) return "";
+        const targetRects = targets.map(t => computed.items.get(t.id)).filter(Boolean) as Rect[];
+        if (!targetRects.length) return "";
+        const bounds = targetRects.reduce((b, r) => ({
+          x: Math.min(b.x, r.x), y: Math.min(b.y, r.y),
+          x2: Math.max(b.x2, r.x + r.width), y2: Math.max(b.y2, r.y + r.height),
+        }), { x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity });
+        const srcW = bounds.x2 - bounds.x || 1;
+        const srcH = bounds.y2 - bounds.y || 1;
+        const scaleX = rect.width / srcW;
+        const scaleY = rect.height / srcH;
+        const tx = rect.x - bounds.x * scaleX;
+        const ty = rect.y - bounds.y * scaleY;
+        const parts = [`<g transform="translate(${tx},${ty}) scale(${scaleX},${scaleY})">`];
+        targets.forEach(t => {
+          const tRect = computed.items.get(t.id);
+          if (!tRect) return;
+          const tType = t.type ?? "text";
+          if (tType === "text") {
+            const v = String(resolve(t, "defaultValue", card, layoutMm) ?? "");
+            if (!v) return;
+            const fs = Number(resolve(t, "fontSize", card, layoutMm)) || 20;
+            const al = String(resolve(t, "align", card, layoutMm) ?? "center");
+            const va = String(resolve(t, "verticalAlign", card, layoutMm) ?? "middle");
+            const co = escape(String(resolve(t, "color", card, layoutMm) ?? palette.ink));
+            const fk = String(resolve(t, "font", card, layoutMm) ?? "");
+            const sn = fk && options.fonts?.[fk] ? fk : fontSlots[0];
+            const ff = options.fonts?.[sn] ? `'${options.fonts[sn].name}'` : "'sans-serif'";
+            const tx2 = al === "left" ? tRect.x : al === "right" ? tRect.x + tRect.width : tRect.x + tRect.width / 2;
+            const ty2 = va === "top" ? tRect.y : va === "bottom" ? tRect.y + tRect.height : tRect.y + tRect.height / 2;
+            parts.push(`<text x="${tx2}" y="${ty2}" text-anchor="${textAnchorFor(al)}" dominant-baseline="${baselineFor(va)}" font-family="${ff}" font-size="${fs}" fill="${co}">${escape(v)}</text>`);
+          } else if (tType === "emoji") {
+            const em = String(resolve(t, "emoji", card, layoutMm) ?? "⭐");
+            const fs = (t as any).fontSize ?? 32;
+            parts.push(`<text x="${tRect.x + tRect.width / 2}" y="${tRect.y + tRect.height / 2}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" fill="#000000">${escape(em)}</text>`);
+          } else if (tType === "frame") {
+            const sw = (t as any).strokeWidth ?? 2;
+            const sc = escape((t as any).strokeColor ?? palette.ink);
+            const fc = escape((t as any).fillColor ?? "none");
+            const cr = (t as any).cornerRadius ?? 0;
+            parts.push(`<rect x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`);
+          }
+        });
+        parts.push(`</g>`);
+        return parts.join("");
       }
-      const tspans = styledLines.map((line, i) =>
-        `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
-      ).join('');
-      return `<text ${baseAttrs}>${tspans}</text>`;
+
+      // Render text item (default) - type guard
+      if (item.type === "frame" || item.type === "image" || item.type === "emoji" || item.type === "copy") return "";
+      const value = String(resolve(item, "defaultValue", card, layoutMm) ?? "");
+      if (!value) return "";
+      const fontKey = String(resolve(item, "font", card, layoutMm) ?? "");
+      const slotName = fontKey && options.fonts?.[fontKey] ? fontKey : fontSlots[0];
+      const fontSlot = options.fonts?.[slotName];
+      const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
+      const fontSize = Number(resolve(item, "fontSize", card, layoutMm)) || 20;
+      const align = String(resolve(item, "align", card, layoutMm) ?? "center");
+      const vAlign = String(resolve(item, "verticalAlign", card, layoutMm) ?? "middle");
+      const color = escape(String(resolve(item, "color", card, layoutMm) ?? palette.ink));
+      const justify = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
+      const alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
+      const styledLines = parseRichText(value);
+      const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
+      return `<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`;
     })
     .join("");
 
@@ -422,6 +540,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" fill="${palette.paper}" />
+  ${options.back ? `<clipPath id="card-bg-clip"><rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" /></clipPath><image x="0" y="0" width="${width}" height="${height}" href="${escape(options.back)}" preserveAspectRatio="${options.backFit === 'contain' ? 'xMidYMid meet' : options.backFit === 'fill' ? 'none' : 'xMidYMid slice'}" clip-path="url(#card-bg-clip)" />` : ''}
   ${debugLabel}
   ${debugRects}
   ${debugAnchors}
@@ -433,22 +552,28 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
   showSections?: boolean;
   showItems?: boolean;
   selectedNodeId?: string | null;
+  card?: CardData;
+  back?: string;
+  fonts?: Record<string, { name: string; file: string }>;
 } = {}): string => {
   const layout = layoutToPx(layoutMm);
-  const { showSections = true, showItems = true, selectedNodeId = null } = options;
+  const { showSections = true, showItems = true, selectedNodeId = null, card: providedCard } = options;
   const { palette } = theme;
   const { width, height, radius } = layout;
-  const fontSlots = Object.keys(layout.fonts ?? {});
+  const fontSlots = Object.keys(options.fonts ?? {});
   const computed = computeLayoutPx(layout);
 
-  // Render card content using empty card (defaults will show)
-  const emptyCard: CardData = { id: '', name: 'Card Name', fields: {} };
+  const emptyCard: CardData = providedCard ?? { id: '', name: 'Card Name', fields: {} };
+  computeRepeatPositions(layout.root, computed, emptyCard, layoutMm);
   const items: CardLayoutItem[] = [];
-  collectItems(layout.root, items);
+  collectItems(layout.root, items, emptyCard, layoutMm);
 
   const renderedContent = items.map((item) => {
-    const rect = computed.items.get(item.id);
-    if (!rect) return "";
+    const baseRect = computed.items.get(item.id);
+    if (!baseRect) return "";
+    const lox = mmToPx((item as any).offsetX ?? 0);
+    const loy = mmToPx((item as any).offsetY ?? 0);
+    const rect = (lox || loy) ? { ...baseRect, x: baseRect.x + lox, y: baseRect.y + loy } : baseRect;
     const itemType = item.type ?? "text";
     if (itemType === "frame") {
       if (item.type !== "frame") return "";
@@ -460,7 +585,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
     }
     if (itemType === "image") {
       if (item.type !== "image") return "";
-      const value = String(resolve(item, "defaultValue", emptyCard) ?? "");
+      const value = String(resolve(item, "defaultValue", emptyCard, layoutMm) ?? "");
       if (!value) return "";
       const cr = item.cornerRadius ?? 0;
       const fit = item.fit ?? "cover";
@@ -472,33 +597,27 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
     }
     if (itemType === "emoji") {
       if (item.type !== "emoji") return "";
-      const emoji = String(resolve(item, "emoji", emptyCard) ?? "⭐");
+      const emoji = String(resolve(item, "emoji", emptyCard, layoutMm) ?? "⭐");
       const fontSize = item.fontSize ?? 32;
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2;
       return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`;
     }
-    if (item.type === "frame" || item.type === "image" || item.type === "emoji") return "";
-    const value = String(resolve(item, "defaultValue", emptyCard) ?? "");
+    if (item.type === "frame" || item.type === "image" || item.type === "emoji" || item.type === "copy") return "";
+    const value = String(resolve(item, "defaultValue", emptyCard, layoutMm) ?? "");
     if (!value) return "";
-    const slotName = item.font && layout.fonts?.[item.font] ? item.font : fontSlots[0];
-    const fontSlot = layout.fonts?.[slotName];
+    const slotName = item.font && options.fonts?.[item.font] ? item.font : fontSlots[0];
+    const fontSlot = options.fonts?.[slotName];
     const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
     const fontSize = item.fontSize ?? 20;
-    const align = item.align ?? "left";
-    const vAlign = (item as any).verticalAlign ?? "top";
+    const align = item.align ?? "center";
+    const vAlign = (item as any).verticalAlign ?? "middle";
     const color = escape(item.color ?? palette.ink);
-    const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
-    const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
-    const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"`;
+    const justify = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
+    const alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
     const styledLines = parseRichText(value);
-    if (styledLines.length === 1) {
-      return `<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`;
-    }
-    const tspans = styledLines.map((line, i) =>
-      `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
-    ).join('');
-    return `<text ${baseAttrs}>${tspans}</text>`;
+    const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
+    return `<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`;
   }).join("");
 
   // Section wireframes
@@ -529,6 +648,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">
   ${defs}
   <rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" fill="${palette.paper}" />
+  ${options.back ? `<clipPath id="layout-bg-clip"><rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" /></clipPath><image x="0" y="0" width="${width}" height="${height}" href="${escape(options.back)}" preserveAspectRatio="${options.backFit === 'contain' ? 'xMidYMid meet' : options.backFit === 'fill' ? 'none' : 'xMidYMid slice'}" clip-path="url(#layout-bg-clip)" />` : ''}
   ${contentWithoutClipPaths}
   ${sectionRects}
   ${itemRects}
@@ -537,11 +657,10 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
 
 /** Fetch layout fonts and embed them as base64 @font-face rules into the SVG.
  *  Blob SVGs displayed via <img> can't access the page's @font-face rules. */
-export const embedFontsInSvg = async (svg: string, layout: CardLayout, gameId: string): Promise<string> => {
-  const fonts = layout.fonts;
-  if (!fonts) return svg;
+export const embedFontsInSvg = async (svg: string, gameId: string, gameFonts: Record<string, { name: string; file: string }>): Promise<string> => {
+  if (!Object.keys(gameFonts).length) return svg;
   const rules: string[] = [];
-  for (const slot of Object.values(fonts)) {
+  for (const slot of Object.values(gameFonts)) {
     if (!slot.file) continue;
     try {
       const resp = await fetch(`/api/games/${gameId}/fonts/${slot.file}`);
@@ -556,9 +675,14 @@ export const embedFontsInSvg = async (svg: string, layout: CardLayout, gameId: s
     } catch { /* skip */ }
   }
   if (!rules.length) return svg;
-  const styleBlock = `<defs><style>${rules.join('\n')}</style></defs>`;
-  // Insert after the opening <svg ...> tag
-  return svg.replace(/(<svg[^>]*>)/, `$1${styleBlock}`);
+  const css = rules.join('\n');
+  // SVG <style> for <text> elements, plus a foreignObject <style> for HTML text wrapping
+  const svgStyle = `<defs><style>${css}</style></defs>`;
+  let result = svg.replace(/(<svg[^>]*>)/, `$1${svgStyle}`);
+  // Inject @font-face into each foreignObject's HTML div so fonts work in blob URL <img>
+  const htmlFontStyle = `<style>${css}</style>`;
+  result = result.replace(/(<div xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"[^>]*>)/g, `$1${htmlFontStyle}`);
+  return result;
 };
 
 /** Fetch images referenced via /api/ URLs and embed them as base64 data URIs.

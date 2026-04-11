@@ -4,6 +4,7 @@ import { findSectionById, findItemById, getNodeKind } from './layoutHelpers'
 
 type PropertyPanelProps = {
   layout: CardLayout
+  gameFonts?: Record<string, { name: string; file: string }>
   selectedNodeId: string
   selectedProperty: string | null
   onSelectProperty: (property: string) => void
@@ -19,6 +20,9 @@ const SECTION_PROPERTIES: PropertyDef[] = [
   { key: 'sizePct', label: 'Size %' },
   { key: 'gap', label: 'Gap' },
   { key: 'columns', label: 'Columns' },
+  { key: 'repeatCount', label: 'Repeat' },
+  { key: 'repeatOffsetX', label: 'Repeat X' },
+  { key: 'repeatOffsetY', label: 'Repeat Y' },
 ]
 
 const ROOT_PROPERTIES: PropertyDef[] = [
@@ -36,6 +40,8 @@ const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
   { key: 'visible', label: 'Visible' },
   { key: 'widthPct', label: 'Width %' },
   { key: 'heightPct', label: 'Height %' },
+  { key: 'offsetX', label: 'Offset X' },
+  { key: 'offsetY', label: 'Offset Y' },
   { key: 'anchor', label: 'Anchor' },
   { key: 'attachAnchor', label: 'Attach Anchor' },
   { key: 'attachTargetId', label: 'Attach Target' },
@@ -68,6 +74,10 @@ const EMOJI_PROPERTIES: PropertyDef[] = [
   { key: 'fontSize', label: 'Size' },
 ]
 
+const COPY_PROPERTIES: PropertyDef[] = [
+  { key: 'copyTargetId', label: 'Target' },
+]
+
 const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boolean): PropertyDef[] => {
   if (kind === 'section') return isRoot ? ROOT_PROPERTIES : SECTION_PROPERTIES
   const itemType = node.type ?? 'text'
@@ -76,6 +86,7 @@ const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boole
     case 'frame': return [...COMMON_ITEM_PROPERTIES, ...FRAME_PROPERTIES]
     case 'image': return [...COMMON_ITEM_PROPERTIES, ...IMAGE_PROPERTIES]
     case 'emoji': return [...COMMON_ITEM_PROPERTIES, ...EMOJI_PROPERTIES]
+    case 'copy': return [...COMMON_ITEM_PROPERTIES, ...COPY_PROPERTIES]
     default: return COMMON_ITEM_PROPERTIES
   }
 }
@@ -90,6 +101,7 @@ const getPropertyValue = (node: any, property: string): unknown => {
 
 export default function PropertyPanel({
   layout,
+  gameFonts,
   selectedNodeId,
   selectedProperty,
   onSelectProperty,
@@ -142,11 +154,23 @@ export default function PropertyPanel({
           <ControlPanel
             property={selectedProperty}
             value={currentValue}
+            gameFonts={gameFonts}
             binding={bindings[selectedProperty]}
+            bindingValues={bindings[selectedProperty] ? layout.bindingMeta?.[`${selectedProperty}:${bindings[selectedProperty].field}`]?.values : undefined}
+            bindingDefault={bindings[selectedProperty] ? layout.bindingMeta?.[`${selectedProperty}:${bindings[selectedProperty].field}`]?.default : undefined}
+            itemType={kind === 'item' ? ((node as any).type ?? 'text') : undefined}
             layout={layout}
             selectedNodeId={selectedNodeId}
             onChange={(value) => onPropertyChange(selectedProperty, value)}
             onBindingChange={(binding) => onPropertyChange('__binding__' + selectedProperty, binding)}
+            onBindingValuesChange={(values) => {
+              const binding = bindings[selectedProperty]
+              if (binding) onPropertyChange(`__bindingValues__${selectedProperty}:${binding.field}`, values)
+            }}
+            onBindingDefaultChange={(defaultValue) => {
+              const binding = bindings[selectedProperty]
+              if (binding) onPropertyChange(`__bindingDefault__${selectedProperty}:${binding.field}`, defaultValue)
+            }}
           />
         </div>
       )}

@@ -98,14 +98,13 @@ const embedLocalImages = (svg: string, gameId: string): string => {
   });
 };
 
-const loadFontData = (gameId: string, layout: CardLayout): Record<string, { name: string; data: Buffer }> => {
+const loadFontData = (gameId: string): Record<string, { name: string; data: Buffer }> => {
   const fontData: Record<string, { name: string; data: Buffer }> = {};
-  if (layout.fonts) {
-    for (const [slot, fontSlot] of Object.entries(layout.fonts as Record<string, { name: string; file: string }>)) {
-      if (fontSlot.file) {
-        const fp = path.join(gameFontsDir(gameId), fontSlot.file);
-        if (fs.existsSync(fp)) fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
-      }
+  const fonts = loadGameFonts(gameId);
+  for (const [slot, fontSlot] of Object.entries(fonts)) {
+    if (fontSlot.file) {
+      const fp = path.join(gameFontsDir(gameId), fontSlot.file);
+      if (fs.existsSync(fp)) fontData[slot] = { name: fontSlot.name, data: fs.readFileSync(fp) };
     }
   }
   return fontData;
@@ -322,14 +321,8 @@ app.post("/api/games", async (c) => {
     try {
       const defaults = [{ slot: "title", fontName: "Fraunces" }, { slot: "body", fontName: "Space Grotesk" }];
       const fonts = loadGameFonts(id);
-      const t = readJson<any>(layoutFilePath(id, layout.id), null);
-      if (!t?.fonts) return;
       for (const { slot, fontName } of defaults) {
-        if (fonts[slot]?.file) {
-          // Already have this font for this game, just update layout reference
-          if (t.fonts[slot]) t.fonts[slot].file = fonts[slot].file;
-          continue;
-        }
+        if (fonts[slot]?.file) continue;
         try {
           const { data } = await fetchGoogleFont(fontName);
           const hash = hashBuffer(data);
@@ -337,11 +330,9 @@ app.post("/api/games", async (c) => {
           fs.mkdirSync(gameFontsDir(id), { recursive: true });
           fs.writeFileSync(path.join(gameFontsDir(id), fileName), data);
           fonts[slot] = { name: fontName, file: fileName, source: "google" };
-          if (t.fonts[slot]) t.fonts[slot].file = fileName;
         } catch { /* non-critical */ }
       }
       saveGameFonts(id, fonts);
-      writeJson(layoutFilePath(id, layout.id), t);
     } catch { /* non-critical */ }
   })();
   return c.json(game, 201);
@@ -514,7 +505,7 @@ app.get("/api/games/:gameId/collections/:collectionId/cards/:cardId", (c) => {
     const col = readJson<Collection | null>(collectionPath(gameId, collectionId), null);
     const layout = col ? loadLayout(gameId, col.layoutId) : null;
     if (!layout) return c.json({ error: "Layout not found" }, 404);
-    const fontData = loadFontData(gameId, layout);
+    const fontData = loadFontData(gameId);
     let svg = renderCardSvg(card, layout, { fonts: fontData });
     svg = embedLocalImages(svg, gameId);
     return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });
@@ -565,7 +556,7 @@ app.post("/api/games/:gameId/render", async (c) => {
   const card = normalizeCard(candidate);
   const layout = body?.layout ?? (body?.layoutId ? loadLayout(gameId, body.layoutId) : null);
   if (!layout) return c.json({ error: "Layout required (pass layout or layoutId)" }, 400);
-  const fontData = loadFontData(gameId, layout);
+  const fontData = loadFontData(gameId);
   let svg = renderCardSvg(card, layout, { fonts: fontData });
   svg = embedLocalImages(svg, gameId);
   return c.body(svg, { headers: { "Content-Type": "image/svg+xml" } });

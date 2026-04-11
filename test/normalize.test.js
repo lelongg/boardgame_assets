@@ -291,7 +291,7 @@ test("normalizeLayout handles legacy item without type", () => {
         {
           id: "legacy1",
           name: "Legacy 1",
-          fieldId: "title",
+          bindings: { defaultValue: { field: "title" } },
           anchor: { x: 0, y: 0 },
           attach: {
             targetType: "section",
@@ -349,49 +349,6 @@ test("normalizeLayout handles nested sections", () => {
   assert.equal(layout.root.children[0].layout, "stack");
   assert.equal(layout.root.children[0].sizePct, 100);
   assert.equal(layout.root.children[0].gap, 0);
-});
-
-test("normalizeLayout adds default fonts when missing", () => {
-  const layout = normalizeLayout({
-    version: 2,
-    id: "test",
-    name: "Test",
-    width: 63.5,
-    height: 88.9,
-    radius: 2.5,
-    bleed: 1.5,
-    root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
-  });
-  assert.ok(layout.fonts, "Should have fonts field");
-  assert.ok(layout.fonts.title, "Should have title font slot");
-  assert.ok(layout.fonts.body, "Should have body font slot");
-  assert.equal(layout.fonts.title.name, "Fraunces");
-  assert.equal(layout.fonts.body.name, "Space Grotesk");
-  assert.equal(layout.fonts.title.source, "google");
-  assert.equal(layout.fonts.body.source, "google");
-  assert.equal(layout.fonts.title.file, "");
-  assert.equal(layout.fonts.body.file, "");
-});
-
-test("normalizeLayout preserves existing fonts", () => {
-  const layout = normalizeLayout({
-    version: 2,
-    id: "test",
-    name: "Test",
-    width: 63.5,
-    height: 88.9,
-    radius: 2.5,
-    bleed: 1.5,
-    fonts: {
-      heading: { name: "Cinzel", file: "abc123.woff2", source: "google" },
-      flavor: { name: "MyFont", file: "def456.otf", source: "upload" }
-    },
-    root: { id: "root", name: "Root", layout: "column", sizePct: 100, gap: 0, children: [], items: [] }
-  });
-  assert.deepEqual(Object.keys(layout.fonts), ["heading", "flavor"]);
-  assert.equal(layout.fonts.heading.name, "Cinzel");
-  assert.equal(layout.fonts.heading.file, "abc123.woff2");
-  assert.equal(layout.fonts.flavor.source, "upload");
 });
 
 test("normalizeLayout text item font accepts arbitrary string", () => {

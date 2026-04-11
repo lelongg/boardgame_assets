@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import type { CardLayout, CardLayoutSection, CardLayoutItem, CardLayoutTextItem, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutEmojiItem } from '../../types'
+import type { CardLayout, CardLayoutSection, CardLayoutItem, CardLayoutTextItem, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutEmojiItem, CardLayoutCopyItem } from '../../types'
 import { findSectionById, findNodeLocation, findParentSection, getNodeKind } from './layoutHelpers'
 
 type LayoutActionsProps = {
@@ -56,6 +56,16 @@ const newImageItem = (sectionId: string): CardLayoutImageItem => ({
   cornerRadius: 0,
 })
 
+const newCopyItem = (sectionId: string): CardLayoutCopyItem => ({
+  type: 'copy',
+  id: crypto.randomUUID(),
+  name: 'Copy',
+  anchor: { x: 0.5, y: 0.5 },
+  attach: { targetType: 'section', targetId: sectionId, anchor: { x: 0.5, y: 0.5 } },
+  widthPct: 100,
+  heightPct: 100,
+})
+
 const newEmojiItem = (sectionId: string): CardLayoutEmojiItem => ({
   type: 'emoji',
   id: crypto.randomUUID(),
@@ -93,7 +103,7 @@ export default function LayoutActions({ layout, selectedNodeId, onLayoutChange, 
     onSelectNode(section.id)
   }
 
-  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji') => {
+  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji' | 'copy') => {
     const t = clone()
     let parentId: string
     if (selectedKind === 'section' && selectedNodeId) {
@@ -111,6 +121,7 @@ export default function LayoutActions({ layout, selectedNodeId, onLayoutChange, 
     if (itemType === 'frame') item = newFrameItem(parentId)
     else if (itemType === 'image') item = newImageItem(parentId)
     else if (itemType === 'emoji') item = newEmojiItem(parentId)
+    else if (itemType === 'copy') item = newCopyItem(parentId)
     else item = newTextItem(parentId)
 
     if (selectedKind === 'item' && selectedNodeId) {
@@ -155,6 +166,7 @@ export default function LayoutActions({ layout, selectedNodeId, onLayoutChange, 
             <button onClick={() => handleAddItem('frame')} className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50">Frame</button>
             <button onClick={() => handleAddItem('image')} className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50">Image</button>
             <button onClick={() => handleAddItem('emoji')} className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50">Emoji</button>
+            <button onClick={() => handleAddItem('copy')} className="block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50">Copy</button>
           </div>
         )}
       </div>

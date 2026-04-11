@@ -11,7 +11,6 @@ export type AnchorPoint = {
 
 export type PropertyBinding = {
   field: string;
-  values?: string[];
 };
 
 // Base properties shared by all item types
@@ -27,6 +26,8 @@ type CardLayoutItemBase = {
   };
   widthPct: number;
   heightPct: number;
+  offsetX?: number;
+  offsetY?: number;
   bindings?: Record<string, PropertyBinding>;
 };
 
@@ -65,19 +66,30 @@ export type CardLayoutEmojiItem = CardLayoutItemBase & {
   fontSize: number;
 };
 
+// Copy item - renders the same content as another item or section's items
+export type CardLayoutCopyItem = CardLayoutItemBase & {
+  type: "copy";
+  copyTargetId?: string;
+};
+
 // Union type for all item types
 export type CardLayoutItem =
   | CardLayoutTextItem
   | CardLayoutFrameItem
   | CardLayoutImageItem
-  | CardLayoutEmojiItem;
+  | CardLayoutEmojiItem
+  | CardLayoutCopyItem;
 
 export type CardLayoutSection = {
   id: string;
   name: string;
   visible?: boolean;
+  bindings?: Record<string, PropertyBinding>;
   layout: "row" | "column" | "stack" | "grid";
   columns?: number;
+  repeatCount?: number;
+  repeatOffsetX?: number;
+  repeatOffsetY?: number;
   sizePct: number;
   gap: number;
   children: CardLayoutSection[];
@@ -98,7 +110,7 @@ export type CardLayout = {
   height: number;
   radius: number;
   bleed: number;
-  fonts: Record<string, FontSlot>;
+  bindingMeta?: Record<string, { default?: string; values?: string[] }>;
   root: CardLayoutSection;
 };
 
@@ -106,4 +118,6 @@ export type Collection = {
   id: string;
   name: string;
   layoutId: string;
+  back?: string;
+  backFit?: "cover" | "contain" | "fill";
 };

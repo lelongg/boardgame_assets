@@ -49,9 +49,9 @@ test("text item renders correctly", () => {
   };
 
   const svg = renderCardSvg(card, layout);
-  assert.ok(svg.includes("<text"), "SVG should contain a text element");
+  assert.ok(svg.includes("<foreignObject") || svg.includes("<text"), "SVG should contain text content");
   assert.ok(svg.includes("Test description"), "SVG should contain the field value");
-  assert.ok(svg.includes('font-size="24"'), "SVG should have correct font size");
+  assert.ok(svg.includes('font-size:24px') || svg.includes('font-size="24"'), "SVG should have correct font size");
 });
 
 test("frame item renders correctly", () => {
@@ -204,9 +204,9 @@ test("legacy item without type renders as text", () => {
   };
 
   const svg = renderCardSvg(card, layout);
-  assert.ok(svg.includes("<text"), "SVG should contain a text element");
+  assert.ok(svg.includes("<foreignObject") || svg.includes("<text"), "SVG should contain text content");
   assert.ok(svg.includes("Legacy Title"), "SVG should contain the field value");
-  assert.ok(svg.includes('font-size="32"'), "SVG should have correct font size");
+  assert.ok(svg.includes('font-size:32px') || svg.includes('font-size="32"'), "SVG should have correct font size");
 });
 
 test("image item without URL does not render", () => {

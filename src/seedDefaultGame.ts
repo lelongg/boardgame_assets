@@ -13,10 +13,8 @@ export const seedIfEmpty = async (storage: any): Promise<void> => {
   if (existing) {
     // Verify the layout has the playing card items (not the generic default)
     const layout = await storage.getLayout(existing.id, "default").catch(() => null);
-    const hasRankWithValues = layout?.root?.children?.some((s: any) =>
-      s.items?.some((i: any) => i.bindings?.defaultValue?.field === "rank" && i.bindings.defaultValue.values?.length)
-    );
-    if (hasRankWithValues) return;
+    const hasBindingValues = layout?.bindingMeta?.["defaultValue:rank"]?.values?.length;
+    if (hasBindingValues) return;
     // Stale layout -- re-seed it
     await storage.saveLayout(existing.id, "default", classicDeckLayout());
     return;

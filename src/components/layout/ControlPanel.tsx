@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { Smile, Upload, X, Eye, Pencil } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { RgbaColorPicker } from 'react-colorful'
@@ -7,17 +8,23 @@ import ListItem from '@/components/ListItem'
 import LoadingImg from '@/components/LoadingImg'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
-import { findParentSection, findItemById, getNodeKind } from './layoutHelpers'
+import { findParentSection, findItemById, getNodeKind, flattenNodes } from './layoutHelpers'
 import type { CardLayout, PropertyBinding } from '../../types'
 
 type ControlPanelProps = {
   property: string
   value: unknown
   binding?: PropertyBinding
+  bindingValues?: string[]
+  bindingDefault?: string
+  itemType?: string
+  gameFonts?: Record<string, { name: string; file: string }>
   layout: CardLayout
   selectedNodeId?: string
   onChange: (value: unknown) => void
   onBindingChange?: (binding: PropertyBinding | null) => void
+  onBindingValuesChange?: (values: string[] | null) => void
+  onBindingDefaultChange?: (defaultValue: string) => void
 }
 
 type FieldMeta = {
@@ -28,7 +35,7 @@ type FieldMeta = {
   options?: { value: string; label: string }[]
 }
 
-const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: string): FieldMeta => {
+const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: string, gameFonts?: Record<string, { name: string; file: string }>): FieldMeta => {
   switch (property) {
     case 'width': return { type: 'number', min: 10, max: 300, step: 0.5 }
     case 'height': return { type: 'number', min: 10, max: 300, step: 0.5 }
@@ -39,6 +46,8 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     case 'fontSize': return { type: 'number', min: 8, max: 500, step: 1 }
     case 'widthPct': return { type: 'number', min: 0, max: 200, step: 1 }
     case 'heightPct': return { type: 'number', min: 0, max: 200, step: 1 }
+    case 'offsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.5 }
+    case 'offsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.5 }
     case 'strokeWidth': return { type: 'number', min: 0, max: 20, step: 0.5 }
     case 'cornerRadius': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'layout': return { type: 'select', options: [
@@ -47,6 +56,9 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
       { value: 'stack', label: 'Stack' },
       { value: 'grid', label: 'Grid' },
     ]}
+    case 'repeatCount': return { type: 'number', min: 1, max: 20, step: 1 }
+    case 'repeatOffsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.5 }
+    case 'repeatOffsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.5 }
     case 'columns': return { type: 'number', min: 1, max: 12, step: 1 }
     case 'align': return { type: 'select', options: [
       { value: 'left', label: 'Left' },
@@ -58,7 +70,7 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
       { value: 'middle', label: 'Middle' },
       { value: 'bottom', label: 'Bottom' },
     ]}
-    case 'font': return { type: 'select', options: Object.entries(layout.fonts ?? {}).map(([key, slot]) => ({
+    case 'font': return { type: 'select', options: Object.entries(gameFonts ?? {}).map(([key, slot]: [string, any]) => ({
       value: key,
       label: `${key} (${slot.name})`,
     }))}
@@ -94,12 +106,20 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
     case 'visible': return { type: 'boolean' }
+    case 'copyTargetId': {
+      const nodes = flattenNodes(layout.root).filter(n => !selectedNodeId || n.id !== selectedNodeId)
+      return { type: 'select', options: nodes.map(n => ({
+        value: n.id,
+        label: `${n.kind === 'section' ? '▸' : '·'} ${n.name}`,
+      }))}
+    }
     default: return { type: 'text' }
   }
 }
 
 const hexToRgba = (hex: string) => {
-  if (!hex || hex === 'none') return { r: 0, g: 0, b: 0, a: 0 }
+  if (hex === 'none') return { r: 0, g: 0, b: 0, a: 0 }
+  if (!hex) return { r: 0, g: 0, b: 0, a: 1 }
   const h = hex.replace('#', '')
   return {
     r: parseInt(h.slice(0, 2), 16) || 0,
@@ -195,12 +215,14 @@ function ColorControl({ value, onChange }: { value: string; onChange: (v: unknow
 }
 
 function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown) => void }) {
+  const [showPicker, setShowPicker] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
   const pickerInstanceRef = useRef<any>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
   useEffect(() => {
+    if (!showPicker) return
     let cancelled = false
     const container = pickerRef.current
     const init = async () => {
@@ -222,45 +244,186 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown
       if (picker && container?.contains(picker)) container.removeChild(picker)
       pickerInstanceRef.current = null
     }
-  }, [])
+  }, [showPicker])
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <span className="text-3xl">{value || '⭐'}</span>
+      <div className="relative">
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Type or paste emoji"
-          className="flex-1"
+          className="pr-9"
         />
+        <button
+          type="button"
+          onClick={() => setShowPicker(!showPicker)}
+          className={`absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 transition-colors ${showPicker ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          title="Emoji picker"
+        >
+          <Smile className="h-4 w-4" />
+        </button>
       </div>
-      <div ref={pickerRef} />
+      {showPicker && <div ref={pickerRef} />}
     </div>
   )
 }
 
+const LazyImageEditor = lazy(() => import('@/components/ImageEditor'))
+
 const NO_BINDING = new Set(['name', 'id', 'anchor', 'attachAnchor', 'attachTargetId'])
 
-function ValueItemEditor({ property, value, onChange }: { property: string; value: string; onChange: (v: string) => void }) {
-  if (property === 'emoji') return <EmojiPicker value={value} onChange={(v) => onChange(String(v))} />
-  if (property === 'color' || property === 'strokeColor' || property === 'fillColor') return <ColorControl value={value} onChange={(v) => onChange(String(v))} />
-  if (property === 'defaultValue') return <RichTextField value={value} onChange={onChange} />
+function ImageUploadEditor({ value, onChange, aspectRatio }: { value: string; onChange: (v: string) => void; aspectRatio?: number }) {
+  const [showPreview, setShowPreview] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as string); reader.readAsDataURL(file) })
+  const handleFile = async (file: File) => { if (file.type.startsWith('image/')) onChange(await readFileAsDataUrl(file)) }
+
+  if (editing && value) {
+    return (
+      <Suspense fallback={<div className="p-4 text-center text-sm text-muted-foreground">Loading editor...</div>}>
+        <LazyImageEditor src={value} aspectRatio={aspectRatio} onSave={(dataUrl: string) => { onChange(dataUrl); setEditing(false) }} onCancel={() => setEditing(false)} />
+      </Suspense>
+    )
+  }
+
+  return (
+    <div
+      className="space-y-2"
+      onPaste={(e) => { const file = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'))?.getAsFile(); if (file) { e.preventDefault(); handleFile(file) } }}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+      onDrop={(e) => { e.preventDefault(); const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/')); if (file) handleFile(file) }}
+    >
+      <div className={`relative rounded border border-dashed border-muted-foreground/40 p-3 text-center text-xs text-muted-foreground ${value ? 'pr-[7rem]' : 'pr-9'}`}>
+        Paste or drop image
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+          {value && (
+            <button type="button" className={`rounded p-1 transition-colors ${showPreview ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`} title="Preview image" onClick={() => setShowPreview(!showPreview)}>
+              <Eye className="h-4 w-4" />
+            </button>
+          )}
+          {value && (
+            <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit image" onClick={() => setEditing(true)}>
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
+          {value && (
+            <button type="button" className="rounded p-1 text-muted-foreground hover:text-destructive transition-colors" title="Remove image" onClick={() => onChange('')}>
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            type="button"
+            className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+            title="Upload image"
+            onClick={() => {
+              const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'
+              input.onchange = async () => { const file = input.files?.[0]; if (file) handleFile(file) }
+              input.click()
+            }}
+          >
+            <Upload className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      {showPreview && value && <LoadingImg src={value} alt="Preview" className="max-h-24 rounded border object-contain" />}
+    </div>
+  )
+}
+
+/** Determine editor type for a property without needing layout context */
+export const getEditorType = (property: string, itemType?: string): FieldMeta['type'] => {
+  switch (property) {
+    case 'emoji': return 'emoji'
+    case 'color': case 'strokeColor': case 'fillColor': return 'color'
+    case 'visible': return 'boolean'
+    case 'defaultValue': return itemType === 'image' ? 'image-upload' : 'richtext'
+    case 'width': case 'height': case 'radius': case 'bleed': case 'sizePct':
+    case 'gap': case 'fontSize': case 'widthPct': case 'heightPct':
+    case 'offsetX': case 'offsetY': case 'strokeWidth': case 'cornerRadius':
+    case 'columns': case 'repeatCount': case 'repeatOffsetX': case 'repeatOffsetY': return 'number'
+    case 'layout': case 'align': case 'verticalAlign': case 'font': case 'fit': case 'copyTargetId': return 'select'
+    default: return 'text'
+  }
+}
+
+function RepeatButton({ onTick, ...props }: { onTick: () => void } & Omit<React.ComponentProps<typeof Button>, 'onClick'>) {
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const clear = () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null } }
+  return (
+    <Button
+      {...props}
+      onClick={onTick}
+      onPointerDown={() => { clear(); const timeout = setTimeout(() => { intervalRef.current = setInterval(onTick, 60) }, 400); intervalRef.current = timeout as any }}
+      onPointerUp={clear}
+      onPointerLeave={clear}
+    />
+  )
+}
+
+function NumberEditor({ value, onChange, min, max, step }: { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number }) {
+  const numVal = Number(value || 0)
+  const s = step ?? 1
+  const valRef = useRef(numVal)
+  valRef.current = numVal
+  return (
+    <div className="space-y-2">
+      <input type="range" min={min} max={max} step={step} value={numVal} onChange={(e) => onChange(e.target.value)} className="w-full" />
+      <div className="relative">
+        <Input type="number" min={min} max={max} step={step} value={numVal} onChange={(e) => onChange(e.target.value)} className="text-center px-9" />
+        <div className="absolute left-1 top-1/2 -translate-y-1/2" onPointerDown={(e) => e.preventDefault()}>
+          <RepeatButton size="sm" variant="ghost" className="h-7 w-7 p-0" onTick={() => { const v = Math.max(min ?? -Infinity, valRef.current - s); valRef.current = v; onChange(String(v)) }}>-</RepeatButton>
+        </div>
+        <div className="absolute right-1 top-1/2 -translate-y-1/2" onPointerDown={(e) => e.preventDefault()}>
+          <RepeatButton size="sm" variant="ghost" className="h-7 w-7 p-0" onTick={() => { const v = Math.min(max ?? Infinity, valRef.current + s); valRef.current = v; onChange(String(v)) }}>+</RepeatButton>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ValueItemEditor({ property, itemType, value, onChange, layout }: { property: string; itemType?: string; value: string; onChange: (v: string) => void; layout?: CardLayout }) {
+  const type = getEditorType(property, itemType)
+  if (type === 'emoji') return <EmojiPicker value={value} onChange={(v) => onChange(String(v))} />
+  if (type === 'color') return <ColorControl value={value} onChange={(v) => onChange(String(v))} />
+  if (type === 'image-upload') return <ImageUploadEditor value={value} onChange={onChange} aspectRatio={layout ? layout.width / layout.height : undefined} />
+  if (type === 'richtext') return <RichTextField value={value} onChange={onChange} />
+  if (type === 'number') {
+    const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
+    const meta = getFieldMeta(property, dummyLayout)
+    return <NumberEditor value={value} onChange={onChange} min={meta.min} max={meta.max} step={meta.step} />
+  }
+  if (type === 'select') {
+    const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
+    const meta = getFieldMeta(property, dummyLayout)
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-md border bg-background pl-3 pr-8 py-2 text-sm">
+        {meta.options?.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+      </select>
+    )
+  }
+  if (type === 'boolean') return (
+    <button
+      onClick={() => onChange(value === 'false' ? 'true' : 'false')}
+      className={`w-full rounded-md border px-3 py-2 text-sm text-left transition-colors ${value !== 'false' ? 'bg-primary/10 border-primary text-primary' : 'bg-background border-input text-muted-foreground'}`}
+    >{value !== 'false' ? 'Yes' : 'No'}</button>
+  )
   return <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Value" />
 }
 
-function BindingEditor({ property, binding, onChange }: { property: string; binding: PropertyBinding | undefined; onChange: (b: PropertyBinding | null) => void }) {
+function BindingEditor({ property, itemType, layout, binding, values: externalValues, bindingDefault, onSetDefault, onChange, onValuesChange }: { property: string; itemType?: string; layout?: CardLayout; binding: PropertyBinding | undefined; values: string[]; bindingDefault?: string; onSetDefault: (v: string) => void; onChange: (b: PropertyBinding | null) => void; onValuesChange: (v: string[] | null) => void }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const field = binding?.field ?? ''
-  const values = binding?.values ?? []
+  const values = externalValues
 
   const updateField = (f: string) => {
     if (!f) { onChange(null); return }
-    onChange({ field: f, values: values.length ? values : undefined })
+    onChange({ field: f })
   }
   const updateValues = (v: string[]) => {
     if (!field) return
-    onChange({ field, values: v.length ? v : undefined })
+    onValuesChange(v.length ? v : null)
   }
   const updateAt = (i: number, v: string) => { const next = [...values]; next[i] = v; updateValues(next) }
   const removeAt = (i: number) => { updateValues(values.filter((_, j) => j !== i)); setSelectedIdx(null) }
@@ -275,28 +438,39 @@ function BindingEditor({ property, binding, onChange }: { property: string; bind
       {field && (
         <div className="space-y-1">
           <div className="text-xs text-muted-foreground">Allowed values</div>
-          {values.map((v, i) => (
+          {values.map((v, i) => {
+            const isDefault = v !== '' && bindingDefault === v
+            return (
             <ListItem
               key={i}
               selected={selectedIdx === i}
               onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
               actions={<div className="flex-1 space-y-2">
-                <ValueItemEditor property={property} value={v} onChange={(val) => updateAt(i, val)} />
-                <ConfirmButton onConfirm={() => removeAt(i)} />
+                <ValueItemEditor property={property} itemType={itemType} layout={layout} value={v} onChange={(val) => updateAt(i, val)} />
+                <div className="flex gap-1">
+                  <Button size="sm" variant={isDefault ? "default" : "outline"} className="flex-1" onClick={() => onSetDefault(v)}>
+                    {isDefault ? 'Default' : 'Set as default'}
+                  </Button>
+                  <ConfirmButton onConfirm={() => removeAt(i)} />
+                </div>
               </div>}
             >
-              <span className="text-sm">{v || <span className="text-muted-foreground italic">empty</span>}</span>
+              <span className="text-sm flex items-center justify-between gap-2 w-full">
+                <span>{v !== '' ? v : <span className="text-muted-foreground italic">empty</span>}</span>
+                {isDefault && <span className="text-xs text-muted-foreground italic">default</span>}
+              </span>
             </ListItem>
-          ))}
-          <Button size="sm" variant="outline" className="w-full" onClick={() => { updateValues([...values, '']); setSelectedIdx(values.length) }}>+ Add value</Button>
+            )
+          })}
+          <Button size="sm" variant="outline" className="w-full" onClick={() => { updateValues([...values, bindingDefault ?? '']); setSelectedIdx(values.length) }}>+ Add value</Button>
         </div>
       )}
     </div>
   )
 }
 
-function ValueEditor({ property, value, binding, layout, selectedNodeId, onChange }: Omit<ControlPanelProps, 'onBindingChange'>) {
-  const allowedValues = binding?.values
+function ValueEditor({ property, value, bindingValues, gameFonts, layout, selectedNodeId, onChange }: Omit<ControlPanelProps, 'onBindingChange' | 'onBindingValuesChange'>) {
+  const allowedValues = bindingValues
   if (allowedValues?.length) {
     return (
       <select
@@ -310,37 +484,10 @@ function ValueEditor({ property, value, binding, layout, selectedNodeId, onChang
     )
   }
 
-  const meta = getFieldMeta(property, layout, selectedNodeId)
+  const meta = getFieldMeta(property, layout, selectedNodeId, gameFonts)
 
   if (meta.type === 'number') {
-    const numVal = Number(value ?? 0)
-    const step = meta.step ?? 1
-    return (
-      <div className="space-y-2">
-        <input
-          type="range"
-          min={meta.min}
-          max={meta.max}
-          step={meta.step}
-          value={numVal}
-          onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full"
-        />
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => onChange(Math.max(meta.min ?? 0, numVal - step))}>-</Button>
-          <Input
-            type="number"
-            min={meta.min}
-            max={meta.max}
-            step={meta.step}
-            value={numVal}
-            onChange={(e) => onChange(Number(e.target.value))}
-            className="flex-1 text-center"
-          />
-          <Button size="sm" variant="outline" onClick={() => onChange(Math.min(meta.max ?? 100, numVal + step))}>+</Button>
-        </div>
-      </div>
-    )
+    return <NumberEditor value={String(value ?? 0)} onChange={(v) => onChange(Number(v))} min={meta.min} max={meta.max} step={meta.step} />
   }
 
   if (meta.type === 'select') {
@@ -362,65 +509,7 @@ function ValueEditor({ property, value, binding, layout, selectedNodeId, onChang
   }
 
   if (meta.type === 'image-upload') {
-    const imgUrl = String(value ?? '')
-    const readFileAsDataUrl = (file: File): Promise<string> =>
-      new Promise((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.readAsDataURL(file)
-      })
-    const handleImageFile = async (file: File) => {
-      if (!file.type.startsWith('image/')) return
-      onChange(await readFileAsDataUrl(file))
-    }
-    return (
-      <div
-        className="space-y-2"
-        onPaste={(e) => {
-          const file = Array.from(e.clipboardData.items)
-            .find((i) => i.type.startsWith('image/'))
-            ?.getAsFile()
-          if (file) {
-            e.preventDefault()
-            handleImageFile(file)
-          }
-        }}
-        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
-        onDrop={(e) => {
-          e.preventDefault()
-          const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith('image/'))
-          if (file) handleImageFile(file)
-        }}
-      >
-        {imgUrl && (
-          <LoadingImg src={imgUrl} alt="Default" className="max-h-24 rounded border object-contain" />
-        )}
-        <div className="rounded border border-dashed border-muted-foreground/40 p-3 text-center text-xs text-muted-foreground">
-          Paste or drop image here
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            const input = document.createElement('input')
-            input.type = 'file'
-            input.accept = 'image/*'
-            input.onchange = async () => {
-              const file = input.files?.[0]
-              if (file) handleImageFile(file)
-            }
-            input.click()
-          }}
-        >
-          {imgUrl ? 'Change Image' : 'Upload Image'}
-        </Button>
-        {imgUrl && (
-          <Button size="sm" variant="ghost" onClick={() => onChange('')}>
-            Remove
-          </Button>
-        )}
-      </div>
-    )
+    return <ImageUploadEditor value={String(value ?? '')} onChange={(v) => onChange(v)} aspectRatio={layout.width / layout.height} />
   }
 
   if (meta.type === 'richtext') {
@@ -455,32 +544,29 @@ function ValueEditor({ property, value, binding, layout, selectedNodeId, onChang
   )
 }
 
-export default function ControlPanel({ property, value, binding, layout, selectedNodeId, onChange, onBindingChange }: ControlPanelProps) {
-  const [mode, setMode] = useState<'value' | 'data'>(binding ? 'data' : 'value')
+export default function ControlPanel({ property, value, binding, bindingValues, bindingDefault, itemType, gameFonts, layout, selectedNodeId, onChange, onBindingChange, onBindingValuesChange, onBindingDefaultChange }: ControlPanelProps) {
   const canBind = !NO_BINDING.has(property)
-
-  // Switch to data tab when selecting a property that already has a binding
-  useEffect(() => { setMode(binding ? 'data' : 'value') }, [property])
+  const isBound = !!binding
 
   if (!canBind) {
-    return <ValueEditor property={property} value={value} binding={binding} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
+    return <ValueEditor property={property} value={value} bindingValues={bindingValues} gameFonts={gameFonts} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
   }
 
   return (
     <div className="space-y-2">
       <div className="flex gap-1 rounded-md border p-0.5 w-fit">
         <button
-          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${mode === 'value' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-          onClick={() => setMode('value')}
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${!isBound ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => { if (isBound) onBindingChange?.(null) }}
         >Value</button>
         <button
-          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${mode === 'data' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-          onClick={() => setMode('data')}
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${isBound ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => { if (!isBound) onBindingChange?.({ field: property }) }}
         >Data</button>
       </div>
-      {mode === 'value'
-        ? <ValueEditor property={property} value={value} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
-        : <BindingEditor property={property} binding={binding} onChange={(b) => onBindingChange?.(b)} />
+      {isBound
+        ? <BindingEditor property={property} itemType={itemType} layout={layout} binding={binding} values={bindingValues ?? []} bindingDefault={bindingDefault} onSetDefault={(v) => onBindingDefaultChange?.(v)} onChange={(b) => onBindingChange?.(b)} onValuesChange={(v) => onBindingValuesChange?.(v)} />
+        : <ValueEditor property={property} value={value} bindingValues={bindingValues} gameFonts={gameFonts} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
       }
     </div>
   )

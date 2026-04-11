@@ -8,10 +8,6 @@ export const defaultLayout = (): CardLayout => ({
   height: 88.9,
   radius: 2.5,
   bleed: 1.5,
-  fonts: {
-    title: { name: "Fraunces", file: "", source: "google" as const },
-    body: { name: "Space Grotesk", file: "", source: "google" as const }
-  },
   root: {
     id: "root",
     name: "Root",
