@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { LayoutGrid, Layers, ChevronDown } from 'lucide-react'
 import ZoomablePreview from './ZoomablePreview'
+import PortalDropdown from './ui/PortalDropdown'
 import type { CardData, CardLayout } from '../types'
 
 const PX_PER_MM = 300 / 25.4
@@ -18,37 +19,32 @@ type LayoutPreviewProps = {
 }
 
 function CardPicker({ cards, value, onChange }: { cards: PreviewCard[]; value: string | null; onChange: (id: string | null) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
   const selected = value ? cards.find(c => c.id === value) : null
 
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 rounded border bg-background px-1.5 py-0.5 text-xs max-w-[140px] hover:bg-accent/50 transition-colors"
-      >
-        <span className="truncate">{selected?.name ?? 'Layout view'}</span>
-        <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
-      </button>
-      {open && (
-        <div className="absolute top-full right-0 mt-1 z-50 w-max min-w-[12rem] rounded-md border bg-popover shadow-md py-1 max-h-60 overflow-y-auto">
+    <PortalDropdown
+      trigger={({ ref, onClick }) => (
+        <button
+          ref={ref}
+          onClick={onClick}
+          className="flex items-center gap-1 rounded border bg-background px-1.5 py-0.5 text-xs max-w-[140px] hover:bg-accent/50 transition-colors"
+        >
+          <span className="truncate">{selected?.name ?? 'Layout view'}</span>
+          <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
+        </button>
+      )}
+    >
+      {(close) => (
+        <div className="max-h-60 overflow-y-auto">
           <button
             className={`w-full text-left px-2 py-1 text-xs hover:bg-accent/50 transition-colors ${!value ? 'bg-accent/30 font-medium' : ''}`}
-            onClick={() => { onChange(null); setOpen(false) }}
+            onClick={() => { onChange(null); close() }}
           >Layout view</button>
           {cards.map(c => (
             <button
               key={c.id}
               className={`w-full flex items-center justify-between gap-2 px-2 py-1 text-xs hover:bg-accent/50 transition-colors ${value === c.id ? 'bg-accent/30 font-medium' : ''}`}
-              onClick={() => { onChange(c.id); setOpen(false) }}
+              onClick={() => { onChange(c.id); close() }}
             >
               <span className="truncate">{c.name}</span>
               {c.collectionName && <span className="shrink-0 italic text-muted-foreground">{c.collectionName}</span>}
@@ -56,7 +52,7 @@ function CardPicker({ cards, value, onChange }: { cards: PreviewCard[]; value: s
           ))}
         </div>
       )}
-    </div>
+    </PortalDropdown>
   )
 }
 

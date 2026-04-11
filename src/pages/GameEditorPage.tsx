@@ -40,6 +40,7 @@ export default function GameEditorPage() {
   const [savedCardJson, setSavedCardJson] = useState('')
   const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
   const [gameImages, setGameImages] = useState<{ file: string; url: string; name: string }[]>([])
+  const [allLayouts, setAllLayouts] = useState<any[]>([])
   const [detailedView, setDetailedView] = useState(false)
   const [cardThumbnails, setCardThumbnails] = useState<Record<string, string>>({})
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
@@ -156,15 +157,17 @@ export default function GameEditorPage() {
       ])
       setCollection(col)
 
-      const [layout, fonts, images] = await Promise.all([
+      const [layout, fonts, images, layouts] = await Promise.all([
         s.getLayout(gameId, col.layoutId),
         s.listFonts(gameId),
         s.listImages?.(gameId).catch(() => []) ?? [],
+        s.listLayouts(gameId),
       ])
       gameData.layout = layout
       setGame(gameData)
       setGameFonts(fonts)
       setGameImages(images)
+      setAllLayouts(layouts)
       if (layout?.root?.id && !selectedNodeId) setSelectedNodeId(layout.root.id)
 
       const cardList = await s.listCards(gameId, collectionId)
@@ -540,9 +543,38 @@ export default function GameEditorPage() {
           </TabsContent>
 
           <TabsContent value="layout">
+            {allLayouts.length > 0 && (
+              <div className="mb-4">
+                <select
+                  value={collection?.layoutId ?? ''}
+                  onChange={async (e) => {
+                    const newLayoutId = e.target.value
+                    if (!gameId || !collectionId || newLayoutId === collection?.layoutId) return
+                    const prevCollection = collection
+                    const prevGame = game
+                    setCollection((prev: any) => ({ ...prev, layoutId: newLayoutId }))
+                    try {
+                      await storage.updateCollection(gameId, collectionId, { layoutId: newLayoutId })
+                      const newLayout = await storage.getLayout(gameId, newLayoutId)
+                      setGame((prev: any) => ({ ...prev, layout: newLayout }))
+                      if (newLayout?.root?.id) setSelectedNodeId(newLayout.root.id)
+                    } catch {
+                      setCollection(prevCollection)
+                      setGame(prevGame)
+                      setStatus('Error changing layout.')
+                    }
+                  }}
+                  className="rounded-md border bg-background pl-3 pr-8 py-2 text-sm"
+                >
+                  {allLayouts.map((l: any) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
               {game.layout?.root && (
-                <div className="overflow-y-auto max-h-[60vh] rounded-lg border bg-card overflow-hidden">
+                <div className="overflow-y-auto max-h-[60vh] rounded-lg border bg-card">
                   <NodeTree
                     root={game.layout.root}
                     selectedNodeId={selectedNodeId}

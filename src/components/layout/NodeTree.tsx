@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile, Copy, FolderTree } from 'lucide-react'
 import { flattenNodes } from './layoutHelpers'
+import PortalDropdown from '@/components/ui/PortalDropdown'
 import type { CardLayoutSection } from '../../types'
 
 type NodeTreeProps = {
@@ -20,7 +21,6 @@ type DropIndicator = {
 }
 
 export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, onAddSection, onAddItem, onDelete, canDelete }: NodeTreeProps) {
-  const [showItemMenu, setShowItemMenu] = useState(false)
   const [filter, setFilter] = useState<'all' | 'sections' | 'items'>('all')
   const allNodes = flattenNodes(root)
   const [dragId, setDragId] = useState<string | null>(null)
@@ -133,24 +133,26 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
             </button>
           )}
           {onAddItem && (
-            <div className="relative">
-              <button
-                onClick={() => setShowItemMenu(!showItemMenu)}
-                className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                title="Add Item"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-              {showItemMenu && (
-                <div className="absolute top-full right-0 z-10 mt-1 rounded-md border bg-background p-1 shadow-md">
-                  <button onClick={() => { onAddItem('text'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Type className="h-3.5 w-3.5" /> Text</button>
-                  <button onClick={() => { onAddItem('frame'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Frame className="h-3.5 w-3.5" /> Frame</button>
-                  <button onClick={() => { onAddItem('image'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Image className="h-3.5 w-3.5" /> Image</button>
-                  <button onClick={() => { onAddItem('emoji'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Smile className="h-3.5 w-3.5" /> Emoji</button>
-                  <button onClick={() => { onAddItem('copy'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Copy className="h-3.5 w-3.5" /> Copy</button>
-                </div>
+            <PortalDropdown
+              trigger={({ ref, onClick }) => (
+                <button
+                  ref={ref}
+                  onClick={onClick}
+                  className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Add Item"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
               )}
-            </div>
+            >
+              {(close) => (<>
+                <button onClick={() => { onAddItem('text'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Type className="h-3.5 w-3.5" /> Text</button>
+                <button onClick={() => { onAddItem('frame'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Frame className="h-3.5 w-3.5" /> Frame</button>
+                <button onClick={() => { onAddItem('image'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Image className="h-3.5 w-3.5" /> Image</button>
+                <button onClick={() => { onAddItem('emoji'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Smile className="h-3.5 w-3.5" /> Emoji</button>
+                <button onClick={() => { onAddItem('copy'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Copy className="h-3.5 w-3.5" /> Copy</button>
+              </>)}
+            </PortalDropdown>
           )}
           {onDelete && canDelete && (
             <button
