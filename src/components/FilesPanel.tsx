@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import CardThumbnail from './CardThumbnail'
 import { cardsToCSV, csvToCards } from '../cardsCsv'
-import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
+import { renderCardSvg, embedImagesInSvg, buildFontCss } from '../render'
 import type { CardData, CardLayout } from '../types'
 
 const MAX_ATLAS_SIZE = 4096
@@ -300,9 +300,16 @@ export default function FilesPanel({
               if (!layout || !gameId) return
               setExporting(true)
               try {
-                const JSZip = (await import('jszip')).default
-                const zip = new JSZip()
                 const selected = cards.filter(c => cardSelection.has(c.id))
+                const baseUrl = `${window.location.origin}/api/games/${gameId}/tts`
+
+                const uploadPng = async (canvas: HTMLCanvasElement, fileName: string) => {
+                  const blob = await new Promise<Blob>((resolve, reject) => {
+                    canvas.toBlob(b => b ? resolve(b) : reject(new Error(`toBlob failed for ${fileName}`)), 'image/png')
+                  })
+                  const resp = await fetch(`${baseUrl}/upload`, { method: 'POST', body: blob, headers: { 'Content-Disposition': `attachment; filename="${fileName}"` } })
+                  if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`)
+                }
 
                 // Group cards by collection (multi-collection) or single group
                 type DeckGroup = { name: string; cards: FileCard[]; back?: string; backFit?: string }
@@ -324,6 +331,10 @@ export default function FilesPanel({
                 let deckIdCounter = 1
                 const cardAspect = layout.height / layout.width
 
+                // Pre-build font CSS once
+                setStatus('Loading fonts...')
+                const fontCss = await buildFontCss(gameId, gameFonts ?? {})
+
                 for (const group of groups) {
                   const slug = toSlug(group.name)
                   const cardCount = Math.min(group.cards.length, TTS_MAX_CARDS - 1)
@@ -343,7 +354,7 @@ export default function FilesPanel({
                   for (let i = 0; i < cardCount; i++) {
                     setStatus(`Rendering ${group.name} ${i + 1}/${cardCount}...`)
                     let svg = renderCardSvg(group.cards[i], layout, { fonts: gameFonts })
-                    svg = await embedFontsInSvg(svg, gameId, gameFonts ?? {})
+                    if (fontCss) svg = svg.replace(/(<svg[^>]*>)/, `$1<defs><style>${fontCss}</style></defs>`)
                     svg = await embedImagesInSvg(svg)
                     const img = await svgToImage(svg)
                     faceCtx.drawImage(img, (i % numWidth) * cardW, Math.floor(i / numWidth) * cardH, cardW, cardH)
@@ -360,9 +371,11 @@ export default function FilesPanel({
                   faceCtx.textBaseline = 'middle'
                   faceCtx.fillText('?', hCol * cardW + cardW / 2, hRow * cardH + cardH / 2)
 
-                  zip.file(`${slug}_face.png`, await new Promise<Blob>(r => faceCanvas.toBlob(b => r(b!), 'image/png')))
+                  setStatus(`Uploading ${group.name} face atlas...`)
+                  await uploadPng(faceCanvas, `${slug}_face.png`)
 
                   // --- Back image ---
+                  setStatus(`Rendering ${group.name} back...`)
                   const backCanvas = document.createElement('canvas')
                   backCanvas.width = cardW
                   backCanvas.height = cardH
@@ -400,7 +413,8 @@ export default function FilesPanel({
                     backCtx.fillText('?', cardW / 2, cardH / 2)
                   }
 
-                  zip.file(`${slug}_back.png`, await new Promise<Blob>(r => backCanvas.toBlob(b => r(b!), 'image/png')))
+                  setStatus(`Uploading ${group.name} back...`)
+                  await uploadPng(backCanvas, `${slug}_back.png`)
 
                   // --- TTS deck entry ---
                   const deckId = deckIdCounter++
@@ -414,16 +428,15 @@ export default function FilesPanel({
                     Name: 'DeckCustom', Nickname: group.name,
                     Transform: { posX: (deckId - 1) * 3, posY: 1, posZ: 0, rotX: 0, rotY: 180, rotZ: 180, scaleX: 1, scaleY: 1, scaleZ: 1 },
                     DeckIDs: contained.map(o => o.CardID),
-                    CustomDeck: { [String(deckId)]: { FaceURL: `./${slug}_face.png`, BackURL: `./${slug}_back.png`, NumWidth: numWidth, NumHeight: numHeight, BackIsHidden: true, UniqueBack: false } },
+                    CustomDeck: { [String(deckId)]: { FaceURL: `${baseUrl}/${slug}_face.png`, BackURL: `${baseUrl}/${slug}_back.png`, NumWidth: numWidth, NumHeight: numHeight, BackIsHidden: true, UniqueBack: false } },
                     ContainedObjects: contained,
                   })
                 }
 
-                zip.file('tts_deck.json', JSON.stringify({ ObjectStates: objectStates }, null, 2))
-                const zipBlob = await zip.generateAsync({ type: 'blob' })
+                const ttsJson = JSON.stringify({ ObjectStates: objectStates }, null, 2)
                 const a = document.createElement('a')
-                a.href = URL.createObjectURL(zipBlob)
-                a.download = `${exportName} - TTS.zip`
+                a.href = URL.createObjectURL(new Blob([ttsJson], { type: 'application/json' }))
+                a.download = `${exportName} - TTS.json`
                 a.click()
                 URL.revokeObjectURL(a.href)
 

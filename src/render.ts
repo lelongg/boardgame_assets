@@ -795,8 +795,8 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
  *  Blob SVGs displayed via <img> can't access the page's @font-face rules. */
 const fontCache = new Map<string, string>();
 
-export const embedFontsInSvg = async (svg: string, gameId: string, gameFonts: Record<string, { name: string; file: string }>): Promise<string> => {
-  if (!Object.keys(gameFonts).length) return svg;
+export const buildFontCss = async (gameId: string, gameFonts: Record<string, { name: string; file: string }>): Promise<string> => {
+  if (!Object.keys(gameFonts).length) return '';
   const rules: string[] = [];
   for (const slot of Object.values(gameFonts)) {
     if (!slot.file) continue;
@@ -817,10 +817,17 @@ export const embedFontsInSvg = async (svg: string, gameId: string, gameFonts: Re
       rules.push(`@font-face { font-family: '${slot.name}'; src: url('${b64}'); }`);
     } catch { /* skip */ }
   }
-  if (!rules.length) return svg;
-  const css = rules.join('\n');
-  const svgStyle = `<defs><style>${css}</style></defs>`;
-  return svg.replace(/(<svg[^>]*>)/, `$1${svgStyle}`);
+  return rules.join('\n');
+};
+
+const injectFontCss = (svg: string, css: string): string => {
+  if (!css) return svg;
+  return svg.replace(/(<svg[^>]*>)/, `$1<defs><style>${css}</style></defs>`);
+};
+
+export const embedFontsInSvg = async (svg: string, gameId: string, gameFonts: Record<string, { name: string; file: string }>): Promise<string> => {
+  const css = await buildFontCss(gameId, gameFonts);
+  return injectFontCss(svg, css);
 };
 
 /** Fetch images referenced via /api/ URLs and embed them as base64 data URIs.

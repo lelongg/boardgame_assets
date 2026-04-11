@@ -41,7 +41,7 @@ function GameFilesPanel({ gameId, storage, game, layouts, collections, gameFonts
       const cards: any[] = []
       for (const col of collections) {
         const colCards = await storage.listCards(gameId, col.id)
-        cards.push(...colCards.map((c: any) => ({ ...c, collectionId: col.id, collectionName: col.name })))
+        cards.push(...colCards.map((c: any) => ({ ...c, collectionId: col.id, collectionName: col.name, collectionBack: col.back, collectionBackFit: col.backFit })))
       }
       if (!cancelled) setAllCards(cards)
     }

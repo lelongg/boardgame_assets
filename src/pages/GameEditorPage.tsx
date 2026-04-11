@@ -714,6 +714,8 @@ export default function GameEditorPage() {
               layout={game?.layout}
               gameFonts={gameFonts}
               storage={storage}
+              back={collection?.back}
+              backFit={collection?.backFit}
               onStatusChange={setStatus}
               onCardsChange={() => loadGame(storage)}
             />
