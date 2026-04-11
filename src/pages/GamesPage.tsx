@@ -129,9 +129,6 @@ export default function GamesPage() {
                     <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/print`)} title="Print all">
                       <Printer className="h-4 w-4" />
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => navigate(`/game/${game.id}/export/tts`)} title="Export for Tabletop Simulator">
-                      <Download className="h-4 w-4" />
-                    </Button>
                     <Button size="sm" variant="outline" onClick={() => handleExport(game.id)} title="Download zip">
                       <Archive className="h-4 w-4" />
                     </Button>

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createStorage } from '../storage'
 import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
+import { NumberEditor } from '@/components/layout/ControlPanel'
 import type { CardData, CardLayout } from '../types'
 
 // --- Types ---
@@ -32,6 +33,7 @@ type PrintConfig = {
   cutMarkOffset: number
   includeBleed: boolean
   screenDpi: number
+  exportDpi: number
 }
 
 const PAPER_SIZES: Record<string, [number, number]> = {
@@ -59,6 +61,7 @@ const DEFAULT_CONFIG: PrintConfig = {
   cutMarkOffset: 1,
   includeBleed: false,
   screenDpi: 96,
+  exportDpi: 300,
 }
 
 // --- Layout computation ---
@@ -128,10 +131,10 @@ export default function PrintPage() {
     localStorage.setItem('printConfig', JSON.stringify(config))
   }, [config])
 
-  // Reset view when config changes
+  // Reset view when page changes
   useEffect(() => {
     setView({ x: 0, y: 0, zoom: 1 })
-  }, [config, currentPage])
+  }, [currentPage])
 
   // Wheel zoom + trackpad pinch gesture
   useEffect(() => {
@@ -179,7 +182,7 @@ export default function PrintPage() {
           : await s.listCollections(gameId)
 
         const cardIds = searchParams.get('cards')?.split(',').filter(Boolean)
-        const cardIdSet = cardIds ? new Set(cardIds) : null
+        const cardIdSet = cardIds?.length ? new Set(cardIds) : null
 
         const all: CardEntry[] = []
         for (const col of collections) {
@@ -246,7 +249,7 @@ export default function PrintPage() {
     try {
       const { jsPDF } = await import('jspdf')
 
-      const DPI = 300
+      const DPI = config.exportDpi
       const mmToPx = (mm: number) => Math.round(mm * DPI / 25.4)
 
       // Rasterize SVG string to PNG data URL via canvas
@@ -581,182 +584,128 @@ export default function PrintPage() {
         </div>
 
         {/* Config panel */}
-        <div className={`border-l overflow-y-auto shrink-0 transition-all ${showOptions ? 'w-72 p-4' : 'w-0 p-0 overflow-hidden'}`}>
-          <div className="space-y-4 min-w-[16rem]">
+        <div className={`border-l overflow-y-auto shrink-0 transition-all ${showOptions ? 'w-64 p-3' : 'w-0 p-0 overflow-hidden'}`}>
+          <div className="space-y-3 min-w-[14rem] text-sm">
+
           {/* Print mode */}
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Print mode</Label>
-              <select className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={config.printMode} onChange={e => patch({ printMode: e.target.value as PrintConfig['printMode'] })}>
-                <option value="front">Front only</option>
-                <option value="back">Back only</option>
-                <option value="duplex">Duplex</option>
-                <option value="fold">Fold</option>
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Mode</Label>
+            <select className="w-full rounded border bg-background px-2 py-1 text-xs"
+              value={config.printMode} onChange={e => patch({ printMode: e.target.value as PrintConfig['printMode'] })}>
+              <option value="front">Front only</option>
+              <option value="back">Back only</option>
+              <option value="duplex">Duplex</option>
+              <option value="fold">Fold</option>
+            </select>
+            {config.printMode === 'fold' && (
+              <select className="w-full rounded border bg-background px-2 py-1 text-xs"
+                value={config.foldEdge} onChange={e => patch({ foldEdge: e.target.value as PrintConfig['foldEdge'] })}>
+                <option value="right">Fold right</option>
+                <option value="left">Fold left</option>
+                <option value="bottom">Fold bottom</option>
+                <option value="top">Fold top</option>
               </select>
-              <p className="text-xs text-muted-foreground">
-                {{ front: 'Print card fronts only.',
-                   back: 'Print card backs only.',
-                   duplex: 'Fronts and backs on alternating pages for double-sided printing.',
-                   fold: 'Front and back side by side — cut and fold along the edge.',
-                }[config.printMode]}
-              </p>
-              {config.printMode === 'fold' && (
-                <div>
-                  <Label className="text-xs">Fold edge</Label>
-                  <select className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    value={config.foldEdge} onChange={e => patch({ foldEdge: e.target.value as PrintConfig['foldEdge'] })}>
-                    <option value="right">Right</option>
-                    <option value="left">Left</option>
-                    <option value="bottom">Bottom</option>
-                    <option value="top">Top</option>
-                  </select>
-                  <p className="text-xs text-muted-foreground mt-1">Back is mirrored so it aligns when the sheet is folded along the edge.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            )}
+          </div>
 
           {/* Paper */}
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Paper</Label>
-              <div className="space-y-2">
-                <select className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  value={config.paper} onChange={e => patch({ paper: e.target.value as PaperPreset })}>
-                  <option value="a3">A3 (297 x 420 mm)</option>
-                  <option value="a4">A4 (210 x 297 mm)</option>
-                  <option value="letter">Letter (216 x 279 mm)</option>
-                  <option value="custom">Custom</option>
-                </select>
-                {config.paper === 'custom' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-xs">Width (mm)</Label>
-                      <Input type="number" value={config.customWidth} onChange={e => patch({ customWidth: Number(e.target.value) })} />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Height (mm)</Label>
-                      <Input type="number" value={config.customHeight} onChange={e => patch({ customHeight: Number(e.target.value) })} />
-                    </div>
-                  </div>
-                )}
-                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                  <input type="checkbox" checked={config.landscape} onChange={e => patch({ landscape: e.target.checked })} />
-                  Landscape
-                </label>
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Paper</Label>
+            <select className="w-full rounded border bg-background px-2 py-1 text-xs"
+              value={config.paper} onChange={e => patch({ paper: e.target.value as PaperPreset })}>
+              <option value="a3">A3</option>
+              <option value="a4">A4</option>
+              <option value="letter">Letter</option>
+              <option value="custom">Custom</option>
+            </select>
+            {config.paper === 'custom' && (
+              <div className="grid grid-cols-2 gap-1">
+                <Input type="number" className="h-7 text-xs" placeholder="W" value={config.customWidth} onChange={e => patch({ customWidth: Number(e.target.value) })} />
+                <Input type="number" className="h-7 text-xs" placeholder="H" value={config.customHeight} onChange={e => patch({ customHeight: Number(e.target.value) })} />
               </div>
-            </CardContent>
-          </Card>
+            )}
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+              <input type="checkbox" checked={config.landscape} onChange={e => patch({ landscape: e.target.checked })} />
+              Landscape
+            </label>
+          </div>
 
           {/* Margins */}
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Margins (mm)</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['marginTop', 'marginRight', 'marginBottom', 'marginLeft'] as const).map(key => (
-                  <div key={key}>
-                    <Label className="text-xs">{key.replace('margin', '')}</Label>
-                    <Input type="number" min={0} value={config[key]}
-                      onChange={e => patch({ [key]: Number(e.target.value) })} />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Margins (mm)</Label>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+              {(['marginTop', 'marginRight', 'marginBottom', 'marginLeft'] as const).map(key => (
+                <div key={key} className="flex items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground w-5 shrink-0">{({ marginTop: 'T', marginRight: 'R', marginBottom: 'B', marginLeft: 'L' })[key]}</span>
+                  <Input type="number" min={0} className="h-7 text-xs flex-1"
+                    value={config[key]} onChange={e => patch({ [key]: Number(e.target.value) })} />
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* Grid */}
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Grid</Label>
-              <div>
-                <Label className="text-xs">Gap (mm)</Label>
-                <Input type="number" min={0} step={0.5} value={config.gap}
-                  onChange={e => patch({ gap: Number(e.target.value) })} />
-              </div>
-              <div>
-                <Label className="text-xs">Columns</Label>
-                <div className="flex items-center gap-2">
-                  <select className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
-                    value={config.columnsMode} onChange={e => patch({ columnsMode: e.target.value as 'auto' | 'manual' })}>
-                    <option value="auto">Auto ({cols})</option>
-                    <option value="manual">Manual</option>
-                  </select>
-                  {config.columnsMode === 'manual' && (
-                    <Input type="number" min={1} max={20} className="w-20"
-                      value={config.manualColumns} onChange={e => patch({ manualColumns: Number(e.target.value) })} />
-                  )}
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {cols} x {rows} = {perPage} cards/page, {totalPages} page{totalPages !== 1 ? 's' : ''}
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Cut marks */}
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Cut marks</Label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input type="checkbox" checked={config.cutMarks} onChange={e => patch({ cutMarks: e.target.checked })} />
-                Show cut marks
-              </label>
-              {config.cutMarks && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">Length (mm)</Label>
-                    <Input type="number" min={0.5} step={0.5} value={config.cutMarkLength}
-                      onChange={e => patch({ cutMarkLength: Number(e.target.value) })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Offset (mm)</Label>
-                    <Input type="number" min={0} step={0.5} value={config.cutMarkOffset}
-                      onChange={e => patch({ cutMarkOffset: Number(e.target.value) })} />
-                  </div>
-                </div>
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Grid</Label>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-muted-foreground shrink-0">Gap</span>
+              <Input type="number" min={0} step={0.5} className="h-7 text-xs w-14"
+                value={config.gap} onChange={e => patch({ gap: Number(e.target.value) })} />
+              <select className="rounded border bg-background px-2 py-1 text-xs flex-1"
+                value={config.columnsMode} onChange={e => patch({ columnsMode: e.target.value as 'auto' | 'manual' })}>
+                <option value="auto">Auto ({cols})</option>
+                <option value="manual">Manual</option>
+              </select>
+              {config.columnsMode === 'manual' && (
+                <Input type="number" min={1} max={20} className="h-7 text-xs w-12"
+                  value={config.manualColumns} onChange={e => patch({ manualColumns: Number(e.target.value) })} />
               )}
-            </CardContent>
-          </Card>
-
-          {/* Bleed */}
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Bleed</Label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input type="checkbox" checked={config.includeBleed} onChange={e => patch({ includeBleed: e.target.checked })} />
-                Include bleed area ({layout.bleed} mm)
-              </label>
-            </CardContent>
-          </Card>
-
-          {/* Screen calibration */}
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <Label className="text-xs font-semibold uppercase text-muted-foreground">Screen calibration</Label>
-              <p className="text-xs text-muted-foreground">
-                Adjust until the line in the preview matches exactly 50 mm with a ruler. At 100% zoom the preview will match real print size.
-              </p>
-              <div>
-                <Label className="text-xs">Screen DPI ({config.screenDpi})</Label>
-                <input type="range" className="w-full" min={72} max={220} step={1}
-                  value={config.screenDpi} onChange={e => patch({ screenDpi: Number(e.target.value) })} />
-                <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>72</span>
-                  <span>96</span>
-                  <span>144</span>
-                  <span>220</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Card info */}
-          <div className="text-xs text-muted-foreground space-y-1 pt-2">
-            <p>Card: {layout.width} x {layout.height} mm</p>
-            {config.includeBleed && <p>With bleed: {layout.width + layout.bleed * 2} x {layout.height + layout.bleed * 2} mm</p>}
-            <p>{entries.length} card{entries.length !== 1 ? 's' : ''} selected</p>
+            </div>
+            <p className="text-[10px] text-muted-foreground">{cols}×{rows} = {perPage}/page, {totalPages} page{totalPages !== 1 ? 's' : ''}</p>
           </div>
+
+          {/* Options */}
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Options</Label>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+              <input type="checkbox" checked={config.cutMarks} onChange={e => patch({ cutMarks: e.target.checked })} />
+              Cut marks
+            </label>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1 pl-5">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-muted-foreground shrink-0">Len</span>
+                <Input type="number" min={0.5} step={0.5} className="h-7 text-xs flex-1" disabled={!config.cutMarks}
+                  value={config.cutMarkLength} onChange={e => patch({ cutMarkLength: Number(e.target.value) })} />
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-muted-foreground shrink-0">Off</span>
+                <Input type="number" min={0} step={0.5} className="h-7 text-xs flex-1" disabled={!config.cutMarks}
+                  value={config.cutMarkOffset} onChange={e => patch({ cutMarkOffset: Number(e.target.value) })} />
+              </div>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+              <input type="checkbox" checked={config.includeBleed} onChange={e => patch({ includeBleed: e.target.checked })} />
+              Include bleed ({layout.bleed} mm)
+            </label>
+          </div>
+
+          {/* DPI */}
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Export DPI</Label>
+            <NumberEditor value={String(config.exportDpi)} onChange={v => patch({ exportDpi: Number(v) })} min={72} max={600} step={1} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Screen DPI</Label>
+            <NumberEditor value={String(config.screenDpi)} onChange={v => patch({ screenDpi: Number(v) })} min={72} max={220} step={1} />
+          </div>
+
+          {/* Info */}
+          <div className="text-[10px] text-muted-foreground space-y-0.5 pt-1 border-t">
+            <p>Card: {layout.width} × {layout.height} mm</p>
+            {config.includeBleed && <p>With bleed: {layout.width + layout.bleed * 2} × {layout.height + layout.bleed * 2} mm</p>}
+            <p>{entries.length} card{entries.length !== 1 ? 's' : ''}</p>
+          </div>
+
           </div>
         </div>
       </div>

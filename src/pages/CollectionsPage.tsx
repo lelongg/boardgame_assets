@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, Layers } from 'lucide-react'
+import { Label } from '@/components/ui/label'
+import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Minus, Plus, Layers, Printer, Download, Upload, Image } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
 import NodeTree from '@/components/layout/NodeTree'
@@ -11,10 +12,85 @@ import PropertyPanel from '@/components/layout/PropertyPanel'
 import LayoutPreview from '@/components/LayoutPreview'
 import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/layoutHelpers'
 import { applyPropertyChange } from '@/components/layout/applyPropertyChange'
+import { ValueItemEditor } from '@/components/layout/ControlPanel'
+import { importGameZip } from '../gameZip'
+import ImportPanel from '@/components/ImportPanel'
 import LoadingImg from '@/components/LoadingImg'
+import CardThumbnail from '@/components/CardThumbnail'
+import ZoomablePreview from '@/components/ZoomablePreview'
 import PageLayout from '@/components/PageLayout'
 import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from '@/components/FontManager'
 import useStorage from '../hooks/useStorage'
+import FilesPanel from '@/components/FilesPanel'
+
+function GameFilesPanel({ gameId, storage, game, layouts, collections, gameFonts, onStatusChange }: {
+  gameId: string; storage: any; game: any; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void
+}) {
+  const [allCards, setAllCards] = useState<any[]>([])
+  const layout = layouts[0] ?? null
+
+  useEffect(() => {
+    if (!storage || !gameId || !collections.length) { setAllCards([]); return }
+    let cancelled = false
+    const load = async () => {
+      const cards: any[] = []
+      for (const col of collections) {
+        const colCards = await storage.listCards(gameId, col.id)
+        cards.push(...colCards.map((c: any) => ({ ...c, collectionId: col.id, collectionName: col.name })))
+      }
+      if (!cancelled) setAllCards(cards)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [storage, gameId, collections])
+
+  return (
+    <FilesPanel
+      gameId={gameId}
+      gameName={game?.name}
+      cards={allCards}
+      layout={layout}
+      gameFonts={gameFonts}
+      storage={storage}
+      onStatusChange={onStatusChange}
+    />
+  )
+}
+
+function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onStatusChange, onCardsChange }: {
+  gameId: string; storage: any; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void; onCardsChange: () => void
+}) {
+  const [allCards, setAllCards] = useState<any[]>([])
+  const layout = layouts[0] ?? null
+
+  useEffect(() => {
+    if (!storage || !gameId || !collections.length) { setAllCards([]); return }
+    let cancelled = false
+    const load = async () => {
+      const cards: any[] = []
+      for (const col of collections) {
+        const colCards = await storage.listCards(gameId, col.id)
+        cards.push(...colCards.map((c: any) => ({ ...c, collectionId: col.id, collectionName: col.name })))
+      }
+      if (!cancelled) setAllCards(cards)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [storage, gameId, collections])
+
+  return (
+    <ImportPanel
+      gameId={gameId}
+      cards={allCards}
+      layout={layout}
+      gameFonts={gameFonts}
+      storage={storage}
+      collections={collections}
+      onStatusChange={onStatusChange}
+      onCardsChange={onCardsChange}
+    />
+  )
+}
 
 export default function CollectionsPage() {
   const { gameId } = useParams<{ gameId: string }>()
@@ -43,6 +119,7 @@ export default function CollectionsPage() {
   const [selectedFont, setSelectedFont] = useState<string | null>(null)
   const [fontPreviewText, setFontPreviewText] = useState(defaultPreviewText)
   const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string; source: 'upload' | 'google' }>>({})
+  const [gameImages, setGameImages] = useState<{ file: string; url: string }[]>([])
 
   // Layout editor state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -144,16 +221,18 @@ export default function CollectionsPage() {
   const loadData = async (s: any) => {
     try {
       if (!gameId) return
-      const [gameData, colList, tplList, fonts] = await Promise.all([
+      const [gameData, colList, tplList, fonts, images] = await Promise.all([
         s.getGame(gameId),
         s.listCollections(gameId),
         s.listLayouts(gameId),
         s.listFonts(gameId),
+        s.listImages?.(gameId).catch(() => []) ?? [],
       ])
       setGame(gameData)
       setCollections(colList)
       setLayouts(tplList)
       setGameFonts(fonts)
+      setGameImages(images)
       setCardPreviews({})
 
       // Auto-select first item if no persisted selection
@@ -368,6 +447,9 @@ export default function CollectionsPage() {
             <TabsTrigger value="collections">Collections</TabsTrigger>
             <TabsTrigger value="layouts">Layouts</TabsTrigger>
             <TabsTrigger value="fonts">Fonts</TabsTrigger>
+            <TabsTrigger value="images">Images</TabsTrigger>
+            <TabsTrigger value="import">Import</TabsTrigger>
+            <TabsTrigger value="files">Export</TabsTrigger>
           </TabsList>
 
           <TabsContent value="collections">
@@ -436,89 +518,50 @@ export default function CollectionsPage() {
             <div className="space-y-4 min-w-0">
               {showBigPreview && selectedCardId && expandedCollection ? (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => setShowBigPreview(false)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                    <div className="flex items-center gap-1">
-                      <button
-                        className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                        title="Edit"
-                        onClick={() => {
-                          if (gameId && expandedCollection) {
-                            if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId)
-                            localStorage.setItem(`editor:${gameId}:tab`, 'cards')
-                          }
-                          navigate(`/game/${gameId}/collection/${expandedCollection}`)
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                        title="Copy"
-                        onClick={async () => {
-                          const card = collectionCards.find(c => c.id === selectedCardId)
-                          if (!card) return
-                          const optimistic = { ...card, id: `temp-${Date.now()}`, name: `New Card ${collectionCards.length + 1}` }
-                          setCollectionCards(prev => [...prev, optimistic])
-                          try {
-                            const copy = await storage.copyCard(gameId, expandedCollection, selectedCardId)
-                            setCollectionCards(prev => prev.map(c => c.id === optimistic.id ? copy : c))
-                          } catch { setCollectionCards(prev => prev.filter(c => c.id !== optimistic.id)); setStatus('Error copying card.') }
-                        }}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </button>
-                      <ConfirmButton
-                        iconOnly
-                        onConfirm={async () => {
-                          const prev = collectionCards
-                          const prevId = selectedCardId
+                  {cardPreviews[selectedCardId] && (
+                    <ZoomablePreview
+                      src={cardPreviews[selectedCardId]}
+                      alt="Card preview"
+                      backImage={collections.find(c => c.id === expandedCollection)?.back}
+                      backFit={collections.find(c => c.id === expandedCollection)?.backFit}
+                      extraButtons={<>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setShowBigPreview(false)} title="Close">
+                          <X className="h-4 w-4" />
+                        </Button>
+                        <span className="text-xs font-medium truncate mr-auto pl-1">{collectionCards.find(c => c.id === selectedCardId)?.name}</span>
+                        <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                          disabled={collectionCards.findIndex(c => c.id === selectedCardId) === 0}
+                          onClick={() => { const idx = collectionCards.findIndex(c => c.id === selectedCardId); if (idx > 0) setSelectedCardId(collectionCards[idx - 1].id) }}
+                          title="Previous"><ChevronLeft className="h-4 w-4" /></button>
+                        <span className="text-xs text-muted-foreground">{collectionCards.findIndex(c => c.id === selectedCardId) + 1}/{collectionCards.length}</span>
+                        <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                          disabled={collectionCards.findIndex(c => c.id === selectedCardId) === collectionCards.length - 1}
+                          onClick={() => { const idx = collectionCards.findIndex(c => c.id === selectedCardId); if (idx < collectionCards.length - 1) setSelectedCardId(collectionCards[idx + 1].id) }}
+                          title="Next"><ChevronRight className="h-4 w-4" /></button>
+                        <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
+                          onClick={() => { if (gameId && expandedCollection) { if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); localStorage.setItem(`editor:${gameId}:tab`, 'cards') }; navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
+                          <Pencil className="h-4 w-4" /></button>
+                        <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy"
+                          onClick={async () => {
+                            const card = collectionCards.find(c => c.id === selectedCardId); if (!card) return
+                            const optimistic = { ...card, id: `temp-${Date.now()}`, name: `New Card ${collectionCards.length + 1}` }
+                            setCollectionCards(prev => [...prev, optimistic])
+                            try { const copy = await storage.copyCard(gameId, expandedCollection, selectedCardId); setCollectionCards(prev => prev.map(c => c.id === optimistic.id ? copy : c)) }
+                            catch { setCollectionCards(prev => prev.filter(c => c.id !== optimistic.id)); setStatus('Error copying card.') }
+                          }}>
+                          <Copy className="h-4 w-4" /></button>
+                        <ConfirmButton iconOnly onConfirm={async () => {
+                          const prev = collectionCards; const prevId = selectedCardId
                           const updated = collectionCards.filter(c => c.id !== selectedCardId)
                           setCollectionCards(updated)
                           if (updated.length > 0) setSelectedCardId(updated[0].id)
                           else { setSelectedCardId(null); setShowBigPreview(false) }
-                          try {
-                            await storage.deleteCard(gameId, expandedCollection, prevId)
-                          } catch { setCollectionCards(prev); setSelectedCardId(prevId); setStatus('Error deleting card.') }
-                        }}
-                      />
-                    </div>
-                    <span className="text-sm font-medium">{collectionCards.find(c => c.id === selectedCardId)?.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {collectionCards.findIndex(c => c.id === selectedCardId) + 1} / {collectionCards.length}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="rounded-full border p-2 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                      disabled={collectionCards.findIndex(c => c.id === selectedCardId) === 0}
-                      onClick={() => {
-                        const idx = collectionCards.findIndex(c => c.id === selectedCardId)
-                        if (idx > 0) setSelectedCardId(collectionCards[idx - 1].id)
-                      }}
-                    >
-                      <ChevronLeft className="h-5 w-5" />
-                    </button>
-                    <div className="flex-1 rounded-lg border overflow-hidden p-4 flex justify-center" style={{ backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '16px 16px' }}>
-                      <LoadingImg
-                        src={selectedCardId ? cardPreviews[selectedCardId] || '' : ''}
-                        alt="Card preview"
-                        className="max-w-full max-h-[60vh] drop-shadow-lg"
-                      />
-                    </div>
-                    <button
-                      className="rounded-full border p-2 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                      disabled={collectionCards.findIndex(c => c.id === selectedCardId) === collectionCards.length - 1}
-                      onClick={() => {
-                        const idx = collectionCards.findIndex(c => c.id === selectedCardId)
-                        if (idx < collectionCards.length - 1) setSelectedCardId(collectionCards[idx + 1].id)
-                      }}
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </button>
-                  </div>
+                          try { await storage.deleteCard(gameId, expandedCollection, prevId) }
+                          catch { setCollectionCards(prev); setSelectedCardId(prevId); setStatus('Error deleting card.') }
+                        }} />
+                      </>}
+                    />
+                  )}
                   <div className="flex gap-2 overflow-x-auto p-1 min-w-0 max-w-full">
                     {collectionCards.map((card) => (
                       <button
@@ -592,14 +635,13 @@ export default function CollectionsPage() {
                   </div>
                   <div className="grid gap-3 p-4" style={{ gridTemplateColumns: `repeat(${galleryCols}, minmax(0, 1fr))` }}>
                     {collectionCards.map((card) => (
-                      <div key={card.id}
-                        className={`relative rounded-md cursor-pointer transition-all ${selectedCardId === card.id ? 'outline outline-2 outline-primary' : 'outline outline-1 outline-border'}`}
-                        onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}>
-                        <div className="rounded-t-md overflow-hidden p-2" style={{ aspectRatio: '5 / 7', backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '12px 12px' }}>
-                          <LoadingImg src={cardPreviews[card.id] || ''} alt={card.name} className="w-full h-full drop-shadow-md object-contain" wrapperClassName="w-full h-full" />
-                        </div>
-                        <p className="px-2 py-1 text-xs text-center text-muted-foreground truncate">{card.name}</p>
-                      </div>
+                      <CardThumbnail
+                        key={card.id}
+                        src={cardPreviews[card.id] || ''}
+                        name={card.name}
+                        selected={selectedCardId === card.id}
+                        onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}
+                      />
                     ))}
                   </div>
                 </div>
@@ -688,6 +730,13 @@ export default function CollectionsPage() {
                           <PropertyPanel
                             layout={selectedLayout}
                             gameFonts={gameFonts}
+                            gameImages={gameImages}
+                            onUploadFile={async (file) => {
+                              const url = await storage.uploadImage(gameId, file)
+                              const images = await storage.listImages(gameId)
+                              setGameImages(images)
+                              return url
+                            }}
                             selectedNodeId={selectedNodeId}
                             selectedProperty={selectedProperty}
                             onSelectProperty={(prop) => {
@@ -748,6 +797,84 @@ export default function CollectionsPage() {
 
               <FontPreview fonts={gameFonts} selectedFont={selectedFont} previewText={fontPreviewText} />
             </div>
+          </TabsContent>
+
+          <TabsContent value="images">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-base">Images</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <ValueItemEditor
+                  property="defaultValue"
+                  itemType="image"
+                  value=""
+                  layout={selectedLayout ?? layouts[0]}
+                  gameImages={gameImages}
+                  onUploadFile={async (file) => {
+                    const url = await storage.uploadImage(gameId, file)
+                    const images = await storage.listImages(gameId)
+                    setGameImages(images)
+                    return url
+                  }}
+                  onChange={() => {}}
+                />
+                {gameImages.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No images uploaded yet.</p>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                    {gameImages.map((img) => (
+                      <div key={img.file} className="group relative rounded-md border overflow-hidden" style={{ aspectRatio: '1' }}>
+                        <LoadingImg src={img.url} alt={img.file} className="w-full h-full object-cover" wrapperClassName="w-full h-full" />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-end justify-between p-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            className="rounded bg-black/50 p-1 text-white hover:bg-black/70 text-xs truncate max-w-[70%]"
+                            title="Copy URL"
+                            onClick={() => { navigator.clipboard.writeText(img.url); setStatus('URL copied.') }}
+                          >{img.file}</button>
+                          <ConfirmButton iconOnly onConfirm={async () => {
+                            try {
+                              await storage.deleteImage(gameId, img.file)
+                              setGameImages(prev => prev.filter(i => i.file !== img.file))
+                            } catch { setStatus('Error deleting image.') }
+                          }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="import">
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="pt-6 space-y-2">
+                  <Label className="text-sm font-medium">Import game from zip</Label>
+                  <p className="text-xs text-muted-foreground">Import a full game archive (.zip) including layouts, collections, cards, fonts, and images.</p>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    const input = document.createElement('input')
+                    input.type = 'file'; input.accept = '.zip'
+                    input.onchange = async () => {
+                      const file = input.files?.[0]; if (!file) return
+                      setStatus('Importing game...')
+                      try {
+                        await importGameZip(storage, file, setStatus)
+                        await loadData(storage)
+                        setStatus('Game imported.')
+                      } catch (err: any) { setError('Import error', err) }
+                    }
+                    input.click()
+                  }}>Import zip</Button>
+                </CardContent>
+              </Card>
+              <GameImportPanel gameId={gameId!} storage={storage} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} onCardsChange={() => loadData(storage)} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="files">
+            <GameFilesPanel gameId={gameId!} storage={storage} game={game} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} />
           </TabsContent>
         </Tabs>
     </PageLayout>

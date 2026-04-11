@@ -638,6 +638,13 @@ app.delete("/api/games/:gameId/fonts/:file", (c) => {
 });
 
 // Images
+app.get("/api/games/:gameId/images", (c) => {
+  const dir = imagesDir(c.req.param("gameId"));
+  if (!fs.existsSync(dir)) return c.json([]);
+  const files = fs.readdirSync(dir).filter(f => /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(f));
+  return c.json(files.map(f => ({ file: f, url: `/api/games/${c.req.param("gameId")}/images/${f}` })));
+});
+
 app.post("/api/games/:gameId/images/upload", async (c) => {
   const gameId = c.req.param("gameId");
   const disposition = c.req.header("content-disposition") ?? "";

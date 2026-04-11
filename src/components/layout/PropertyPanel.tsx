@@ -5,6 +5,8 @@ import { findSectionById, findItemById, getNodeKind } from './layoutHelpers'
 type PropertyPanelProps = {
   layout: CardLayout
   gameFonts?: Record<string, { name: string; file: string }>
+  gameImages?: { file: string; url: string }[]
+  onUploadFile?: (file: File) => Promise<string>
   selectedNodeId: string
   selectedProperty: string | null
   onSelectProperty: (property: string) => void
@@ -102,6 +104,8 @@ const getPropertyValue = (node: any, property: string): unknown => {
 export default function PropertyPanel({
   layout,
   gameFonts,
+  gameImages,
+  onUploadFile,
   selectedNodeId,
   selectedProperty,
   onSelectProperty,
@@ -155,6 +159,8 @@ export default function PropertyPanel({
             property={selectedProperty}
             value={currentValue}
             gameFonts={gameFonts}
+            gameImages={gameImages}
+            onUploadFile={onUploadFile}
             binding={bindings[selectedProperty]}
             bindingValues={bindings[selectedProperty] ? layout.bindingMeta?.[`${selectedProperty}:${bindings[selectedProperty].field}`]?.values : undefined}
             bindingDefault={bindings[selectedProperty] ? layout.bindingMeta?.[`${selectedProperty}:${bindings[selectedProperty].field}`]?.default : undefined}

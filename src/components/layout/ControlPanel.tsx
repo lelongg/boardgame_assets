@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
-import { Smile, Upload, X, Eye, Pencil } from 'lucide-react'
+import { Smile, Upload, X, Eye, Pencil, Image as ImageIcon, ClipboardPaste } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { RgbaColorPicker } from 'react-colorful'
@@ -19,6 +19,8 @@ type ControlPanelProps = {
   bindingDefault?: string
   itemType?: string
   gameFonts?: Record<string, { name: string; file: string }>
+  gameImages?: { file: string; url: string }[]
+  onUploadFile?: (file: File) => Promise<string>
   layout: CardLayout
   selectedNodeId?: string
   onChange: (value: unknown) => void
@@ -46,8 +48,8 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     case 'fontSize': return { type: 'number', min: 8, max: 500, step: 1 }
     case 'widthPct': return { type: 'number', min: 0, max: 200, step: 1 }
     case 'heightPct': return { type: 'number', min: 0, max: 200, step: 1 }
-    case 'offsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.5 }
-    case 'offsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.5 }
+    case 'offsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.1 }
+    case 'offsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.1 }
     case 'strokeWidth': return { type: 'number', min: 0, max: 20, step: 0.5 }
     case 'cornerRadius': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'layout': return { type: 'select', options: [
@@ -57,8 +59,8 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
       { value: 'grid', label: 'Grid' },
     ]}
     case 'repeatCount': return { type: 'number', min: 1, max: 20, step: 1 }
-    case 'repeatOffsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.5 }
-    case 'repeatOffsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.5 }
+    case 'repeatOffsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.1 }
+    case 'repeatOffsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.1 }
     case 'columns': return { type: 'number', min: 1, max: 12, step: 1 }
     case 'align': return { type: 'select', options: [
       { value: 'left', label: 'Left' },
@@ -273,12 +275,21 @@ const LazyImageEditor = lazy(() => import('@/components/ImageEditor'))
 
 const NO_BINDING = new Set(['name', 'id', 'anchor', 'attachAnchor', 'attachTargetId'])
 
-function ImageUploadEditor({ value, onChange, aspectRatio }: { value: string; onChange: (v: string) => void; aspectRatio?: number }) {
+function ImageUploadEditor({ value, onChange, aspectRatio, gameImages, onUploadFile }: { value: string; onChange: (v: string) => void; aspectRatio?: number; gameImages?: { file: string; url: string }[]; onUploadFile?: (file: File) => Promise<string> }) {
   const [showPreview, setShowPreview] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
   const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as string); reader.readAsDataURL(file) })
-  const handleFile = async (file: File) => { if (file.type.startsWith('image/')) onChange(await readFileAsDataUrl(file)) }
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) return
+    if (onUploadFile) {
+      const url = await onUploadFile(file)
+      onChange(url)
+    } else {
+      onChange(await readFileAsDataUrl(file))
+    }
+  }
 
   if (editing && value) {
     return (
@@ -316,6 +327,27 @@ function ImageUploadEditor({ value, onChange, aspectRatio }: { value: string; on
           <button
             type="button"
             className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+            title="Paste from clipboard"
+            onClick={async () => {
+              try {
+                const items = await navigator.clipboard.read()
+                for (const item of items) {
+                  const imageType = item.types.find(t => t.startsWith('image/'))
+                  if (imageType) {
+                    const blob = await item.getType(imageType)
+                    const file = new File([blob], `paste.${imageType.split('/')[1]}`, { type: imageType })
+                    handleFile(file)
+                    return
+                  }
+                }
+              } catch { /* clipboard access denied or empty */ }
+            }}
+          >
+            <ClipboardPaste className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
             title="Upload image"
             onClick={() => {
               const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'
@@ -325,9 +357,30 @@ function ImageUploadEditor({ value, onChange, aspectRatio }: { value: string; on
           >
             <Upload className="h-4 w-4" />
           </button>
+          {gameImages && gameImages.length > 0 && (
+            <button type="button" className={`rounded p-1 transition-colors ${showPicker ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`} title="Pick from gallery" onClick={() => setShowPicker(!showPicker)}>
+              <ImageIcon className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
       {showPreview && value && <LoadingImg src={value} alt="Preview" className="max-h-24 rounded border object-contain" />}
+      {showPicker && gameImages && gameImages.length > 0 && (
+        <div className="grid grid-cols-4 gap-1 max-h-40 overflow-y-auto rounded border p-1">
+          {gameImages.map((img) => (
+            <button
+              key={img.file}
+              type="button"
+              className={`rounded overflow-hidden border transition-colors ${value === img.url ? 'border-primary ring-1 ring-primary' : 'border-transparent hover:border-muted-foreground/40'}`}
+              style={{ aspectRatio: '1' }}
+              onClick={() => { onChange(img.url); setShowPicker(false) }}
+              title={img.file}
+            >
+              <LoadingImg src={img.url} alt={img.file} className="w-full h-full object-cover" wrapperClassName="w-full h-full" />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -362,7 +415,7 @@ function RepeatButton({ onTick, ...props }: { onTick: () => void } & Omit<React.
   )
 }
 
-function NumberEditor({ value, onChange, min, max, step }: { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number }) {
+export function NumberEditor({ value, onChange, min, max, step }: { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number }) {
   const numVal = Number(value || 0)
   const s = step ?? 1
   const valRef = useRef(numVal)
@@ -383,11 +436,11 @@ function NumberEditor({ value, onChange, min, max, step }: { value: string; onCh
   )
 }
 
-export function ValueItemEditor({ property, itemType, value, onChange, layout }: { property: string; itemType?: string; value: string; onChange: (v: string) => void; layout?: CardLayout }) {
+export function ValueItemEditor({ property, itemType, value, onChange, layout, gameImages, onUploadFile }: { property: string; itemType?: string; value: string; onChange: (v: string) => void; layout?: CardLayout; gameImages?: { file: string; url: string }[]; onUploadFile?: (file: File) => Promise<string> }) {
   const type = getEditorType(property, itemType)
   if (type === 'emoji') return <EmojiPicker value={value} onChange={(v) => onChange(String(v))} />
   if (type === 'color') return <ColorControl value={value} onChange={(v) => onChange(String(v))} />
-  if (type === 'image-upload') return <ImageUploadEditor value={value} onChange={onChange} aspectRatio={layout ? layout.width / layout.height : undefined} />
+  if (type === 'image-upload') return <ImageUploadEditor value={value} onChange={onChange} aspectRatio={layout ? layout.width / layout.height : undefined} gameImages={gameImages} onUploadFile={onUploadFile} />
   if (type === 'richtext') return <RichTextField value={value} onChange={onChange} />
   if (type === 'number') {
     const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
@@ -469,7 +522,7 @@ function BindingEditor({ property, itemType, layout, binding, values: externalVa
   )
 }
 
-function ValueEditor({ property, value, bindingValues, gameFonts, layout, selectedNodeId, onChange }: Omit<ControlPanelProps, 'onBindingChange' | 'onBindingValuesChange'>) {
+function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, onUploadFile, layout, selectedNodeId, onChange }: Omit<ControlPanelProps, 'onBindingChange' | 'onBindingValuesChange'>) {
   const allowedValues = bindingValues
   if (allowedValues?.length) {
     return (
@@ -509,7 +562,7 @@ function ValueEditor({ property, value, bindingValues, gameFonts, layout, select
   }
 
   if (meta.type === 'image-upload') {
-    return <ImageUploadEditor value={String(value ?? '')} onChange={(v) => onChange(v)} aspectRatio={layout.width / layout.height} />
+    return <ImageUploadEditor value={String(value ?? '')} onChange={(v) => onChange(v)} aspectRatio={layout.width / layout.height} gameImages={gameImages} onUploadFile={onUploadFile} />
   }
 
   if (meta.type === 'richtext') {
@@ -544,12 +597,12 @@ function ValueEditor({ property, value, bindingValues, gameFonts, layout, select
   )
 }
 
-export default function ControlPanel({ property, value, binding, bindingValues, bindingDefault, itemType, gameFonts, layout, selectedNodeId, onChange, onBindingChange, onBindingValuesChange, onBindingDefaultChange }: ControlPanelProps) {
+export default function ControlPanel({ property, value, binding, bindingValues, bindingDefault, itemType, gameFonts, gameImages, onUploadFile, layout, selectedNodeId, onChange, onBindingChange, onBindingValuesChange, onBindingDefaultChange }: ControlPanelProps) {
   const canBind = !NO_BINDING.has(property)
   const isBound = !!binding
 
   if (!canBind) {
-    return <ValueEditor property={property} value={value} bindingValues={bindingValues} gameFonts={gameFonts} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
+    return <ValueEditor property={property} value={value} bindingValues={bindingValues} gameFonts={gameFonts} gameImages={gameImages} onUploadFile={onUploadFile} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
   }
 
   return (
@@ -566,7 +619,7 @@ export default function ControlPanel({ property, value, binding, bindingValues, 
       </div>
       {isBound
         ? <BindingEditor property={property} itemType={itemType} layout={layout} binding={binding} values={bindingValues ?? []} bindingDefault={bindingDefault} onSetDefault={(v) => onBindingDefaultChange?.(v)} onChange={(b) => onBindingChange?.(b)} onValuesChange={(v) => onBindingValuesChange?.(v)} />
-        : <ValueEditor property={property} value={value} bindingValues={bindingValues} gameFonts={gameFonts} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
+        : <ValueEditor property={property} value={value} bindingValues={bindingValues} gameFonts={gameFonts} gameImages={gameImages} onUploadFile={onUploadFile} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
       }
     </div>
   )

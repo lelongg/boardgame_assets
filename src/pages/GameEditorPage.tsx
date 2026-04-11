@@ -18,6 +18,7 @@ import ListItem from '@/components/ListItem'
 import PageLayout from '@/components/PageLayout'
 import { cardsToCSV, csvToCards } from '../cardsCsv'
 import useStorage from '../hooks/useStorage'
+import FilesPanel from '@/components/FilesPanel'
 
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
@@ -34,6 +35,7 @@ export default function GameEditorPage() {
   const [propertyByType, setPropertyByType] = useState<Record<string, string>>({})
   const [savedCardJson, setSavedCardJson] = useState('')
   const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
+  const [gameImages, setGameImages] = useState<{ file: string; url: string }[]>([])
   const [detailedView, setDetailedView] = useState(false)
   const [cardThumbnails, setCardThumbnails] = useState<Record<string, string>>({})
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
@@ -190,13 +192,15 @@ export default function GameEditorPage() {
       ])
       setCollection(col)
 
-      const [layout, fonts] = await Promise.all([
+      const [layout, fonts, images] = await Promise.all([
         s.getLayout(gameId, col.layoutId),
         s.listFonts(gameId),
+        s.listImages?.(gameId).catch(() => []) ?? [],
       ])
       gameData.layout = layout
       setGame(gameData)
       setGameFonts(fonts)
+      setGameImages(images)
       if (layout?.root?.id && !selectedNodeId) setSelectedNodeId(layout.root.id)
 
       const cardList = await s.listCards(gameId, collectionId)
@@ -529,6 +533,13 @@ export default function GameEditorPage() {
                                       value={val}
                                       onChange={(v) => setField(fieldKey, v)}
                                       layout={game.layout}
+                                      gameImages={gameImages}
+                                      onUploadFile={async (file) => {
+                                        const url = await storage.uploadImage(gameId, file)
+                                        const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
+                                        setGameImages(imgs)
+                                        return url
+                                      }}
                                     />
                                   )}
                                 </div>
@@ -582,6 +593,13 @@ export default function GameEditorPage() {
                     <PropertyPanel
                       layout={game.layout}
                       gameFonts={gameFonts}
+                      gameImages={gameImages}
+                      onUploadFile={async (file) => {
+                        const url = await storage.uploadImage(gameId, file)
+                        const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
+                        setGameImages(imgs)
+                        return url
+                      }}
                       selectedNodeId={selectedNodeId}
                       selectedProperty={selectedProperty}
                       onSelectProperty={(prop) => {
@@ -641,6 +659,13 @@ export default function GameEditorPage() {
                     itemType="image"
                     value={collection?.back || ''}
                     layout={game?.layout}
+                    gameImages={gameImages}
+                    onUploadFile={async (file) => {
+                      const url = await storage.uploadImage(gameId, file)
+                      const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
+                      setGameImages(imgs)
+                      return url
+                    }}
                     onChange={async (v) => {
                       setCollection((prev: any) => ({ ...prev, back: v || undefined }))
                       try { await storage.updateCollection(gameId, collectionId, { back: v || undefined }) }
@@ -672,208 +697,18 @@ export default function GameEditorPage() {
           </TabsContent>
 
           <TabsContent value="data">
-            {(() => {
-              // Build unified item list: existing cards + new-only imports
-              const hasImport = importStaged.length > 0
-              const existingByName = new Map(cards.map(c => [c.name, c]))
-              const stagedNames = hasImport ? new Set(importStaged.map(c => c.name)) : null
-              type PanelItem =
-                | { kind: 'existing'; id: string; name: string; importIdx?: number; status?: 'replace' | 'missing' }
-                | { kind: 'new'; importIdx: number; name: string }
-              const items: PanelItem[] = cards.map(c => {
-                const importIdx = hasImport ? importStaged.findIndex(s => s.name === c.name) : -1
-                const status = hasImport ? (importIdx >= 0 ? 'replace' as const : (stagedNames && !stagedNames.has(c.name) ? 'missing' as const : undefined)) : undefined
-                return { kind: 'existing' as const, id: c.id, name: c.name, importIdx: importIdx >= 0 ? importIdx : undefined, status }
-              })
-              if (hasImport) {
-                importStaged.forEach((s, i) => {
-                  if (!existingByName.has(s.name)) items.push({ kind: 'new', importIdx: i, name: s.name })
-                })
-              }
-              const totalItems = items.length
-              const toggleItem = (item: PanelItem) => {
-                if (item.kind === 'existing') {
-                  setCardSelection(prev => { const n = new Set(prev); n.has(item.id) ? n.delete(item.id) : n.add(item.id); return n })
-                  if (item.importIdx != null) {
-                    setImportSelection(prev => { const n = new Set(prev); n.has(item.importIdx!) ? n.delete(item.importIdx!) : n.add(item.importIdx!); return n })
-                  }
-                } else {
-                  setImportSelection(prev => { const n = new Set(prev); n.has(item.importIdx) ? n.delete(item.importIdx) : n.add(item.importIdx); return n })
-                }
-              }
-              const isSelected = (item: PanelItem) =>
-                item.kind === 'existing' ? cardSelection.has(item.id) : importSelection.has(item.importIdx)
-              const allSelected = totalItems > 0 && items.every(isSelected)
-              const selectAll = (checked: boolean) => {
-                if (checked) {
-                  setCardSelection(new Set(cards.map(c => c.id)))
-                  if (hasImport) setImportSelection(new Set(importStaged.map((_, i) => i)))
-                } else {
-                  setCardSelection(new Set())
-                  if (hasImport) setImportSelection(new Set())
-                }
-              }
-              const selectedExisting = cards.filter(c => cardSelection.has(c.id)).length
-              const selectedImport = hasImport ? importStaged.filter((_, i) => importSelection.has(i)).length : 0
-              const missingCards = hasImport ? cards.filter(c => !stagedNames!.has(c.name)) : []
-
-              const badge = (item: PanelItem) => {
-                if (!hasImport) return null
-                if (item.kind === 'new') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-green-100 text-green-700">new</span>
-                if (item.status === 'replace') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-amber-100 text-amber-700">replace</span>
-                if (item.status === 'missing') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-red-100 text-red-700">missing</span>
-                return null
-              }
-              const thumb = (item: PanelItem) =>
-                item.kind === 'existing' ? dataThumbnails[item.id] : importThumbnails[item.importIdx]
-
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                      <CardTitle className="text-base">Cards ({items.filter(isSelected).length}/{totalItems})</CardTitle>
-                      <Button size="sm" variant="ghost" onClick={() => setDataGallery(!dataGallery)} title={dataGallery ? 'List view' : 'Gallery view'}>
-                        {dataGallery ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-                      </Button>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <label className="flex items-center gap-2 text-sm text-muted-foreground border-b pb-2 cursor-pointer select-none">
-                        <input type="checkbox" checked={allSelected} onChange={(e) => selectAll(e.target.checked)} />
-                        Select all
-                      </label>
-                      {dataGallery ? (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 overflow-y-auto max-h-[60vh]">
-                          {items.map((item) => (
-                            <div key={item.kind === 'existing' ? item.id : `import-${item.importIdx}`}
-                              className={`relative rounded-md cursor-pointer transition-all ${isSelected(item) ? 'ring-2 ring-primary' : 'ring-1 ring-border opacity-60 hover:opacity-100'}`}
-                              onClick={() => toggleItem(item)}
-                            >
-                              {thumb(item) ? (
-                                <img src={thumb(item)} alt={item.name} className="w-full rounded-t-md bg-white" />
-                              ) : (
-                                <div className="w-full aspect-[5/7] rounded-t-md bg-muted" />
-                              )}
-                              <div className="px-1 py-0.5 flex items-center justify-between gap-1">
-                                <p className="text-xs text-muted-foreground truncate flex-1">{item.name}</p>
-                                {badge(item) && <span className="shrink-0">{badge(item)}</span>}
-                              </div>
-                            </div>
-                          ))}
-                          {totalItems === 0 && <p className="text-sm text-muted-foreground col-span-3">No cards.</p>}
-                        </div>
-                      ) : (
-                        <div className="space-y-1 overflow-y-auto max-h-[60vh]">
-                          {items.map((item) => (
-                            <label key={item.kind === 'existing' ? item.id : `import-${item.importIdx}`}
-                              className="flex items-center gap-2 text-sm py-1 cursor-pointer select-none hover:bg-accent rounded px-1">
-                              <input type="checkbox" checked={isSelected(item)} onChange={() => toggleItem(item)} />
-                              <span className="flex-1 truncate">{item.name}</span>
-                              {badge(item)}
-                            </label>
-                          ))}
-                          {totalItems === 0 && <p className="text-sm text-muted-foreground">No cards.</p>}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <div className="space-y-4 md:w-64">
-                    <Card>
-                      <CardContent className="pt-6 space-y-3">
-                        <Button className="w-full" variant="outline" disabled={selectedExisting === 0} onClick={() => {
-                          try {
-                            const selected = cards.filter(c => cardSelection.has(c.id))
-                            const csv = cardsToCSV(selected)
-                            const blob = new Blob([csv], { type: 'text/csv' })
-                            const url = URL.createObjectURL(blob)
-                            const a = document.createElement('a')
-                            a.href = url
-                            a.download = `${game.name} - ${collection?.name || 'cards'}.csv`
-                            a.click()
-                            URL.revokeObjectURL(url)
-                          } catch { setStatus('Error exporting CSV.') }
-                        }}>
-                          <Download className="h-4 w-4 mr-2" />
-                          Export {selectedExisting} card{selectedExisting !== 1 ? 's' : ''}
-                        </Button>
-                        <Button className="w-full" variant="outline" disabled={selectedExisting === 0} onClick={() => {
-                          const params = cardSelection.size < cards.length
-                            ? `?cards=${[...cardSelection].join(',')}`
-                            : ''
-                          navigate(`/game/${gameId}/collection/${collectionId}/print${params}`)
-                        }}>
-                          <Printer className="h-4 w-4 mr-2" />
-                          Print {selectedExisting} card{selectedExisting !== 1 ? 's' : ''}
-                        </Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardContent className="pt-6 space-y-3">
-                        <Button className="w-full" variant="outline" onClick={() => {
-                          const input = document.createElement('input')
-                          input.type = 'file'
-                          input.accept = '.csv,text/csv'
-                          input.onchange = async () => {
-                            const file = input.files?.[0]
-                            if (!file) return
-                            try {
-                              const text = await file.text()
-                              const parsed = csvToCards(text)
-                              setImportStaged(parsed)
-                              setImportSelection(new Set(parsed.map((_, i) => i)))
-                              setDeleteMissing(false)
-                            } catch (e: any) { setStatus(`Parse error: ${e.message || e}`) }
-                          }
-                          input.click()
-                        }}>
-                          Load CSV
-                        </Button>
-                        {hasImport && <>
-                          {missingCards.length > 0 && (
-                            <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-red-600">
-                              <input type="checkbox" checked={deleteMissing} onChange={(e) => setDeleteMissing(e.target.checked)} />
-                              Delete {missingCards.length} missing
-                            </label>
-                          )}
-                          <Button className="w-full" variant="outline" disabled={selectedImport === 0} onClick={async () => {
-                            if (!gameId || !collectionId) return
-                            try {
-                              setStatus('Importing...')
-                              const toImport = importStaged.filter((_, i) => importSelection.has(i))
-                              for (const card of toImport) {
-                                const existing = existingByName.get(card.name)
-                                await storage.saveCard(gameId, collectionId, existing?.id ?? null, existing ? { ...existing, fields: card.fields } : card)
-                              }
-                              if (deleteMissing) {
-                                for (const card of missingCards) {
-                                  await storage.deleteCard(gameId, collectionId, card.id)
-                                }
-                              }
-                              const cardList = await storage.listCards(gameId, collectionId)
-                              setCards(cardList)
-                              if (cardList.length > 0 && !selectedCard) {
-                                await selectCard(storage, cardList[0].id)
-                              }
-                              setImportStaged([])
-                              setImportSelection(new Set())
-                              setDeleteMissing(false)
-                              setStatus(`Imported ${toImport.length} card${toImport.length !== 1 ? 's' : ''}.`)
-                            } catch (e: any) { setStatus(`Import error: ${e.message || e}`) }
-                          }}>
-                            <Upload className="h-4 w-4 mr-2" />
-                            Import {selectedImport} card{selectedImport !== 1 ? 's' : ''}
-                          </Button>
-                          <Button className="w-full" size="sm" variant="ghost" onClick={() => { setImportStaged([]); setImportSelection(new Set()); setDeleteMissing(false) }}>
-                            Clear CSV
-                          </Button>
-                        </>}
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              )
-            })()}
+            <FilesPanel
+              gameId={gameId!}
+              collectionId={collectionId}
+              gameName={game?.name}
+              collectionName={collection?.name}
+              cards={cards}
+              layout={game?.layout}
+              gameFonts={gameFonts}
+              storage={storage}
+              onStatusChange={setStatus}
+              onCardsChange={() => loadGame(storage)}
+            />
           </TabsContent>
         </Tabs>
     </PageLayout>

@@ -514,8 +514,11 @@ async function createFullTestGame(storage) {
   };
   await storage.saveLayout(gameId, tpl.id, tpl);
 
-  // Cards
+  // Set back image on default collection
   const cols = await storage.listCollections(gameId);
+  await storage.updateCollection(gameId, cols[0].id, { back: imageUrl, backFit: "contain" });
+
+  // Cards
   await storage.saveCard(gameId, cols[0].id, "card-1", {
     id: "card-1", name: "Warrior",
     fields: { cost: "5", description: "<b>Brave</b> hero", image: imageUrl, faction: "⚔️" },
@@ -595,8 +598,13 @@ async function verifyFullTestGame(storage, gameId) {
   assert.equal(cols.length, 2);
   assert.deepEqual(cols.map(c => c.name).sort(), ["Default", "Expansion"]);
 
-  // Cards
+  // Collection metadata
   const defCol = cols.find(c => c.name === "Default");
+  assert.ok(defCol.back, "Default collection should have a back image");
+  assert.ok(defCol.back.includes(`/api/games/${gameId}/images/`), "Back image URL should reference the game");
+  assert.equal(defCol.backFit, "contain");
+
+  // Cards
   const defCards = await storage.listCards(gameId, defCol.id);
   assert.equal(defCards.length, 2);
   const warrior = defCards.find(c => c.name === "Warrior");

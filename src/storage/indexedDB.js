@@ -600,6 +600,15 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
 
     // ── Images ─────────────────────────────────────────────────────────────
 
+    async listImages(gameId) {
+      const prefix = `/api/games/${gameId}/images/`;
+      const keys = await listAssets(prefix);
+      return keys.map(key => {
+        const file = key.slice(prefix.length);
+        return { file, url: key };
+      });
+    },
+
     async uploadImage(gameId, file) {
       const buf = await file.arrayBuffer();
       const hash = await hashArrayBuffer(buf);
@@ -611,6 +620,10 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       await putAsset(assetPath, new Blob([buf], { type: mimeType }), mimeType);
 
       return assetPath;
+    },
+
+    async deleteImage(gameId, file) {
+      await deleteAsset(`/api/games/${gameId}/images/${file}`);
     },
   };
 };

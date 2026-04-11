@@ -65,6 +65,13 @@ export const exportGameZip = async (
     for (const child of section.children ?? []) scanItems(child)
   }
   for (const tpl of layouts) scanItems(tpl.root)
+  // Also scan collection back images
+  for (const col of collections) {
+    if (col.back) {
+      const match = col.back.match(/\/api\/games\/[^/]+\/images\/([^"]+)/)
+      if (match) imageFiles.add(match[1])
+    }
+  }
 
   for (const file of imageFiles) {
     try {
@@ -156,6 +163,13 @@ export const importGameZip = async (
     log(`Creating collection: ${col.id} (${col.name}) → layout: ${col.layoutId}`)
     const newCol = await storage.createCollection(newGameId, col.name, col.layoutId)
     const newColId = newCol.id
+    // Preserve extra collection fields (back, backFit, etc.)
+    const extraFields: Record<string, unknown> = {}
+    if (col.back) extraFields.back = rewriteUrls(col.back)
+    if (col.backFit) extraFields.backFit = col.backFit
+    if (Object.keys(extraFields).length > 0) {
+      await storage.updateCollection(newGameId, newColId, extraFields)
+    }
 
     const colDir = f.name.replace('/collection.json', '')
     const cardFiles = zip.file(new RegExp(`^${colDir}/cards/.*\\.json$`))

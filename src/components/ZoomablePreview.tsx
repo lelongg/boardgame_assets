@@ -43,18 +43,20 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
       }
       if (!unlocked) return
       e.preventDefault()
-      const rect = container.getBoundingClientRect()
-      const cx = e.clientX - rect.left
-      const cy = e.clientY - rect.top
+      const img = container.querySelector('img')
+      if (!img) return
+      const imgRect = img.getBoundingClientRect()
       const factor = e.deltaY > 0 ? 0.9 : 1.1
 
       setView(prev => {
         const nextScale = Math.min(10, Math.max(0.1, prev.scale * factor))
         const ratio = nextScale / prev.scale
+        const dx = e.clientX - imgRect.left
+        const dy = e.clientY - imgRect.top
         return {
           scale: nextScale,
-          x: cx * (1 - ratio) + prev.x * ratio,
-          y: cy * (1 - ratio) + prev.y * ratio,
+          x: prev.x + dx * (1 - ratio),
+          y: prev.y + dy * (1 - ratio),
         }
       })
     }
@@ -335,7 +337,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
           <img
             src={src}
             alt={alt}
-            className={`max-w-full select-none transition-opacity duration-200 drop-shadow-lg ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
+            className={`max-w-full max-h-[60vh] block mx-auto select-none transition-opacity duration-200 drop-shadow-lg ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
             draggable={false}
             onLoad={() => setImgLoaded(true)}
             onError={() => setImgLoaded(true)}

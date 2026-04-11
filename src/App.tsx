@@ -3,7 +3,6 @@ import GamesPage from './pages/GamesPage'
 import CollectionsPage from './pages/CollectionsPage'
 import GameEditorPage from './pages/GameEditorPage'
 import PrintPage from './pages/PrintPage'
-import ExportTTSPage from './pages/ExportTTSPage'
 import SettingsPage from './pages/SettingsPage'
 
 function App() {
@@ -14,7 +13,6 @@ function App() {
       <Route path="/game/:gameId/collection/:collectionId" element={<GameEditorPage />} />
       <Route path="/game/:gameId/print" element={<PrintPage />} />
       <Route path="/game/:gameId/collection/:collectionId/print" element={<PrintPage />} />
-      <Route path="/game/:gameId/export/tts" element={<ExportTTSPage />} />
       <Route path="/settings" element={<SettingsPage />} />
     </Routes>
   )

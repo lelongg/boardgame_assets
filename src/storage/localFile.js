@@ -225,6 +225,12 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
     },
 
     // Images
+    async listImages(gameId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/images`);
+      if (!response.ok) throw new Error("Failed to list images");
+      return await response.json();
+    },
+
     async uploadImage(gameId, file) {
       const response = await fetch(`${apiBase}/games/${gameId}/images/upload`, {
         method: "POST",
@@ -234,6 +240,11 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
       if (!response.ok) throw new Error("Failed to upload image");
       const data = await response.json();
       return data.url;
+    },
+
+    async deleteImage(gameId, file) {
+      const response = await fetch(`${apiBase}/games/${gameId}/images/${file}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete image");
     }
   };
 };
