@@ -320,8 +320,9 @@ app.post("/api/games", async (c) => {
   (async () => {
     try {
       const defaults = [{ slot: "title", fontName: "Fraunces" }, { slot: "body", fontName: "Space Grotesk" }];
-      const fonts = loadGameFonts(id);
       for (const { slot, fontName } of defaults) {
+        // Re-read manifest each iteration to avoid overwriting fonts added by import
+        const fonts = loadGameFonts(id);
         if (fonts[slot]?.file) continue;
         try {
           const { data } = await fetchGoogleFont(fontName);
@@ -329,10 +330,14 @@ app.post("/api/games", async (c) => {
           const fileName = `${hash}.woff2`;
           fs.mkdirSync(gameFontsDir(id), { recursive: true });
           fs.writeFileSync(path.join(gameFontsDir(id), fileName), data);
-          fonts[slot] = { name: fontName, file: fileName, source: "google" };
+          // Re-read again before saving to merge, not overwrite
+          const latest = loadGameFonts(id);
+          if (!latest[slot]?.file) {
+            latest[slot] = { name: fontName, file: fileName, source: "google" };
+            saveGameFonts(id, latest);
+          }
         } catch { /* non-critical */ }
       }
-      saveGameFonts(id, fonts);
     } catch { /* non-critical */ }
   })();
   return c.json(game, 201);

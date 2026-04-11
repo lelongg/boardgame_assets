@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Download, ChevronLeft, ChevronRight, Home } from 'lucide-react'
+import { ArrowLeft, Download, ChevronLeft, ChevronRight, Home, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -111,6 +111,7 @@ export default function PrintPage() {
   const [svgs, setSvgs] = useState<string[]>([])
   const [status, setStatus] = useState('Loading...')
   const [exporting, setExporting] = useState(false)
+  const [showOptions, setShowOptions] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
   const [config, setConfig] = useState<PrintConfig>(() => {
     try {
@@ -397,6 +398,9 @@ export default function PrintPage() {
           <Download className="h-4 w-4 mr-2" />
           {exporting ? 'Exporting...' : 'Export PDF'}
         </Button>
+        <Button size="sm" variant={showOptions ? 'default' : 'outline'} onClick={() => setShowOptions(!showOptions)} title="Toggle options">
+          <Settings className="h-4 w-4" />
+        </Button>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -577,7 +581,8 @@ export default function PrintPage() {
         </div>
 
         {/* Config panel */}
-        <div className="w-72 border-l overflow-y-auto p-4 space-y-4 shrink-0">
+        <div className={`border-l overflow-y-auto shrink-0 transition-all ${showOptions ? 'w-72 p-4' : 'w-0 p-0 overflow-hidden'}`}>
+          <div className="space-y-4 min-w-[16rem]">
           {/* Print mode */}
           <Card>
             <CardContent className="pt-4 space-y-3">
@@ -751,6 +756,7 @@ export default function PrintPage() {
             <p>Card: {layout.width} x {layout.height} mm</p>
             {config.includeBleed && <p>With bleed: {layout.width + layout.bleed * 2} x {layout.height + layout.bleed * 2} mm</p>}
             <p>{entries.length} card{entries.length !== 1 ? 's' : ''} selected</p>
+          </div>
           </div>
         </div>
       </div>

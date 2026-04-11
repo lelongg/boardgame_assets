@@ -77,8 +77,9 @@ export default function GamesPage() {
       if (!file) return
       setStatus('Importing...')
       try {
-        await importGameZip(storage, file, setStatus)
+        const newGameId = await importGameZip(storage, file, setStatus)
         await loadGames(storage)
+        setExpandedGame(newGameId)
         setStatus('Import complete.')
       } catch (err) {
         setError('Import error', err)

@@ -406,7 +406,7 @@ export default function GameEditorPage() {
             <TabsTrigger value="cards">Cards</TabsTrigger>
             <TabsTrigger value="layout">Layout</TabsTrigger>
             <TabsTrigger value="back">Back</TabsTrigger>
-            <TabsTrigger value="data">Data</TabsTrigger>
+            <TabsTrigger value="data">Files</TabsTrigger>
           </TabsList>
 
           <TabsContent value="cards">
