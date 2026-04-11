@@ -1,5 +1,5 @@
 import { theme } from "./theme.js";
-import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, PropertyBinding } from "./types.js";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection } from "./types.js";
 
 // 300 DPI: 1mm = 300/25.4 ≈ 11.811 pixels
 const PX_PER_MM = 300 / 25.4;
@@ -66,17 +66,6 @@ const parseRichText = (html: string): StyledLine[] => {
     lines.push(runs.length ? runs : [{ text: '' }]);
   }
   return lines.length ? lines : [[{ text: '' }]];
-};
-
-const renderStyledLine = (runs: StyledRun[]): string => {
-  return runs.map(run => {
-    const text = escape(run.text);
-    if (!text && runs.length === 1) return '&#160;';
-    let result = text;
-    if (run.bold) result = `<tspan font-weight="bold">${result}</tspan>`;
-    if (run.italic) result = `<tspan font-style="italic">${result}</tspan>`;
-    return result;
-  }).join('');
 };
 
 const renderStyledLineHtml = (runs: StyledRun[]): string => {
@@ -554,6 +543,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
   selectedNodeId?: string | null;
   card?: CardData;
   back?: string;
+  backFit?: "cover" | "contain" | "fill";
   fonts?: Record<string, { name: string; file: string }>;
 } = {}): string => {
   const layout = layoutToPx(layoutMm);

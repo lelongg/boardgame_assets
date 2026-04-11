@@ -202,6 +202,31 @@ export default function PrintPage() {
     init()
   }, [gameId, collectionId])
 
+  // Load fonts into the page for inline SVG rendering
+  useEffect(() => {
+    if (!Object.keys(gameFonts).length || !gameId) return
+    let cancelled = false
+    const styleId = `print-fonts-${gameId}`
+    let style = document.getElementById(styleId) as HTMLStyleElement | null
+    if (!style) { style = document.createElement('style'); style.id = styleId; document.head.appendChild(style) }
+    const load = async () => {
+      const rules: string[] = []
+      for (const f of Object.values(gameFonts) as any[]) {
+        if (!f.file || cancelled) continue
+        try {
+          const resp = await fetch(`/api/games/${gameId}/fonts/${f.file}`)
+          if (!resp.ok) continue
+          const blob = await resp.blob()
+          const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(blob) })
+          rules.push(`@font-face { font-family: '${f.name}'; src: url('${b64}'); }`)
+        } catch { /* skip */ }
+      }
+      if (!cancelled && style) style.textContent = rules.join('\n')
+    }
+    load()
+    return () => { cancelled = true; if (style) style.textContent = '' }
+  }, [gameFonts, gameId])
+
   // Render SVGs
   useEffect(() => {
     if (!entries.length) return
@@ -479,11 +504,9 @@ export default function PrintPage() {
                       {showFront && (
                         <div style={frontStyle}>
                           {svgs[svgIdx] ? (
-                            <img
-                              src={`data:image/svg+xml,${encodeURIComponent(svgs[svgIdx])}`}
-                              alt={entry.card.name}
-                              className="w-full h-full pointer-events-none"
-                              draggable={false}
+                            <div
+                              className="w-full h-full pointer-events-none [&>svg]:w-full [&>svg]:h-full"
+                              dangerouslySetInnerHTML={{ __html: svgs[svgIdx] }}
                             />
                           ) : (
                             <div className="w-full h-full bg-muted animate-pulse" />

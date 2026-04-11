@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react'
 import Cropper from 'react-easy-crop'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 
 type Area = { x: number; y: number; width: number; height: number }
 

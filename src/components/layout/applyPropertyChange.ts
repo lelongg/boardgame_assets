@@ -12,13 +12,6 @@ const findNode = (root: any, nodeId: string, kind: 'section' | 'item'): any => {
   return find(root)
 }
 
-/** Get the bindingMeta key for a property:field pair */
-const metaKey = (prop: string, field: string) => `${prop}:${field}`
-
-/** Look up binding meta from layout level */
-const getMeta = (layout: CardLayout, prop: string, field: string) =>
-  layout.bindingMeta?.[metaKey(prop, field)]
-
 const ensureMeta = (layout: CardLayout, key: string) => {
   if (!layout.bindingMeta) layout.bindingMeta = {}
   if (!layout.bindingMeta[key]) layout.bindingMeta[key] = {}

@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutTextItem, CardLayoutEmojiItem, FontSlot, PropertyBinding } from "./types";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutTextItem, CardLayoutEmojiItem, PropertyBinding } from "./types";
 
 /**
  * Safely parse a number from a value that might be empty, null, or undefined.
@@ -26,27 +26,6 @@ const safeString = (value: unknown, defaultValue: string): string => {
 const safeEnum = <T extends string>(value: unknown, allowedValues: readonly T[], defaultValue: T): T => {
     const str = String(value ?? "");
     return (allowedValues as readonly string[]).includes(str) ? (str as T) : defaultValue;
-};
-
-const DEFAULT_FONTS: Record<string, FontSlot> = {
-    title: { name: "Fraunces", file: "", source: "google" },
-    body: { name: "Space Grotesk", file: "", source: "google" }
-};
-
-const normalizeFonts = (fonts: unknown): Record<string, FontSlot> => {
-    if (!fonts || typeof fonts !== "object" || Array.isArray(fonts)) {
-        return { ...DEFAULT_FONTS };
-    }
-    const result: Record<string, FontSlot> = {};
-    for (const [key, value] of Object.entries(fonts as Record<string, unknown>)) {
-        const slot = value && typeof value === "object" ? value as Record<string, unknown> : {};
-        result[key] = {
-            name: safeString(slot.name, "Sans Serif"),
-            file: safeString(slot.file, ""),
-            source: safeEnum(slot.source, ["upload", "google"] as const, "google")
-        };
-    }
-    return Object.keys(result).length > 0 ? result : { ...DEFAULT_FONTS };
 };
 
 /**

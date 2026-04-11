@@ -743,7 +743,7 @@ export default function GameEditorPage() {
                       </label>
                       {dataGallery ? (
                         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 overflow-y-auto max-h-[60vh]">
-                          {items.map((item, i) => (
+                          {items.map((item) => (
                             <div key={item.kind === 'existing' ? item.id : `import-${item.importIdx}`}
                               className={`relative rounded-md cursor-pointer transition-all ${isSelected(item) ? 'ring-2 ring-primary' : 'ring-1 ring-border opacity-60 hover:opacity-100'}`}
                               onClick={() => toggleItem(item)}

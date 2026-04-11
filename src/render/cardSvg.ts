@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutTextItem, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutEmojiItem, PropertyBinding } from "../types.js";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutTextItem } from "../types.js";
 import { theme } from "../theme.js";
 
 const DEBUG_FONT = "'Space Grotesk', sans-serif";
@@ -58,17 +58,6 @@ const parseRichText = (html: string): StyledLine[] => {
     lines.push(runs.length ? runs : [{ text: '' }]);
   }
   return lines.length ? lines : [[{ text: '' }]];
-};
-
-const renderStyledLine = (runs: StyledRun[]): string => {
-  return runs.map(run => {
-    const text = escape(run.text);
-    if (!text && runs.length === 1) return '&#160;';
-    let result = text;
-    if (run.bold) result = `<tspan font-weight="bold">${result}</tspan>`;
-    if (run.italic) result = `<tspan font-style="italic">${result}</tspan>`;
-    return result;
-  }).join('');
 };
 
 const renderStyledLineHtml = (runs: StyledRun[]): string => {
