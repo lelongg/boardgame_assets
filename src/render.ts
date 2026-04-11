@@ -34,6 +34,7 @@ type RenderOptions = {
   back?: string;
   backFit?: "cover" | "contain" | "fill";
   fonts?: Record<string, { name: string; file: string }>;
+  svgTextOnly?: boolean;
 };
 
 
@@ -66,6 +67,17 @@ const parseRichText = (html: string): StyledLine[] => {
     lines.push(runs.length ? runs : [{ text: '' }]);
   }
   return lines.length ? lines : [[{ text: '' }]];
+};
+
+const renderStyledLine = (runs: StyledRun[]): string => {
+  return runs.map(run => {
+    const text = escape(run.text);
+    if (!text && runs.length === 1) return '&#160;';
+    let result = text;
+    if (run.bold) result = `<tspan font-weight="bold">${result}</tspan>`;
+    if (run.italic) result = `<tspan font-style="italic">${result}</tspan>`;
+    return result;
+  }).join('');
 };
 
 const renderStyledLineHtml = (runs: StyledRun[]): string => {
@@ -472,9 +484,21 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       const align = String(resolve(item, "align", card, layoutMm) ?? "center");
       const vAlign = String(resolve(item, "verticalAlign", card, layoutMm) ?? "middle");
       const color = escape(String(resolve(item, "color", card, layoutMm) ?? palette.ink));
+      const styledLines = parseRichText(value);
+      if (options.svgTextOnly) {
+        const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
+        const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
+        const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"`;
+        if (styledLines.length === 1) {
+          return `<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`;
+        }
+        const tspans = styledLines.map((line, i) =>
+          `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
+        ).join('');
+        return `<text ${baseAttrs}>${tspans}</text>`;
+      }
       const justify = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
       const alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
-      const styledLines = parseRichText(value);
       const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
       return `<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`;
     })

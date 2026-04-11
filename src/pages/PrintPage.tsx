@@ -202,31 +202,6 @@ export default function PrintPage() {
     init()
   }, [gameId, collectionId])
 
-  // Load fonts into the page for inline SVG rendering
-  useEffect(() => {
-    if (!Object.keys(gameFonts).length || !gameId) return
-    let cancelled = false
-    const styleId = `print-fonts-${gameId}`
-    let style = document.getElementById(styleId) as HTMLStyleElement | null
-    if (!style) { style = document.createElement('style'); style.id = styleId; document.head.appendChild(style) }
-    const load = async () => {
-      const rules: string[] = []
-      for (const f of Object.values(gameFonts) as any[]) {
-        if (!f.file || cancelled) continue
-        try {
-          const resp = await fetch(`/api/games/${gameId}/fonts/${f.file}`)
-          if (!resp.ok) continue
-          const blob = await resp.blob()
-          const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(blob) })
-          rules.push(`@font-face { font-family: '${f.name}'; src: url('${b64}'); }`)
-        } catch { /* skip */ }
-      }
-      if (!cancelled && style) style.textContent = rules.join('\n')
-    }
-    load()
-    return () => { cancelled = true; if (style) style.textContent = '' }
-  }, [gameFonts, gameId])
-
   // Render SVGs
   useEffect(() => {
     if (!entries.length) return
@@ -269,7 +244,28 @@ export default function PrintPage() {
 
     try {
       const { jsPDF } = await import('jspdf')
-      await import('svg2pdf.js')
+
+      const DPI = 300
+      const mmToPx = (mm: number) => Math.round(mm * DPI / 25.4)
+
+      // Rasterize SVG string to PNG data URL via canvas
+      const rasterizeSvg = (svgStr: string, widthMm: number, heightMm: number): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const w = mmToPx(widthMm)
+          const h = mmToPx(heightMm)
+          const img = new Image()
+          img.onload = () => {
+            const canvas = document.createElement('canvas')
+            canvas.width = w
+            canvas.height = h
+            const ctx = canvas.getContext('2d')!
+            ctx.drawImage(img, 0, 0, w, h)
+            resolve(canvas.toDataURL('image/png'))
+          }
+          img.onerror = () => reject(new Error('Failed to rasterize SVG'))
+          img.src = `data:image/svg+xml,${encodeURIComponent(svgStr)}`
+        })
+      }
 
       const { cw, ch, cols, perPage, offsetX, offsetY } = pageLayout
       const doc = new jsPDF({
@@ -278,7 +274,6 @@ export default function PrintPage() {
         format: config.paper === 'custom' ? [config.customWidth, config.customHeight] : config.paper,
       })
 
-      const parser = new DOMParser()
       const isFoldPdf = config.printMode === 'fold'
       const isDuplexPdf = config.printMode === 'duplex'
       const foldHPdf = isFoldPdf && (config.foldEdge === 'left' || config.foldEdge === 'right')
@@ -296,8 +291,8 @@ export default function PrintPage() {
           if (!isBack && (config.printMode === 'front' || isFoldPdf || isDuplexPdf)) {
             const fx = isFoldPdf ? (config.foldEdge === 'right' ? x : foldHPdf ? x + baseCw : x) : x
             const fy = isFoldPdf ? (config.foldEdge === 'bottom' ? y : !foldHPdf ? y + baseCh : y) : y
-            const svgDoc = parser.parseFromString(pageCardSvgs[i], 'image/svg+xml')
-            await doc.svg(svgDoc.documentElement, { x: fx, y: fy, width: baseCw, height: baseCh })
+            const png = await rasterizeSvg(pageCardSvgs[i], baseCw, baseCh)
+            doc.addImage(png, 'PNG', fx, fy, baseCw, baseCh)
           }
 
           if (isBack && entry?.back) {
@@ -504,9 +499,11 @@ export default function PrintPage() {
                       {showFront && (
                         <div style={frontStyle}>
                           {svgs[svgIdx] ? (
-                            <div
-                              className="w-full h-full pointer-events-none [&>svg]:w-full [&>svg]:h-full"
-                              dangerouslySetInnerHTML={{ __html: svgs[svgIdx] }}
+                            <img
+                              src={`data:image/svg+xml,${encodeURIComponent(svgs[svgIdx])}`}
+                              alt={entry.card.name}
+                              className="w-full h-full pointer-events-none"
+                              draggable={false}
                             />
                           ) : (
                             <div className="w-full h-full bg-muted animate-pulse" />
