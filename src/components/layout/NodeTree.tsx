@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react'
-import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile } from 'lucide-react'
+import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile, Copy, FolderTree } from 'lucide-react'
 import { flattenNodes } from './layoutHelpers'
 import type { CardLayoutSection } from '../../types'
 
@@ -9,7 +9,7 @@ type NodeTreeProps = {
   onSelectNode: (id: string) => void
   onDrop: (dragId: string, dragKind: 'section' | 'item', dropTargetId: string, position: 'before' | 'after' | 'inside') => void
   onAddSection?: () => void
-  onAddItem?: (type: 'text' | 'frame' | 'image' | 'emoji') => void
+  onAddItem?: (type: 'text' | 'frame' | 'image' | 'emoji' | 'copy') => void
   onDelete?: () => void
   canDelete?: boolean
 }
@@ -21,6 +21,7 @@ type DropIndicator = {
 
 export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, onAddSection, onAddItem, onDelete, canDelete }: NodeTreeProps) {
   const [showItemMenu, setShowItemMenu] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'sections' | 'items'>('all')
   const allNodes = flattenNodes(root)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null)
@@ -41,6 +42,8 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
 
   // Filter out nodes whose ancestor section is collapsed
   const nodes = allNodes.filter((node) => {
+    if (filter === 'sections' && node.kind !== 'section') return false
+    if (filter === 'items' && node.kind !== 'item') return false
     const ancestors: string[] = []
     let d = node.depth - 1
     for (let i = allNodes.indexOf(node) - 1; i >= 0 && d >= 0; i--) {
@@ -87,7 +90,22 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-0.5 px-1 h-8 border-b">
+      <div className="flex items-center justify-end gap-0.5 px-1 h-8 border-b sticky top-0 bg-card z-10">
+          <button
+            onClick={() => setFilter(f => f === 'sections' ? 'all' : 'sections')}
+            className={`rounded p-1 transition-colors ${filter === 'sections' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            title="Sections only"
+          >
+            <FolderTree className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setFilter(f => f === 'items' ? 'all' : 'items')}
+            className={`rounded p-1 transition-colors ${filter === 'items' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            title="Items only"
+          >
+            <Type className="h-4 w-4" />
+          </button>
+          <div className="flex-1" />
           {canCollapse && (
             <button
               onClick={() => updateCollapsed(prev => {
@@ -129,6 +147,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
                   <button onClick={() => { onAddItem('frame'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Frame className="h-3.5 w-3.5" /> Frame</button>
                   <button onClick={() => { onAddItem('image'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Image className="h-3.5 w-3.5" /> Image</button>
                   <button onClick={() => { onAddItem('emoji'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Smile className="h-3.5 w-3.5" /> Emoji</button>
+                  <button onClick={() => { onAddItem('copy'); setShowItemMenu(false) }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Copy className="h-3.5 w-3.5" /> Copy</button>
                 </div>
               )}
             </div>
@@ -154,7 +173,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
         const prefix = isSection ? (hasChildren ? (isCollapsed ? '▸' : '▾') : '▾') : '·'
         const iconClass = "h-3.5 w-3.5 inline-block opacity-60"
         const sectionIcons: Record<string, React.ReactNode> = { column: <Rows3 className={iconClass} />, row: <Columns3 className={iconClass} />, stack: <Layers className={iconClass} />, grid: <Grid3X3 className={iconClass} /> }
-        const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} />, emoji: <Smile className={iconClass} /> }
+        const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} />, emoji: <Smile className={iconClass} />, copy: <Copy className={iconClass} /> }
         const typeIcon = node.kind === 'section'
           ? sectionIcons[(node.obj as CardLayoutSection).layout] ?? null
           : itemIcons[(node.obj as any).type ?? 'text'] ?? null

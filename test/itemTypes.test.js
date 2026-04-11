@@ -38,8 +38,8 @@ test("text item renders correctly", () => {
             targetId: "root",
             anchor: { x: 0.5, y: 0.5 }
           },
-          widthPct: 80,
-          heightPct: 20,
+          widthMm: 80,
+          heightMm: 20,
           fontSize: 24,
           align: "center",
           font: "body"
@@ -87,8 +87,8 @@ test("frame item renders correctly", () => {
             targetId: "root",
             anchor: { x: 0, y: 0 }
           },
-          widthPct: 90,
-          heightPct: 90,
+          widthMm: 90,
+          heightMm: 90,
           strokeWidth: 3,
           strokeColor: "#ff0000",
           fillColor: "none",
@@ -141,8 +141,8 @@ test("image item renders correctly", () => {
             targetId: "root",
             anchor: { x: 0.5, y: 0 }
           },
-          widthPct: 60,
-          heightPct: 40,
+          widthMm: 60,
+          heightMm: 40,
           fit: "cover",
           cornerRadius: 8
         }
@@ -193,8 +193,8 @@ test("legacy item without type renders as text", () => {
             targetId: "root",
             anchor: { x: 0, y: 0 }
           },
-          widthPct: 80,
-          heightPct: 20,
+          widthMm: 80,
+          heightMm: 20,
           fontSize: 32,
           align: "left",
           font: "title"
@@ -243,8 +243,8 @@ test("image item without URL does not render", () => {
             targetId: "root",
             anchor: { x: 0, y: 0 }
           },
-          widthPct: 60,
-          heightPct: 40,
+          widthMm: 60,
+          heightMm: 40,
           fit: "cover"
         }
       ]

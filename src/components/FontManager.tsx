@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ConfirmButton from './ConfirmButton'
 import ListItem from './ListItem'
+import FilterableList from '@/components/FilterableList'
 
 type FontEntry = { name: string; file: string; source: 'upload' | 'google' }
 
@@ -103,22 +104,29 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
   const fontEntries = Object.entries(fonts)
 
   return (
-    <div className="space-y-2 overflow-y-auto max-h-[60vh]">
-      {fontEntries.length === 0 && !showAddForm && (
-        <p className="text-sm text-muted-foreground">No fonts yet.</p>
-      )}
-
-      {fontEntries.map(([key, font]) => (
-        <ListItem
-          key={key}
-          selected={selectedFont === key}
-          onClick={() => onSelectFont(selectedFont === key ? null : key)}
-          actions={<ConfirmButton onConfirm={() => handleDelete(key)} disabled={loading} />}
-        >
-          <span className="font-medium">{font.name}</span>
-          <span className="ml-2 text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
-        </ListItem>
-      ))}
+    <div className="space-y-2">
+      <FilterableList
+        title="Fonts"
+        items={fontEntries}
+        getKey={([key]) => key}
+        getName={([, font]) => font.name}
+        toolbar={
+          <Button size="sm" variant="ghost" onClick={() => setShowAddForm(true)} title="Add font">
+            <Plus className="h-4 w-4" />
+          </Button>
+        }
+        empty={!showAddForm ? <p className="text-sm text-muted-foreground">No fonts yet.</p> : undefined}
+        renderItem={([key, font]) => (
+          <ListItem
+            selected={selectedFont === key}
+            onClick={() => onSelectFont(selectedFont === key ? null : key)}
+            actions={<ConfirmButton onConfirm={() => handleDelete(key)} disabled={loading} />}
+          >
+            <span className="font-medium">{font.name}</span>
+            <span className="ml-2 text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
+          </ListItem>
+        )}
+      />
 
       {showAddForm && (
         <div className="rounded-md border p-3">

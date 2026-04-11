@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Download, Upload, Printer, List, LayoutGrid } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,7 @@ const svgToImage = (svg: string): Promise<HTMLImageElement> =>
     img.src = `data:image/svg+xml,${encodeURIComponent(svg)}`
   })
 
-export type FileCard = CardData & { collectionId?: string; collectionName?: string }
+export type FileCard = CardData & { collectionId?: string; collectionName?: string; collectionBack?: string; collectionBackFit?: string }
 
 type FilesPanelProps = {
   gameId: string
@@ -30,6 +30,8 @@ type FilesPanelProps = {
   layout?: CardLayout
   gameFonts?: Record<string, { name: string; file: string }>
   storage: any
+  back?: string
+  backFit?: "cover" | "contain" | "fill"
   onStatusChange?: (msg: string) => void
   onCardsChange?: () => void
 }
@@ -37,6 +39,7 @@ type FilesPanelProps = {
 export default function FilesPanel({
   gameId, collectionId, gameName, collectionName,
   cards, layout, gameFonts, storage,
+  back, backFit,
   onStatusChange, onCardsChange,
 }: FilesPanelProps) {
   const navigate = useNavigate()
@@ -50,7 +53,6 @@ export default function FilesPanel({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [hoverThumb, setHoverThumb] = useState<{ src: string; x: number; y: number } | null>(null)
   const [exporting, setExporting] = useState(false)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const setStatus = (msg: string) => onStatusChange?.(msg)
 
@@ -298,77 +300,134 @@ export default function FilesPanel({
               if (!layout || !gameId) return
               setExporting(true)
               try {
+                const JSZip = (await import('jszip')).default
+                const zip = new JSZip()
                 const selected = cards.filter(c => cardSelection.has(c.id))
-                const cardCount = Math.min(selected.length, TTS_MAX_CARDS - 1)
-                const numWidth = Math.min(10, cardCount + 1)
-                const numHeight = Math.ceil((cardCount + 1) / numWidth)
+
+                // Group cards by collection (multi-collection) or single group
+                type DeckGroup = { name: string; cards: FileCard[]; back?: string; backFit?: string }
+                let groups: DeckGroup[]
+                if (collectionId) {
+                  groups = [{ name: collectionName || 'deck', cards: selected, back, backFit }]
+                } else {
+                  const byCol = new Map<string, DeckGroup>()
+                  for (const card of selected) {
+                    const key = card.collectionName || 'deck'
+                    if (!byCol.has(key)) byCol.set(key, { name: key, cards: [], back: card.collectionBack, backFit: card.collectionBackFit })
+                    byCol.get(key)!.cards.push(card)
+                  }
+                  groups = [...byCol.values()]
+                }
+
+                const toSlug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'deck'
+                const objectStates: any[] = []
+                let deckIdCounter = 1
                 const cardAspect = layout.height / layout.width
-                const cardWidth = Math.floor(MAX_ATLAS_SIZE / numWidth)
-                const cardHeight = Math.floor(cardWidth * cardAspect)
-                const atlasWidth = cardWidth * numWidth
-                const atlasHeight = cardHeight * numHeight
 
-                const canvas = canvasRef.current
-                if (!canvas) return
-                canvas.width = atlasWidth
-                canvas.height = atlasHeight
-                const ctx = canvas.getContext('2d')
-                if (!ctx) return
+                for (const group of groups) {
+                  const slug = toSlug(group.name)
+                  const cardCount = Math.min(group.cards.length, TTS_MAX_CARDS - 1)
+                  const numWidth = Math.min(10, cardCount + 1)
+                  const numHeight = Math.ceil((cardCount + 1) / numWidth)
+                  const cardW = Math.floor(MAX_ATLAS_SIZE / numWidth)
+                  const cardH = Math.floor(cardW * cardAspect)
 
-                ctx.fillStyle = '#ffffff'
-                ctx.fillRect(0, 0, atlasWidth, atlasHeight)
+                  // --- Face atlas ---
+                  const faceCanvas = document.createElement('canvas')
+                  faceCanvas.width = cardW * numWidth
+                  faceCanvas.height = cardH * numHeight
+                  const faceCtx = faceCanvas.getContext('2d')!
+                  faceCtx.fillStyle = '#ffffff'
+                  faceCtx.fillRect(0, 0, faceCanvas.width, faceCanvas.height)
 
-                for (let i = 0; i < cardCount; i++) {
-                  setStatus(`Rendering card ${i + 1}/${cardCount}...`)
-                  let svg = renderCardSvg(selected[i], layout, { fonts: gameFonts })
-                  svg = await embedFontsInSvg(svg, gameId, gameFonts ?? {})
-                  svg = await embedImagesInSvg(svg)
-                  const img = await svgToImage(svg)
-                  const col = i % numWidth
-                  const row = Math.floor(i / numWidth)
-                  ctx.drawImage(img, col * cardWidth, row * cardHeight, cardWidth, cardHeight)
+                  for (let i = 0; i < cardCount; i++) {
+                    setStatus(`Rendering ${group.name} ${i + 1}/${cardCount}...`)
+                    let svg = renderCardSvg(group.cards[i], layout, { fonts: gameFonts })
+                    svg = await embedFontsInSvg(svg, gameId, gameFonts ?? {})
+                    svg = await embedImagesInSvg(svg)
+                    const img = await svgToImage(svg)
+                    faceCtx.drawImage(img, (i % numWidth) * cardW, Math.floor(i / numWidth) * cardH, cardW, cardH)
+                  }
+
+                  // Hidden card slot (last position)
+                  const hCol = cardCount % numWidth
+                  const hRow = Math.floor(cardCount / numWidth)
+                  faceCtx.fillStyle = '#1b1a17'
+                  faceCtx.fillRect(hCol * cardW, hRow * cardH, cardW, cardH)
+                  faceCtx.fillStyle = '#ffffff'
+                  faceCtx.font = `${Math.floor(cardW * 0.15)}px sans-serif`
+                  faceCtx.textAlign = 'center'
+                  faceCtx.textBaseline = 'middle'
+                  faceCtx.fillText('?', hCol * cardW + cardW / 2, hRow * cardH + cardH / 2)
+
+                  zip.file(`${slug}_face.png`, await new Promise<Blob>(r => faceCanvas.toBlob(b => r(b!), 'image/png')))
+
+                  // --- Back image ---
+                  const backCanvas = document.createElement('canvas')
+                  backCanvas.width = cardW
+                  backCanvas.height = cardH
+                  const backCtx = backCanvas.getContext('2d')!
+
+                  if (group.back) {
+                    try {
+                      const resp = await fetch(group.back)
+                      const backImg = await createImageBitmap(await resp.blob())
+                      const fit = group.backFit || 'cover'
+                      if (fit === 'fill') {
+                        backCtx.drawImage(backImg, 0, 0, cardW, cardH)
+                      } else if (fit === 'contain') {
+                        backCtx.fillStyle = '#ffffff'
+                        backCtx.fillRect(0, 0, cardW, cardH)
+                        const s = Math.min(cardW / backImg.width, cardH / backImg.height)
+                        const w = backImg.width * s, h = backImg.height * s
+                        backCtx.drawImage(backImg, (cardW - w) / 2, (cardH - h) / 2, w, h)
+                      } else { // cover
+                        const s = Math.max(cardW / backImg.width, cardH / backImg.height)
+                        const w = backImg.width * s, h = backImg.height * s
+                        backCtx.drawImage(backImg, (cardW - w) / 2, (cardH - h) / 2, w, h)
+                      }
+                    } catch {
+                      backCtx.fillStyle = '#1b1a17'
+                      backCtx.fillRect(0, 0, cardW, cardH)
+                    }
+                  } else {
+                    backCtx.fillStyle = '#1b1a17'
+                    backCtx.fillRect(0, 0, cardW, cardH)
+                    backCtx.fillStyle = '#ffffff'
+                    backCtx.font = `${Math.floor(cardW * 0.15)}px sans-serif`
+                    backCtx.textAlign = 'center'
+                    backCtx.textBaseline = 'middle'
+                    backCtx.fillText('?', cardW / 2, cardH / 2)
+                  }
+
+                  zip.file(`${slug}_back.png`, await new Promise<Blob>(r => backCanvas.toBlob(b => r(b!), 'image/png')))
+
+                  // --- TTS deck entry ---
+                  const deckId = deckIdCounter++
+                  const contained = group.cards.slice(0, cardCount).map((c, i) => ({
+                    GUID: `c${String(deckId * 100 + i).padStart(4, '0')}`,
+                    Name: 'Card', Nickname: c.name, CardID: deckId * 100 + i,
+                    Transform: { posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 180, rotZ: 180, scaleX: 1, scaleY: 1, scaleZ: 1 },
+                  }))
+                  objectStates.push({
+                    GUID: `deck${String(deckId).padStart(2, '0')}`,
+                    Name: 'DeckCustom', Nickname: group.name,
+                    Transform: { posX: (deckId - 1) * 3, posY: 1, posZ: 0, rotX: 0, rotY: 180, rotZ: 180, scaleX: 1, scaleY: 1, scaleZ: 1 },
+                    DeckIDs: contained.map(o => o.CardID),
+                    CustomDeck: { [String(deckId)]: { FaceURL: `./${slug}_face.png`, BackURL: `./${slug}_back.png`, NumWidth: numWidth, NumHeight: numHeight, BackIsHidden: true, UniqueBack: false } },
+                    ContainedObjects: contained,
+                  })
                 }
 
-                // Hidden card slot
-                const hCol = cardCount % numWidth
-                const hRow = Math.floor(cardCount / numWidth)
-                ctx.fillStyle = '#1b1a17'
-                ctx.fillRect(hCol * cardWidth, hRow * cardHeight, cardWidth, cardHeight)
-                ctx.fillStyle = '#ffffff'
-                ctx.font = `${Math.floor(cardWidth * 0.15)}px sans-serif`
-                ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillText('?', hCol * cardWidth + cardWidth / 2, hRow * cardHeight + cardHeight / 2)
-
-                // Download atlas
+                zip.file('tts_deck.json', JSON.stringify({ ObjectStates: objectStates }, null, 2))
+                const zipBlob = await zip.generateAsync({ type: 'blob' })
                 const a = document.createElement('a')
-                a.href = canvas.toDataURL('image/png')
-                a.download = `${exportName} - TTS Atlas.png`
+                a.href = URL.createObjectURL(zipBlob)
+                a.download = `${exportName} - TTS.zip`
                 a.click()
+                URL.revokeObjectURL(a.href)
 
-                // Download TTS JSON
-                const deckId = 1
-                const ttsJson = {
-                  ObjectStates: [{
-                    GUID: 'deck01', Name: 'DeckCustom', Nickname: exportName,
-                    Transform: { posX: 0, posY: 1, posZ: 0, rotX: 0, rotY: 180, rotZ: 180, scaleX: 1, scaleY: 1, scaleZ: 1 },
-                    DeckIDs: selected.slice(0, cardCount).map((_, i) => deckId * 100 + i),
-                    CustomDeck: { [deckId]: { FaceURL: 'REPLACE_WITH_ATLAS_URL', BackURL: 'REPLACE_WITH_BACK_URL', NumWidth: numWidth, NumHeight: numHeight, BackIsHidden: true, UniqueBack: false } },
-                    ContainedObjects: selected.slice(0, cardCount).map((c, i) => ({
-                      GUID: `card${String(i).padStart(2, '0')}`, Name: 'Card', Nickname: c.name,
-                      CardID: deckId * 100 + i,
-                      Transform: { posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 180, rotZ: 180, scaleX: 1, scaleY: 1, scaleZ: 1 },
-                    })),
-                  }]
-                }
-                const jsonBlob = new Blob([JSON.stringify(ttsJson, null, 2)], { type: 'application/json' })
-                const ja = document.createElement('a')
-                ja.href = URL.createObjectURL(jsonBlob)
-                ja.download = `${exportName} - TTS.json`
-                ja.click()
-                URL.revokeObjectURL(ja.href)
-
-                setStatus(`TTS export complete: ${cardCount} cards.`)
+                setStatus(`TTS export complete: ${selected.length} cards in ${groups.length} deck${groups.length > 1 ? 's' : ''}.`)
               } catch (err) {
                 setStatus('Error exporting TTS.')
                 console.error(err)
@@ -383,7 +442,6 @@ export default function FilesPanel({
               <Printer className="h-4 w-4 mr-2" />
               Print
             </Button>
-            <canvas ref={canvasRef} className="hidden" />
           </CardContent>
         </Card>
 

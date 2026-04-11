@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { Smile, Upload, X, Eye, Pencil, Image as ImageIcon, ClipboardPaste } from 'lucide-react'
+import CardThumbnail from '@/components/CardThumbnail'
+import Gallery from '@/components/Gallery'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { RgbaColorPicker } from 'react-colorful'
+import { getAsset } from '@/storage/assetCache'
 import AnchorGrid from './AnchorGrid'
 import ListItem from '@/components/ListItem'
 import LoadingImg from '@/components/LoadingImg'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
-import { findParentSection, findItemById, getNodeKind, flattenNodes } from './layoutHelpers'
+import { findParentSection, findItemById, getNodeKind, flattenNodes, getItemAspectRatio } from './layoutHelpers'
 import type { CardLayout, PropertyBinding } from '../../types'
 
 type ControlPanelProps = {
@@ -19,7 +22,7 @@ type ControlPanelProps = {
   bindingDefault?: string
   itemType?: string
   gameFonts?: Record<string, { name: string; file: string }>
-  gameImages?: { file: string; url: string }[]
+  gameImages?: { file: string; url: string; name: string }[]
   onUploadFile?: (file: File) => Promise<string>
   layout: CardLayout
   selectedNodeId?: string
@@ -46,10 +49,12 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     case 'sizePct': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'gap': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'fontSize': return { type: 'number', min: 8, max: 500, step: 1 }
-    case 'widthPct': return { type: 'number', min: 0, max: 200, step: 1 }
-    case 'heightPct': return { type: 'number', min: 0, max: 200, step: 1 }
+    case 'widthMm': return { type: 'number', min: 0, max: layout.width, step: 0.5 }
+    case 'heightMm': return { type: 'number', min: 0, max: layout.height, step: 0.5 }
     case 'offsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.1 }
     case 'offsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.1 }
+    case 'rotation': return { type: 'number', min: -360, max: 360, step: 1 }
+    case 'scale': return { type: 'number', min: 0.1, max: 10, step: 0.1 }
     case 'strokeWidth': return { type: 'number', min: 0, max: 20, step: 0.5 }
     case 'cornerRadius': return { type: 'number', min: 0, max: 100, step: 1 }
     case 'layout': return { type: 'select', options: [
@@ -273,12 +278,52 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (v: unknown
 
 const LazyImageEditor = lazy(() => import('@/components/ImageEditor'))
 
+function ImageGalleryPicker({ images, selected, onSelect }: { images: { file: string; url: string; name: string }[]; selected: string; onSelect: (url: string) => void }) {
+  return (
+    <Gallery
+      items={images}
+      getKey={img => img.file}
+      getName={img => img.name}
+      colsKey="pickerCols"
+      maxHeight="12rem"
+      renderItem={(img) => (
+        <CardThumbnail
+          src={img.url}
+          name={img.name}
+          aspectRatio="1"
+          selected={selected === img.url}
+          onClick={() => onSelect(img.url)}
+        />
+      )}
+    />
+  )
+}
+
 const NO_BINDING = new Set(['name', 'id', 'anchor', 'attachAnchor', 'attachTargetId'])
 
-function ImageUploadEditor({ value, onChange, aspectRatio, gameImages, onUploadFile }: { value: string; onChange: (v: string) => void; aspectRatio?: number; gameImages?: { file: string; url: string }[]; onUploadFile?: (file: File) => Promise<string> }) {
+function ImageUploadEditor({ value, onChange, aspectRatio, gameImages, onUploadFile }: { value: string; onChange: (v: string) => void; aspectRatio?: number; gameImages?: { file: string; url: string; name: string }[]; onUploadFile?: (file: File) => Promise<string> }) {
   const [showPreview, setShowPreview] = useState(false)
   const [editing, setEditing] = useState(false)
   const [showPicker, setShowPicker] = useState(false)
+  const [bgUrl, setBgUrl] = useState<string>()
+  const bgRef = useRef<string>(undefined)
+  useEffect(() => {
+    if (!value) { setBgUrl(undefined); return }
+    if (value.startsWith('data:') || value.startsWith('blob:')) { setBgUrl(value); return }
+    let cancelled = false
+    getAsset(value).then(entry => {
+      if (cancelled) return
+      if (entry) {
+        const url = URL.createObjectURL(entry.blob)
+        if (bgRef.current) URL.revokeObjectURL(bgRef.current)
+        bgRef.current = url
+        setBgUrl(url)
+      } else {
+        setBgUrl(value)
+      }
+    }).catch(() => { if (!cancelled) setBgUrl(value) })
+    return () => { cancelled = true; if (bgRef.current) { URL.revokeObjectURL(bgRef.current); bgRef.current = undefined } }
+  }, [value])
   const readFileAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as string); reader.readAsDataURL(file) })
   const handleFile = async (file: File) => {
@@ -292,9 +337,32 @@ function ImageUploadEditor({ value, onChange, aspectRatio, gameImages, onUploadF
   }
 
   if (editing && value) {
+    const editorSrc = bgUrl || value
     return (
       <Suspense fallback={<div className="p-4 text-center text-sm text-muted-foreground">Loading editor...</div>}>
-        <LazyImageEditor src={value} aspectRatio={aspectRatio} onSave={(dataUrl: string) => { onChange(dataUrl); setEditing(false) }} onCancel={() => setEditing(false)} />
+        <LazyImageEditor
+          src={editorSrc}
+          aspectRatio={aspectRatio}
+          onSave={onUploadFile ? async (dataUrl: string) => {
+            const resp = await fetch(dataUrl)
+            const blob = await resp.blob()
+            const ext = dataUrl.startsWith('data:image/jpeg') ? 'jpg' : dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
+            const file = new File([blob], `cropped.${ext}`, { type: blob.type })
+            const url = await onUploadFile(file)
+            onChange(url)
+            setEditing(false)
+          } : (dataUrl: string) => { onChange(dataUrl); setEditing(false) }}
+          onSaveAsNew={onUploadFile ? async (dataUrl: string) => {
+            const resp = await fetch(dataUrl)
+            const blob = await resp.blob()
+            const ext = dataUrl.startsWith('data:image/jpeg') ? 'jpg' : dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
+            const file = new File([blob], `cropped.${ext}`, { type: blob.type })
+            const url = await onUploadFile(file)
+            onChange(url)
+            setEditing(false)
+          } : undefined}
+          onCancel={() => setEditing(false)}
+        />
       </Suspense>
     )
   }
@@ -306,8 +374,12 @@ function ImageUploadEditor({ value, onChange, aspectRatio, gameImages, onUploadF
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
       onDrop={(e) => { e.preventDefault(); const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/')); if (file) handleFile(file) }}
     >
-      <div className={`relative rounded border border-dashed border-muted-foreground/40 p-3 text-center text-xs text-muted-foreground ${value ? 'pr-[7rem]' : 'pr-9'}`}>
-        Paste or drop image
+      <div
+        className={`relative rounded border border-dashed border-muted-foreground/40 p-3 text-center text-xs text-muted-foreground ${value ? 'pr-[7rem]' : 'pr-9'}`}
+        style={bgUrl ? { backgroundImage: `url("${bgUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
+      >
+        {value && <div className="absolute inset-0 rounded bg-background/80" />}
+        <span className="relative">Paste or drop image</span>
         <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
           {value && (
             <button type="button" className={`rounded p-1 transition-colors ${showPreview ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`} title="Preview image" onClick={() => setShowPreview(!showPreview)}>
@@ -366,20 +438,7 @@ function ImageUploadEditor({ value, onChange, aspectRatio, gameImages, onUploadF
       </div>
       {showPreview && value && <LoadingImg src={value} alt="Preview" className="max-h-24 rounded border object-contain" />}
       {showPicker && gameImages && gameImages.length > 0 && (
-        <div className="grid grid-cols-4 gap-1 max-h-40 overflow-y-auto rounded border p-1">
-          {gameImages.map((img) => (
-            <button
-              key={img.file}
-              type="button"
-              className={`rounded overflow-hidden border transition-colors ${value === img.url ? 'border-primary ring-1 ring-primary' : 'border-transparent hover:border-muted-foreground/40'}`}
-              style={{ aspectRatio: '1' }}
-              onClick={() => { onChange(img.url); setShowPicker(false) }}
-              title={img.file}
-            >
-              <LoadingImg src={img.url} alt={img.file} className="w-full h-full object-cover" wrapperClassName="w-full h-full" />
-            </button>
-          ))}
-        </div>
+        <ImageGalleryPicker images={gameImages} selected={value} onSelect={(url) => { onChange(url); setShowPicker(false) }} />
       )}
     </div>
   )
@@ -393,8 +452,8 @@ export const getEditorType = (property: string, itemType?: string): FieldMeta['t
     case 'visible': return 'boolean'
     case 'defaultValue': return itemType === 'image' ? 'image-upload' : 'richtext'
     case 'width': case 'height': case 'radius': case 'bleed': case 'sizePct':
-    case 'gap': case 'fontSize': case 'widthPct': case 'heightPct':
-    case 'offsetX': case 'offsetY': case 'strokeWidth': case 'cornerRadius':
+    case 'gap': case 'fontSize': case 'widthMm': case 'heightMm':
+    case 'offsetX': case 'offsetY': case 'rotation': case 'scale': case 'strokeWidth': case 'cornerRadius':
     case 'columns': case 'repeatCount': case 'repeatOffsetX': case 'repeatOffsetY': return 'number'
     case 'layout': case 'align': case 'verticalAlign': case 'font': case 'fit': case 'copyTargetId': return 'select'
     default: return 'text'
@@ -436,11 +495,14 @@ export function NumberEditor({ value, onChange, min, max, step }: { value: strin
   )
 }
 
-export function ValueItemEditor({ property, itemType, value, onChange, layout, gameImages, onUploadFile }: { property: string; itemType?: string; value: string; onChange: (v: string) => void; layout?: CardLayout; gameImages?: { file: string; url: string }[]; onUploadFile?: (file: File) => Promise<string> }) {
+export function ValueItemEditor({ property, itemType, itemId, value, onChange, layout, gameImages, onUploadFile }: { property: string; itemType?: string; itemId?: string; value: string; onChange: (v: string) => void; layout?: CardLayout; gameImages?: { file: string; url: string; name: string }[]; onUploadFile?: (file: File) => Promise<string> }) {
   const type = getEditorType(property, itemType)
   if (type === 'emoji') return <EmojiPicker value={value} onChange={(v) => onChange(String(v))} />
   if (type === 'color') return <ColorControl value={value} onChange={(v) => onChange(String(v))} />
-  if (type === 'image-upload') return <ImageUploadEditor value={value} onChange={onChange} aspectRatio={layout ? layout.width / layout.height : undefined} gameImages={gameImages} onUploadFile={onUploadFile} />
+  if (type === 'image-upload') {
+    const itemRatio = layout && itemId ? getItemAspectRatio(layout, itemId) : undefined
+    return <ImageUploadEditor value={value} onChange={onChange} aspectRatio={itemRatio ?? (layout ? layout.width / layout.height : undefined)} gameImages={gameImages} onUploadFile={onUploadFile} />
+  }
   if (type === 'richtext') return <RichTextField value={value} onChange={onChange} />
   if (type === 'number') {
     const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
@@ -465,14 +527,13 @@ export function ValueItemEditor({ property, itemType, value, onChange, layout, g
   return <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="Value" />
 }
 
-function BindingEditor({ property, itemType, layout, binding, values: externalValues, bindingDefault, onSetDefault, onChange, onValuesChange }: { property: string; itemType?: string; layout?: CardLayout; binding: PropertyBinding | undefined; values: string[]; bindingDefault?: string; onSetDefault: (v: string) => void; onChange: (b: PropertyBinding | null) => void; onValuesChange: (v: string[] | null) => void }) {
+function BindingEditor({ property, itemType, layout, gameImages, onUploadFile, binding, values: externalValues, bindingDefault, onSetDefault, onChange, onValuesChange }: { property: string; itemType?: string; layout?: CardLayout; gameImages?: { file: string; url: string; name: string }[]; onUploadFile?: (file: File) => Promise<string>; binding: PropertyBinding | undefined; values: string[]; bindingDefault?: string; onSetDefault: (v: string) => void; onChange: (b: PropertyBinding | null) => void; onValuesChange: (v: string[] | null) => void }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const field = binding?.field ?? ''
   const values = externalValues
 
   const updateField = (f: string) => {
-    if (!f) { onChange(null); return }
-    onChange({ field: f })
+    onChange(f ? { field: f } : { field: '' })
   }
   const updateValues = (v: string[]) => {
     if (!field) return
@@ -483,11 +544,17 @@ function BindingEditor({ property, itemType, layout, binding, values: externalVa
 
   return (
     <div className="space-y-2">
-      <Input
-        value={field}
-        onChange={(e) => updateField(e.target.value)}
-        placeholder="Field name (e.g. rank, suit)"
-      />
+      <div className="flex items-center gap-1">
+        <Input
+          value={field}
+          onChange={(e) => updateField(e.target.value)}
+          placeholder="Field name (e.g. rank, suit)"
+          className="flex-1"
+        />
+        {binding && (
+          <ConfirmButton onConfirm={() => onChange(null)} />
+        )}
+      </div>
       {field && (
         <div className="space-y-1">
           <div className="text-xs text-muted-foreground">Allowed values</div>
@@ -499,7 +566,7 @@ function BindingEditor({ property, itemType, layout, binding, values: externalVa
               selected={selectedIdx === i}
               onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
               actions={<div className="flex-1 space-y-2">
-                <ValueItemEditor property={property} itemType={itemType} layout={layout} value={v} onChange={(val) => updateAt(i, val)} />
+                <ValueItemEditor property={property} itemType={itemType} layout={layout} gameImages={gameImages} onUploadFile={onUploadFile} value={v} onChange={(val) => updateAt(i, val)} />
                 <div className="flex gap-1">
                   <Button size="sm" variant={isDefault ? "default" : "outline"} className="flex-1" onClick={() => onSetDefault(v)}>
                     {isDefault ? 'Default' : 'Set as default'}
@@ -509,7 +576,7 @@ function BindingEditor({ property, itemType, layout, binding, values: externalVa
               </div>}
             >
               <span className="text-sm flex items-center justify-between gap-2 w-full">
-                <span>{v !== '' ? v : <span className="text-muted-foreground italic">empty</span>}</span>
+                <span>{v !== '' ? (itemType === 'image' ? gameImages?.find(img => img.url === v)?.name ?? v.split('/').pop() ?? v : v) : <span className="text-muted-foreground italic">empty</span>}</span>
                 {isDefault && <span className="text-xs text-muted-foreground italic">default</span>}
               </span>
             </ListItem>
@@ -523,8 +590,12 @@ function BindingEditor({ property, itemType, layout, binding, values: externalVa
 }
 
 function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, onUploadFile, layout, selectedNodeId, onChange }: Omit<ControlPanelProps, 'onBindingChange' | 'onBindingValuesChange'>) {
+  const meta = getFieldMeta(property, layout, selectedNodeId, gameFonts)
   const allowedValues = bindingValues
   if (allowedValues?.length) {
+    const label = meta.type === 'image-upload'
+      ? (v: string) => gameImages?.find(img => img.url === v)?.name ?? v.split('/').pop() ?? v
+      : (v: string) => v
     return (
       <select
         value={String(value ?? '')}
@@ -532,12 +603,10 @@ function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, on
         className="w-full rounded-md border bg-background px-3 py-2 text-sm"
       >
         <option value="">— select —</option>
-        {allowedValues.map((v) => <option key={v} value={v}>{v}</option>)}
+        {allowedValues.map((v) => <option key={v} value={v}>{label(v)}</option>)}
       </select>
     )
   }
-
-  const meta = getFieldMeta(property, layout, selectedNodeId, gameFonts)
 
   if (meta.type === 'number') {
     return <NumberEditor value={String(value ?? 0)} onChange={(v) => onChange(Number(v))} min={meta.min} max={meta.max} step={meta.step} />
@@ -562,7 +631,8 @@ function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, on
   }
 
   if (meta.type === 'image-upload') {
-    return <ImageUploadEditor value={String(value ?? '')} onChange={(v) => onChange(v)} aspectRatio={layout.width / layout.height} gameImages={gameImages} onUploadFile={onUploadFile} />
+    const itemRatio = selectedNodeId ? getItemAspectRatio(layout, selectedNodeId) : undefined
+    return <ImageUploadEditor value={String(value ?? '')} onChange={(v) => onChange(v)} aspectRatio={itemRatio ?? layout.width / layout.height} gameImages={gameImages} onUploadFile={onUploadFile} />
   }
 
   if (meta.type === 'richtext') {
@@ -599,7 +669,22 @@ function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, on
 
 export default function ControlPanel({ property, value, binding, bindingValues, bindingDefault, itemType, gameFonts, gameImages, onUploadFile, layout, selectedNodeId, onChange, onBindingChange, onBindingValuesChange, onBindingDefaultChange }: ControlPanelProps) {
   const canBind = !NO_BINDING.has(property)
-  const isBound = !!binding
+  const [mode, setMode] = useState<'value' | 'data'>(binding?.field ? 'data' : 'value')
+
+  // Sync mode when the displayed property changes or binding is added/removed externally
+  const prevProperty = useRef(property)
+  const prevBinding = useRef(binding)
+  useEffect(() => {
+    if (property !== prevProperty.current) {
+      setMode(binding?.field ? 'data' : 'value')
+      prevProperty.current = property
+    } else if (binding && !prevBinding.current) {
+      setMode('data')
+    } else if (!binding && prevBinding.current) {
+      setMode('value')
+    }
+    prevBinding.current = binding
+  }, [property, binding])
 
   if (!canBind) {
     return <ValueEditor property={property} value={value} bindingValues={bindingValues} gameFonts={gameFonts} gameImages={gameImages} onUploadFile={onUploadFile} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
@@ -609,16 +694,16 @@ export default function ControlPanel({ property, value, binding, bindingValues, 
     <div className="space-y-2">
       <div className="flex gap-1 rounded-md border p-0.5 w-fit">
         <button
-          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${!isBound ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-          onClick={() => { if (isBound) onBindingChange?.(null) }}
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${mode === 'value' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setMode('value')}
         >Value</button>
         <button
-          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${isBound ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-          onClick={() => { if (!isBound) onBindingChange?.({ field: property }) }}
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${mode === 'data' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setMode('data')}
         >Data</button>
       </div>
-      {isBound
-        ? <BindingEditor property={property} itemType={itemType} layout={layout} binding={binding} values={bindingValues ?? []} bindingDefault={bindingDefault} onSetDefault={(v) => onBindingDefaultChange?.(v)} onChange={(b) => onBindingChange?.(b)} onValuesChange={(v) => onBindingValuesChange?.(v)} />
+      {mode === 'data'
+        ? <BindingEditor property={property} itemType={itemType} layout={layout} gameImages={gameImages} onUploadFile={onUploadFile} binding={binding} values={bindingValues ?? []} bindingDefault={bindingDefault} onSetDefault={(v) => onBindingDefaultChange?.(v)} onChange={(b) => onBindingChange?.(b)} onValuesChange={(v) => onBindingValuesChange?.(v)} />
         : <ValueEditor property={property} value={value} bindingValues={bindingValues} gameFonts={gameFonts} gameImages={gameImages} onUploadFile={onUploadFile} layout={layout} selectedNodeId={selectedNodeId} onChange={onChange} />
       }
     </div>

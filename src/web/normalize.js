@@ -46,7 +46,7 @@ const normalizeAnchorPoint = (anchor) => {
 /**
  * Normalize a card layout item to ensure all fields have valid values.
  */
-const normalizeItem = (item) => {
+const normalizeItem = (item, cardWidth, cardHeight) => {
     const obj = item && typeof item === "object" ? item : {};
     // Base properties
     const id = safeString(obj.id, `item-${Date.now()}`);
@@ -58,8 +58,13 @@ const normalizeItem = (item) => {
     const attachTargetType = safeEnum(attach.targetType, ["section", "item"], "section");
     const attachTargetId = safeString(attach.targetId, "root");
     const attachAnchor = normalizeAnchorPoint(attach.anchor);
-    const widthPct = safeNumber(obj.widthPct, 50);
-    const heightPct = safeNumber(obj.heightPct, 50);
+    // Migration: convert legacy widthPct/heightPct (% of card) to mm
+    const widthMm = obj.widthMm != null ? safeNumber(obj.widthMm, 30)
+        : obj.widthPct != null ? Math.round(cardWidth * safeNumber(obj.widthPct, 50) / 100 * 10) / 10
+        : 30;
+    const heightMm = obj.heightMm != null ? safeNumber(obj.heightMm, 20)
+        : obj.heightPct != null ? Math.round(cardHeight * safeNumber(obj.heightPct, 50) / 100 * 10) / 10
+        : 20;
     // Determine item type - only if explicitly set
     const hasType = obj.type !== undefined && obj.type !== null && obj.type !== "";
     const type = hasType ? safeEnum(obj.type, ["text", "frame", "image"], "text") : null;
@@ -73,8 +78,8 @@ const normalizeItem = (item) => {
             targetId: attachTargetId,
             anchor: attachAnchor
         },
-        widthPct,
-        heightPct
+        widthMm,
+        heightMm
     };
     if (type === "frame") {
         const frameItem = {
@@ -112,7 +117,7 @@ const normalizeItem = (item) => {
 /**
  * Normalize a card layout section recursively.
  */
-const normalizeSection = (section) => {
+const normalizeSection = (section, cardWidth, cardHeight) => {
     const obj = section && typeof section === "object" ? section : {};
     const id = safeString(obj.id, `section-${Date.now()}`);
     const name = safeString(obj.name, "New Section");
@@ -120,10 +125,10 @@ const normalizeSection = (section) => {
     const sizePct = safeNumber(obj.sizePct, 100);
     const gap = safeNumber(obj.gap, 0);
     const children = Array.isArray(obj.children)
-        ? obj.children.map(child => normalizeSection(child))
+        ? obj.children.map(child => normalizeSection(child, cardWidth, cardHeight))
         : [];
     const items = Array.isArray(obj.items)
-        ? obj.items.map(item => normalizeItem(item))
+        ? obj.items.map(item => normalizeItem(item, cardWidth, cardHeight))
         : [];
     return {
         id,
@@ -161,7 +166,7 @@ export const normalizeLayout = (layout) => {
         height,
         radius,
         bleed,
-        root: normalizeSection(obj.root)
+        root: normalizeSection(obj.root, width, height)
     };
 };
 /**

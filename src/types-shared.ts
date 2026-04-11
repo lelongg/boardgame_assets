@@ -19,8 +19,9 @@ type CardLayoutItemBase = {
     targetId: string;
     anchor: AnchorPoint;
   };
-  widthPct: number;
-  heightPct: number;
+  widthMm: number;
+  heightMm: number;
+  rotation?: number;
 };
 
 // Text item - displays text from a field

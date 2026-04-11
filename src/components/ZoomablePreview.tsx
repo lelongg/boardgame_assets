@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Lock, Unlock, Home, Box } from 'lucide-react'
+import useAssetUrl from '../hooks/useAssetUrl'
 
 type HitArea = { id: string; x: number; y: number; width: number; height: number }
 
@@ -21,6 +22,8 @@ type Rotation = { x: number; y: number }
 
 
 export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitAreas, selectedHitAreaId, onHitAreaClick, extraButtons, backImage, backFit = 'cover' }: ZoomablePreviewProps) {
+  const resolvedSrc = useAssetUrl(src) ?? src
+  const resolvedBack = useAssetUrl(backImage) ?? backImage
   const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 })
   const [unlocked, setUnlocked] = useState(false)
   const [mode3d, setMode3d] = useState(false)
@@ -225,7 +228,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
             {/* Front face */}
             <div className="relative" style={{ backfaceVisibility: 'hidden' }}>
               <img
-                src={src}
+                src={resolvedSrc}
                 alt={alt}
                 className={`max-w-full select-none rounded ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
                 draggable={false}
@@ -289,11 +292,11 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
               style={{
                 backfaceVisibility: 'hidden',
                 transform: 'rotateY(180deg)',
-                background: backImage ? '#ffffff' : 'repeating-linear-gradient(45deg, #5c6bc0, #5c6bc0 10px, #7986cb 10px, #7986cb 20px)',
+                background: resolvedBack ? '#ffffff' : 'repeating-linear-gradient(45deg, #5c6bc0, #5c6bc0 10px, #7986cb 10px, #7986cb 20px)',
                 borderRadius: 'inherit',
               }}
             >
-              {backImage && <img src={backImage} alt="Card back" className="w-full h-full" draggable={false} style={{ objectFit: backFit === 'contain' ? 'contain' : backFit === 'fill' ? 'fill' : 'cover' }} />}
+              {resolvedBack && <img src={resolvedBack} alt="Card back" className="w-full h-full" draggable={false} style={{ objectFit: backFit === 'contain' ? 'contain' : backFit === 'fill' ? 'fill' : 'cover' }} />}
             </div>
             {/* Right edge */}
             <div
@@ -335,7 +338,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
           )
         })() : (
           <img
-            src={src}
+            src={resolvedSrc}
             alt={alt}
             className={`max-w-full max-h-[60vh] block mx-auto select-none transition-opacity duration-200 drop-shadow-lg ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
             draggable={false}

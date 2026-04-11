@@ -5,7 +5,7 @@ import App from './App.tsx'
 import './index.css'
 import { getAsset } from './storage/assetCache'
 
-if ("serviceWorker" in navigator) {
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 

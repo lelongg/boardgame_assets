@@ -228,7 +228,9 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
     async listImages(gameId) {
       const response = await fetch(`${apiBase}/games/${gameId}/images`);
       if (!response.ok) throw new Error("Failed to list images");
-      return await response.json();
+      const images = await response.json();
+      // Ensure each image has a name field
+      return images.map((img) => ({ name: img.file, ...img }));
     },
 
     async uploadImage(gameId, file) {
@@ -245,6 +247,16 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
     async deleteImage(gameId, file) {
       const response = await fetch(`${apiBase}/games/${gameId}/images/${file}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to delete image");
+    },
+
+    async renameImage(gameId, file, newName) {
+      // localFile server manages its own filenames; rename is a server-side op
+      const response = await fetch(`${apiBase}/games/${gameId}/images/${file}/rename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newName }),
+      });
+      if (!response.ok) throw new Error("Failed to rename image");
     }
   };
 };

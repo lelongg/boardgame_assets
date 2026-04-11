@@ -194,9 +194,9 @@ const collectItemPlacements = (
   section.children.forEach((child) => collectItemPlacements(child, result, list));
 };
 
-const placeItem = (item: CardLayoutItem, sectionRect: Rect, targetRect: Rect): Rect => {
-  const sizeWidth = sectionRect.width * (item.widthPct / 100);
-  const sizeHeight = sectionRect.height * (item.heightPct / 100);
+const placeItem = (item: CardLayoutItem, _sectionRect: Rect, targetRect: Rect): Rect => {
+  const sizeWidth = mmToPx(item.widthMm);
+  const sizeHeight = mmToPx(item.heightMm);
   const target = anchorPosition(targetRect, item.attach.anchor);
 
   return {
@@ -264,6 +264,59 @@ export const computeLayout = (layout: CardLayout): LayoutResult => {
 
   layoutSections(layout.root, rootRect, result);
   layoutItems(layout, result);
+
+  // Resize copy items to match their target's bounds * scale
+  const findItemIn = (s: CardLayoutSection, id: string): CardLayoutItem | null => {
+    for (const i of s.items) if (i.id === id) return i;
+    for (const c of s.children) { const r = findItemIn(c, id); if (r) return r; }
+    return null;
+  };
+  const findSectionIn = (s: CardLayoutSection, id: string): CardLayoutSection | null => {
+    if (s.id === id) return s;
+    for (const c of s.children) { const r = findSectionIn(c, id); if (r) return r; }
+    return null;
+  };
+  const getAllItemsIn = (s: CardLayoutSection): CardLayoutItem[] => {
+    const list: CardLayoutItem[] = [...s.items];
+    s.children.forEach(c => list.push(...getAllItemsIn(c)));
+    return list;
+  };
+  const resizeCopyItems = (section: CardLayoutSection) => {
+    section.items.forEach((item) => {
+      if (item.type !== "copy") return;
+      const copyRect = result.items.get(item.id);
+      if (!copyRect) return;
+      const targetId = (item as any).copyTargetId;
+      if (!targetId) return;
+      const targetItem = findItemIn(layout.root, targetId);
+      const targetSection = targetItem ? null : findSectionIn(layout.root, targetId);
+      const targetRects = targetItem
+        ? [result.items.get(targetId)].filter(Boolean) as Rect[]
+        : targetSection
+          ? getAllItemsIn(targetSection).map(t => result.items.get(t.id)).filter(Boolean) as Rect[]
+          : [];
+      if (!targetRects.length) return;
+      const bounds = targetRects.reduce((b, r) => ({
+        x: Math.min(b.x, r.x), y: Math.min(b.y, r.y),
+        x2: Math.max(b.x2, r.x + r.width), y2: Math.max(b.y2, r.y + r.height),
+      }), { x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity });
+      const scale = (item as any).scale ?? 1;
+      const w = (bounds.x2 - bounds.x) * scale;
+      const h = (bounds.y2 - bounds.y) * scale;
+      copyRect.width = w;
+      copyRect.height = h;
+      const attachTarget = item.attach.targetType === "item"
+        ? result.items.get(item.attach.targetId)
+        : result.sections.get(item.attach.targetId);
+      if (attachTarget) {
+        const target = anchorPosition(attachTarget, item.attach.anchor);
+        copyRect.x = target.x - w * item.anchor.x;
+        copyRect.y = target.y - h * item.anchor.y;
+      }
+    });
+    section.children.forEach(resizeCopyItems);
+  };
+  resizeCopyItems(layout.root);
 
   return result;
 };
@@ -361,10 +414,20 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     const ox = mmToPx(Number(resolve(item, "offsetX", card, layout)) || 0);
     const oy = mmToPx(Number(resolve(item, "offsetY", card, layout)) || 0);
     const rect = (ox || oy) ? { ...baseRect, x: baseRect.x + ox, y: baseRect.y + oy } : baseRect;
+    const rotation = Number(resolve(item, "rotation", card, layout)) || 0;
+    const pushEl = (svg: string) => {
+      if (rotation && svg) {
+        const cx = rect.x + rect.width / 2;
+        const cy = rect.y + rect.height / 2;
+        itemElements.push(`<g transform="rotate(${rotation} ${cx} ${cy})">${svg}</g>`);
+      } else {
+        itemElements.push(svg);
+      }
+    };
 
     // Handle different item types (default to text for backward compatibility)
     const itemType = item.type ?? "text";
-    
+
     if (itemType === "text") {
       const value = String(resolve(item, "defaultValue", card, layout) ?? "");
       if (!value) return;
@@ -380,7 +443,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       const alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
       const styledLines = parseRichText(value);
       const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
-      itemElements.push(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
+      pushEl(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
     }
 
     if (itemType === "frame") {
@@ -388,7 +451,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       const strokeColor = String(resolve(item, "strokeColor", card, layout) ?? palette.ink);
       const fillColor = String(resolve(item, "fillColor", card, layout) ?? "none");
       const cornerRadius = Number(resolve(item, "cornerRadius", card, layout)) || 8;
-      itemElements.push(`<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
+      pushEl(`<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
     }
 
     if (itemType === "image") {
@@ -407,9 +470,9 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
 
       if (cornerRadius > 0) {
         clipPaths.push(`<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" /></clipPath>`);
-        itemElements.push(`<image ${imageProps} href="${escape(imageUrl)}" clip-path="url(#${clipId})" />`);
+        pushEl(`<image ${imageProps} href="${escape(imageUrl)}" clip-path="url(#${clipId})" />`);
       } else {
-        itemElements.push(`<image ${imageProps} href="${escape(imageUrl)}" />`);
+        pushEl(`<image ${imageProps} href="${escape(imageUrl)}" />`);
       }
     }
 
@@ -418,7 +481,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       const fontSize = Number(resolve(item, "fontSize", card, layout)) || 32;
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2;
-      itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
+      pushEl(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
     }
 
     if (itemType === "copy") {
@@ -436,13 +499,12 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
         x: Math.min(b.x, r.x), y: Math.min(b.y, r.y),
         x2: Math.max(b.x2, r.x + r.width), y2: Math.max(b.y2, r.y + r.height),
       }), { x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity });
+      const scale = Number(resolve(item, "scale", card, layout)) || 1;
       const srcW = bounds.x2 - bounds.x || 1;
       const srcH = bounds.y2 - bounds.y || 1;
-      const scaleX = rect.width / srcW;
-      const scaleY = rect.height / srcH;
-      const tx = rect.x - bounds.x * scaleX;
-      const ty = rect.y - bounds.y * scaleY;
-      itemElements.push(`<g transform="translate(${tx},${ty}) scale(${scaleX},${scaleY})">`);
+      const tx = rect.x + (rect.width - srcW * scale) / 2 - bounds.x * scale;
+      const ty = rect.y + (rect.height - srcH * scale) / 2 - bounds.y * scale;
+      const copyParts = [`<g transform="translate(${tx},${ty}) scale(${scale},${scale})">`];
       // Re-render targets inside the group (they'll use their original rects, scaled by the group transform)
       targets.forEach(t => {
         const tRect = computed.items.get(t.id);
@@ -461,20 +523,21 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
           const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
           const textX = align === "left" ? tRect.x : align === "right" ? tRect.x + tRect.width : tRect.x + tRect.width / 2;
           const textY = vAlign === "top" ? tRect.y : vAlign === "bottom" ? tRect.y + tRect.height : tRect.y + tRect.height / 2;
-          itemElements.push(`<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign as any)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`);
+          copyParts.push(`<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign as any)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`);
         } else if (tType === "emoji") {
           const emoji = String(resolve(t, "emoji", card, layout) ?? "⭐");
           const fontSize = Number(resolve(t, "fontSize", card, layout)) || 32;
-          itemElements.push(`<text x="${tRect.x + tRect.width / 2}" y="${tRect.y + tRect.height / 2}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
+          copyParts.push(`<text x="${tRect.x + tRect.width / 2}" y="${tRect.y + tRect.height / 2}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
         } else if (tType === "frame") {
           const sw = Number(resolve(t, "strokeWidth", card, layout)) || 2;
           const sc = String(resolve(t, "strokeColor", card, layout) ?? palette.ink);
           const fc = String(resolve(t, "fillColor", card, layout) ?? "none");
           const cr = Number(resolve(t, "cornerRadius", card, layout)) || 0;
-          itemElements.push(`<rect x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`);
+          copyParts.push(`<rect x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`);
         }
       });
-      itemElements.push(`</g>`);
+      copyParts.push(`</g>`);
+      pushEl(copyParts.join(""));
     }
   });
 
@@ -541,11 +604,20 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
   collectItems(layout.root, items, emptyCard, layoutMm);
 
   const renderedContent = items.map((item) => {
+    const vis = (item as any).visible;
+    if (vis === false || vis === "false") return "";
     const baseRect = computed.items.get(item.id);
     if (!baseRect) return "";
     const lox = mmToPx((item as any).offsetX ?? 0);
     const loy = mmToPx((item as any).offsetY ?? 0);
     const rect = (lox || loy) ? { ...baseRect, x: baseRect.x + lox, y: baseRect.y + loy } : baseRect;
+    const rot = (item as any).rotation ?? 0;
+    const wrapRot = (svg: string) => {
+      if (!rot || !svg) return svg;
+      const cx = rect.x + rect.width / 2;
+      const cy = rect.y + rect.height / 2;
+      return `<g transform="rotate(${rot} ${cx} ${cy})">${svg}</g>`;
+    };
     const itemType = item.type ?? "text";
     if (itemType === "frame") {
       if (item.type !== "frame") return "";
@@ -553,7 +625,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
       const sc = escape(item.strokeColor ?? palette.ink);
       const fc = escape(item.fillColor ?? "none");
       const cr = item.cornerRadius ?? 0;
-      return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`;
+      return wrapRot(`<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`);
     }
     if (itemType === "image") {
       if (item.type !== "image") return "";
@@ -565,7 +637,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
       const clipPath = cr > 0 ? `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cr}" /></clipPath>` : "";
       const par = fit === "contain" ? "xMidYMid meet" : fit === "fill" ? "none" : "xMidYMid slice";
       const ca = cr > 0 ? ` clip-path="url(#${clipId})"` : "";
-      return `${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${par}"${ca} />`;
+      return wrapRot(`${clipPath}<image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(value)}" preserveAspectRatio="${par}"${ca} />`);
     }
     if (itemType === "emoji") {
       if (item.type !== "emoji") return "";
@@ -573,7 +645,60 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
       const fontSize = (item as any).fontSize ?? 32;
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2;
-      return `<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`;
+      return wrapRot(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
+    }
+    if (itemType === "copy") {
+      const targetId = (item as any).copyTargetId;
+      if (!targetId) return "";
+      const targetItem = findItem(layout.root, targetId);
+      const targetSection = targetItem ? null : findSection(layout.root, targetId);
+      const targets = targetItem ? [targetItem] : (targetSection ? getAllSectionItems(targetSection) : []);
+      if (!targets.length) return "";
+      const targetRects = targets.map(t => computed.items.get(t.id)).filter(Boolean) as Rect[];
+      if (!targetRects.length) return "";
+      const bounds = targetRects.reduce((b, r) => ({
+        x: Math.min(b.x, r.x), y: Math.min(b.y, r.y),
+        x2: Math.max(b.x2, r.x + r.width), y2: Math.max(b.y2, r.y + r.height),
+      }), { x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity });
+      const scale = (item as any).scale ?? 1;
+      const srcW = bounds.x2 - bounds.x || 1;
+      const srcH = bounds.y2 - bounds.y || 1;
+      const tx = rect.x + (rect.width - srcW * scale) / 2 - bounds.x * scale;
+      const ty = rect.y + (rect.height - srcH * scale) / 2 - bounds.y * scale;
+      const parts = [`<g transform="translate(${tx},${ty}) scale(${scale},${scale})">`];
+      targets.forEach(t => {
+        const tRect = computed.items.get(t.id);
+        if (!tRect) return;
+        const tType = t.type ?? "text";
+        if (tType === "text") {
+          const v = String(resolve(t, "defaultValue", emptyCard, layoutMm) ?? "");
+          if (!v) return;
+          const fs = Number(resolve(t, "fontSize", emptyCard, layoutMm)) || 20;
+          const al = String(resolve(t, "align", emptyCard, layoutMm) ?? "center");
+          const va = String(resolve(t, "verticalAlign", emptyCard, layoutMm) ?? "middle");
+          const co = escape(String(resolve(t, "color", emptyCard, layoutMm) ?? palette.ink));
+          const fk = String(resolve(t, "font", emptyCard, layoutMm) ?? "");
+          const sn = fk && options.fonts?.[fk] ? fk : fontSlots[0];
+          const ff = options.fonts?.[sn] ? `'${options.fonts[sn].name}'` : "'sans-serif'";
+          const justify = al === "left" ? "flex-start" : al === "right" ? "flex-end" : "center";
+          const ai = va === "top" ? "flex-start" : va === "bottom" ? "flex-end" : "center";
+          const sl = parseRichText(v);
+          const h = sl.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
+          parts.push(`<foreignObject x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${ai};justify-content:${justify};font-family:${ff};font-size:${fs}px;color:${co};text-align:${al};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${h}</div></foreignObject>`);
+        } else if (tType === "emoji") {
+          const em = String(resolve(t, "emoji", emptyCard, layoutMm) ?? "⭐");
+          const fs = Number(resolve(t, "fontSize", emptyCard, layoutMm)) || 32;
+          parts.push(`<text x="${tRect.x + tRect.width / 2}" y="${tRect.y + tRect.height / 2}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" fill="#000000">${escape(em)}</text>`);
+        } else if (tType === "frame") {
+          const sw = Number(resolve(t, "strokeWidth", emptyCard, layoutMm)) || 2;
+          const sc = escape(String(resolve(t, "strokeColor", emptyCard, layoutMm) ?? palette.ink));
+          const fc = escape(String(resolve(t, "fillColor", emptyCard, layoutMm) ?? "none"));
+          const cr = Number(resolve(t, "cornerRadius", emptyCard, layoutMm)) || 0;
+          parts.push(`<rect x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`);
+        }
+      });
+      parts.push(`</g>`);
+      return wrapRot(parts.join(""));
     }
     if (item.type === "frame" || item.type === "image" || item.type === "emoji" || item.type === "copy") return "";
     const value = String(resolve(item, "defaultValue", emptyCard, layoutMm) ?? "");
@@ -589,7 +714,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
     const alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
     const styledLines = parseRichText(value);
     const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
-    return `<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`;
+    return wrapRot(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
   }).join("");
 
   const sectionRects = showSections ? Array.from(computed.sections.entries())

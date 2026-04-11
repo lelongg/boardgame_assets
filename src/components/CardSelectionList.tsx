@@ -27,7 +27,7 @@ type CardSelectionListProps = {
 }
 
 export default function CardSelectionList({
-  cards, layout, gameFonts, collectionId,
+  cards, layout, gameFonts, collectionId: _collectionId,
   selection, onSelectionChange,
   importStaged = [], importSelection, onImportSelectionChange,
 }: CardSelectionListProps) {
@@ -143,9 +143,9 @@ export default function CardSelectionList({
 
   const badge = (item: PanelItem) => {
     if (!hasImport) return null
-    if (item.kind === 'new') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-green-100 text-green-700">added</span>
-    if (item.status === 'replace') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-amber-100 text-amber-700">updated</span>
-    if (item.status === 'missing') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-red-100 text-red-700">deleted</span>
+    if (item.kind === 'new') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-green-100 text-green-700 w-16 text-center inline-block">added</span>
+    if (item.status === 'replace') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-amber-100 text-amber-700 w-16 text-center inline-block">updated</span>
+    if (item.status === 'missing') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-red-100 text-red-700 w-16 text-center inline-block">deleted</span>
     return null
   }
   const thumb = (item: PanelItem) =>

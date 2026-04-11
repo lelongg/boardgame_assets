@@ -34,8 +34,8 @@ export const defaultLayout = (): CardLayout => ({
               targetId: "header",
               anchor: { x: 0, y: 0.5 }
             },
-            widthPct: 90,
-            heightPct: 60,
+            widthMm: 57,
+            heightMm: 8.5,
             fontSize: 44,
             align: "left",
             font: "title"
@@ -60,8 +60,8 @@ export const defaultLayout = (): CardLayout => ({
               targetId: "body",
               anchor: { x: 0.5, y: 0.5 }
             },
-            widthPct: 90,
-            heightPct: 90,
+            widthMm: 57,
+            heightMm: 51,
             strokeWidth: 3,
             cornerRadius: 12
           },
@@ -76,8 +76,8 @@ export const defaultLayout = (): CardLayout => ({
               targetId: "body",
               anchor: { x: 0.5, y: 0 }
             },
-            widthPct: 70,
-            heightPct: 50,
+            widthMm: 44.5,
+            heightMm: 28.5,
             fit: "cover",
             cornerRadius: 8
           },
@@ -92,8 +92,8 @@ export const defaultLayout = (): CardLayout => ({
               targetId: "artwork",
               anchor: { x: 0.5, y: 1 }
             },
-            widthPct: 80,
-            heightPct: 30,
+            widthMm: 51,
+            heightMm: 17,
             fontSize: 18,
             align: "center",
             font: "body"

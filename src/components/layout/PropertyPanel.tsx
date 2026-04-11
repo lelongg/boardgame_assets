@@ -5,7 +5,7 @@ import { findSectionById, findItemById, getNodeKind } from './layoutHelpers'
 type PropertyPanelProps = {
   layout: CardLayout
   gameFonts?: Record<string, { name: string; file: string }>
-  gameImages?: { file: string; url: string }[]
+  gameImages?: { file: string; url: string; name: string }[]
   onUploadFile?: (file: File) => Promise<string>
   selectedNodeId: string
   selectedProperty: string | null
@@ -40,10 +40,11 @@ const ROOT_PROPERTIES: PropertyDef[] = [
 const COMMON_ITEM_PROPERTIES: PropertyDef[] = [
   { key: 'name', label: 'Name' },
   { key: 'visible', label: 'Visible' },
-  { key: 'widthPct', label: 'Width %' },
-  { key: 'heightPct', label: 'Height %' },
+  { key: 'widthMm', label: 'Width' },
+  { key: 'heightMm', label: 'Height' },
   { key: 'offsetX', label: 'Offset X' },
   { key: 'offsetY', label: 'Offset Y' },
+  { key: 'rotation', label: 'Rotation' },
   { key: 'anchor', label: 'Anchor' },
   { key: 'attachAnchor', label: 'Attach Anchor' },
   { key: 'attachTargetId', label: 'Attach Target' },
@@ -78,6 +79,7 @@ const EMOJI_PROPERTIES: PropertyDef[] = [
 
 const COPY_PROPERTIES: PropertyDef[] = [
   { key: 'copyTargetId', label: 'Target' },
+  { key: 'scale', label: 'Scale' },
 ]
 
 const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boolean): PropertyDef[] => {
@@ -88,7 +90,7 @@ const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boole
     case 'frame': return [...COMMON_ITEM_PROPERTIES, ...FRAME_PROPERTIES]
     case 'image': return [...COMMON_ITEM_PROPERTIES, ...IMAGE_PROPERTIES]
     case 'emoji': return [...COMMON_ITEM_PROPERTIES, ...EMOJI_PROPERTIES]
-    case 'copy': return [...COMMON_ITEM_PROPERTIES, ...COPY_PROPERTIES]
+    case 'copy': return [...COMMON_ITEM_PROPERTIES.filter(p => p.key !== 'widthMm' && p.key !== 'heightMm'), ...COPY_PROPERTIES]
     default: return COMMON_ITEM_PROPERTIES
   }
 }

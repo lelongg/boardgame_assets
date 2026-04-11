@@ -95,8 +95,8 @@ const collectItemPlacements = (section, result, list) => {
 };
 
 const placeItem = (item, sectionRect, targetRect) => {
-  const sizeWidth = sectionRect.width * (item.widthPct / 100);
-  const sizeHeight = sectionRect.height * (item.heightPct / 100);
+  const sizeWidth = mmToPx(item.widthMm);
+  const sizeHeight = mmToPx(item.heightMm);
   const target = anchorPosition(targetRect, item.attach.anchor);
 
   return {

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Upload, Download, ArrowLeft, Copy, Save, Plus, List, LayoutGrid, Printer } from 'lucide-react'
+import { ArrowLeft, Copy, Plus, List, LayoutGrid } from 'lucide-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,11 +14,14 @@ import { ValueItemEditor } from '@/components/layout/ControlPanel'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import LayoutPreview from '@/components/LayoutPreview'
 import ConfirmButton from '@/components/ConfirmButton'
+import LoadingImg from '@/components/LoadingImg'
+import FilterableList from '@/components/FilterableList'
 import ListItem from '@/components/ListItem'
 import PageLayout from '@/components/PageLayout'
-import { cardsToCSV, csvToCards } from '../cardsCsv'
 import useStorage from '../hooks/useStorage'
 import FilesPanel from '@/components/FilesPanel'
+import ImportPanel from '@/components/ImportPanel'
+import ZipMergePanel from '@/components/ZipMergePanel'
 
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
@@ -30,24 +33,18 @@ export default function GameEditorPage() {
   const [selectedCard, setSelectedCard] = useState<any>(null)
   const [cardPreview, setCardPreview] = useState<string>('')
   const [editingName, setEditingName] = useState(false)
+  const [editingColName, setEditingColName] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
   const [propertyByType, setPropertyByType] = useState<Record<string, string>>({})
   const [savedCardJson, setSavedCardJson] = useState('')
   const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
-  const [gameImages, setGameImages] = useState<{ file: string; url: string }[]>([])
+  const [gameImages, setGameImages] = useState<{ file: string; url: string; name: string }[]>([])
   const [detailedView, setDetailedView] = useState(false)
   const [cardThumbnails, setCardThumbnails] = useState<Record<string, string>>({})
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
-  const [cardSelection, setCardSelection] = useState<Set<string>>(() => loadSet('cardSel'))
-  const [importStaged, setImportStaged] = useState<{ name: string; fields: Record<string, string> }[]>([])
-  const [importSelection, setImportSelection] = useState<Set<number>>(new Set())
-  const [deleteMissing, setDeleteMissing] = useState(false)
-  const [dataGallery, setDataGallery] = useState(false)
-  const [dataThumbnails, setDataThumbnails] = useState<Record<string, string>>({})
-  const [importThumbnails, setImportThumbnails] = useState<Record<number, string>>({})
-  const isCardDirty = selectedCard && JSON.stringify(selectedCard) !== savedCardJson
+  const [cardSelection, _setCardSelection] = useState<Set<string>>(() => loadSet('cardSel'))
 
   useEffect(() => { localStorage.setItem(lsKey('cardSel'), JSON.stringify([...cardSelection])) }, [cardSelection])
 
@@ -82,20 +79,25 @@ export default function GameEditorPage() {
 
   useEffect(() => {
     if (!selectedCard || !game?.layout || !gameId) return
+    let cancelled = false
     const timer = setTimeout(async () => {
       try {
         const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
+        if (cancelled) return
         let svg = renderCardSvg(selectedCard, game.layout, { fonts: gameFonts })
+        if (cancelled) return
         svg = await embedFontsInSvg(svg, gameId, gameFonts)
+        if (cancelled) return
         svg = await embedImagesInSvg(svg)
+        if (cancelled) return
         const blob = new Blob([svg], { type: 'image/svg+xml' })
         const blobUrl = URL.createObjectURL(blob)
         setCardPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return blobUrl })
       } catch (error) {
-        console.error('Error updating card preview:', error)
+        if (!cancelled) console.error('Error updating card preview:', error)
       }
-    }, 300)
-    return () => clearTimeout(timer)
+    }, 100)
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [selectedCard, game?.layout, gameId, collection?.back])
 
   // Generate thumbnails for detailed view
@@ -116,44 +118,6 @@ export default function GameEditorPage() {
     })()
     return () => { cancelled = true }
   }, [detailedView, cards, game?.layout, gameId])
-
-  // Generate thumbnails for data tab (existing cards)
-  useEffect(() => {
-    if (!dataGallery || !game?.layout || !gameId || cards.length === 0) { setDataThumbnails({}); return }
-    let cancelled = false
-    ;(async () => {
-      const { renderCardSvg } = await import('../render')
-      const thumbs: Record<string, string> = {}
-      for (const card of cards) {
-        if (cancelled) return
-        try {
-          const svg = renderCardSvg(card, game.layout, { fonts: gameFonts })
-          thumbs[card.id] = `data:image/svg+xml,${encodeURIComponent(svg)}`
-        } catch { /* skip */ }
-      }
-      if (!cancelled) setDataThumbnails(thumbs)
-    })()
-    return () => { cancelled = true }
-  }, [dataGallery, cards, game?.layout, gameId])
-
-  // Generate thumbnails for import staged cards
-  useEffect(() => {
-    if (!dataGallery || !game?.layout || !gameId || importStaged.length === 0) { setImportThumbnails({}); return }
-    let cancelled = false
-    ;(async () => {
-      const { renderCardSvg } = await import('../render')
-      const thumbs: Record<number, string> = {}
-      for (let i = 0; i < importStaged.length; i++) {
-        if (cancelled) return
-        try {
-          const svg = renderCardSvg({ id: `import-${i}`, ...importStaged[i] } as any, game.layout, { fonts: gameFonts })
-          thumbs[i] = `data:image/svg+xml,${encodeURIComponent(svg)}`
-        } catch { /* skip */ }
-      }
-      if (!cancelled) setImportThumbnails(thumbs)
-    })()
-    return () => { cancelled = true }
-  }, [dataGallery, importStaged, game?.layout, gameId])
 
   // Auto-save card
   useEffect(() => {
@@ -215,19 +179,6 @@ export default function GameEditorPage() {
       setStatus('Ready.')
     } catch (error) {
       setError('Error loading game', error)
-    }
-  }
-
-  const handleSaveCard = async () => {
-    try {
-      if (!gameId || !collectionId || !selectedCard) return
-      setStatus('Saving card...')
-      await storage.saveCard(gameId, collectionId, selectedCard.id, selectedCard)
-      setSavedCardJson(JSON.stringify(selectedCard))
-      setStatus('Card saved.')
-      await loadGame(storage)
-    } catch (error) {
-      setError('Error saving card', error)
     }
   }
 
@@ -312,9 +263,10 @@ export default function GameEditorPage() {
     const t = JSON.parse(JSON.stringify(game.layout))
     const section = { id: crypto.randomUUID(), name: 'New Section', layout: 'stack' as const, sizePct: 100, gap: 0, children: [] as any[], items: [] as any[] }
     if (selectedKind === 'section' && selectedNodeId) {
-      const parent = findSectionById(t.root, selectedNodeId)
+      const parent = findParentSection(t.root, selectedNodeId, 'section')
       if (!parent) return
-      parent.children.push(section)
+      const idx = parent.children.findIndex((c: any) => c.id === selectedNodeId)
+      parent.children.splice(idx + 1, 0, section)
     } else if (selectedKind === 'item' && selectedNodeId) {
       const parent = findParentSection(t.root, selectedNodeId, 'item')
       if (!parent) return
@@ -335,12 +287,13 @@ export default function GameEditorPage() {
     else parentId = t.root.id
     const parent = findSectionById(t.root, parentId)
     if (!parent) return
-    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthPct: 100, heightPct: 100 }
+    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthMm: 63.5, heightMm: 88.9 }
     const items: Record<string, any> = {
       text: { ...base, type: 'text', name: 'New Text', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
       frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
       image: { ...base, type: 'image', name: 'New Image', fit: 'cover', cornerRadius: 0 },
       emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
+      copy: { ...base, type: 'copy', name: 'Copy' },
     }
     const item = items[itemType]
     if (selectedKind === 'item' && selectedNodeId) { const loc = findNodeLocation(t.root, selectedNodeId, 'item'); if (loc) loc.list.splice(loc.index + 1, 0, item); else parent.items.push(item) }
@@ -400,6 +353,28 @@ export default function GameEditorPage() {
             onClick={() => setEditingName(true)}
           >{game.name}</h1>
         )}
+        {collection && (editingColName ? (
+          <input
+            autoFocus
+            className="text-sm italic bg-transparent border-b border-primary outline-none ml-2"
+            defaultValue={collection.name}
+            onBlur={async (e) => {
+              const name = e.target.value.trim()
+              setEditingColName(false)
+              if (!name || name === collection.name) return
+              try {
+                await storage.updateCollection(gameId, collectionId, { name })
+                setCollection((prev: any) => ({ ...prev, name }))
+              } catch { setStatus('Error renaming collection.') }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              if (e.key === 'Escape') setEditingColName(false)
+            }}
+          />
+        ) : (
+          <span className="text-sm text-muted-foreground italic ml-2 cursor-pointer hover:text-foreground transition-colors" onClick={() => setEditingColName(true)}>{collection.name}</span>
+        ))}
       </>}
       status={status}
       errorDetail={errorDetail}
@@ -410,60 +385,56 @@ export default function GameEditorPage() {
             <TabsTrigger value="cards">Cards</TabsTrigger>
             <TabsTrigger value="layout">Layout</TabsTrigger>
             <TabsTrigger value="back">Back</TabsTrigger>
-            <TabsTrigger value="data">Files</TabsTrigger>
+            <TabsTrigger value="import">Import</TabsTrigger>
+            <TabsTrigger value="export">Export</TabsTrigger>
           </TabsList>
 
           <TabsContent value="cards">
             <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base">Cards</CardTitle>
-                  <div className="flex items-center gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => setDetailedView(!detailedView)} title={detailedView ? 'Compact view' : 'Detailed view'}>
-                      {detailedView ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={handleCreateCard} title="New card">
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-2 overflow-y-auto max-h-[60vh]">
-                  {cards.map((card) => (
-                    <ListItem
-                      key={card.id}
-                      selected={selectedCard?.id === card.id}
-                      onClick={() => selectCard(storage, card.id)}
-                      actions={<>
-                        <Button size="sm" variant="outline" onClick={handleSaveCard} disabled={!isCardDirty} title="Save">
-                          <Save className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={async () => {
-                          const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
-                          setCards(prev => [...prev, opt])
-                          setSelectedCard(opt)
-                          setSavedCardJson(JSON.stringify(opt))
-                          try {
-                            const copy = await storage.copyCard(gameId, collectionId, card.id)
-                            setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
-                            setSelectedCard(copy)
-                            setSavedCardJson(JSON.stringify(copy))
-                          } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
-                        }}>
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <ConfirmButton onConfirm={handleDeleteCard} />
-                      </>}
-                    >
-                      <div className={detailedView ? 'flex items-center gap-3' : ''}>
-                        {detailedView && cardThumbnails[card.id] && (
-                          <img src={cardThumbnails[card.id]} alt="" className="h-16 w-auto rounded border object-contain shrink-0 bg-white" />
-                        )}
-                        <span className="text-sm font-medium">{card.name}</span>
-                      </div>
-                    </ListItem>
-                  ))}
-                </CardContent>
-              </Card>
+              <FilterableList
+                title="Cards"
+                items={cards}
+                getKey={(card: any) => card.id}
+                getName={(card: any) => card.name ?? ''}
+                toolbar={<>
+                  <Button size="sm" variant="ghost" onClick={() => setDetailedView(!detailedView)} title={detailedView ? 'Compact view' : 'Detailed view'}>
+                    {detailedView ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleCreateCard} title="New card">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </>}
+                renderItem={(card: any) => (
+                  <ListItem
+                    selected={selectedCard?.id === card.id}
+                    onClick={() => selectCard(storage, card.id)}
+                    actions={<>
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
+                        setCards(prev => [...prev, opt])
+                        setSelectedCard(opt)
+                        setSavedCardJson(JSON.stringify(opt))
+                        try {
+                          const copy = await storage.copyCard(gameId, collectionId, card.id)
+                          setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
+                          setSelectedCard(copy)
+                          setSavedCardJson(JSON.stringify(copy))
+                        } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
+                      }}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <ConfirmButton onConfirm={handleDeleteCard} />
+                    </>}
+                  >
+                    <div className={detailedView ? 'flex items-center gap-3' : ''}>
+                      {detailedView && cardThumbnails[card.id] && (
+                        <LoadingImg src={cardThumbnails[card.id]} alt="" className="h-16 w-auto rounded border object-contain shrink-0 bg-white" />
+                      )}
+                      <span className="text-sm font-medium">{card.name}</span>
+                    </div>
+                  </ListItem>
+                )}
+              />
 
               {selectedCard ? (
                 <Card>
@@ -480,8 +451,8 @@ export default function GameEditorPage() {
                         {game?.layout?.root && (() => {
                           // Discover fields from bindings, keyed by field\0property
                           const bm = game.layout.bindingMeta ?? {}
-                          const fieldMap = new Map<string, { field: string; property: string; itemType: string; values?: string[] }>()
-                          const addBindings = (bindings: Record<string, { field: string }> | undefined, nodeType: string) => {
+                          const fieldMap = new Map<string, { field: string; property: string; itemType: string; itemId?: string; values?: string[] }>()
+                          const addBindings = (bindings: Record<string, { field: string }> | undefined, nodeType: string, nodeId?: string) => {
                             if (!bindings) return
                             for (const [prop, binding] of Object.entries(bindings)) {
                               if (binding.field === 'name') continue
@@ -491,13 +462,14 @@ export default function GameEditorPage() {
                                 field: binding.field,
                                 property: prop,
                                 itemType: nodeType,
+                                itemId: nodeId,
                                 values: bm[`${prop}:${binding.field}`]?.values,
                               })
                             }
                           }
                           const collectBindings = (section: any) => {
-                            addBindings(section.bindings, 'section')
-                            section.items?.forEach((item: any) => addBindings(item.bindings, item.type ?? 'text'))
+                            addBindings(section.bindings, 'section', section.id)
+                            section.items?.forEach((item: any) => addBindings(item.bindings, item.type ?? 'text', item.id))
                             section.children?.forEach(collectBindings)
                           }
                           collectBindings(game.layout.root)
@@ -512,7 +484,7 @@ export default function GameEditorPage() {
 
                           return (
                             <div className="space-y-3">
-                              {[...fieldMap.entries()].map(([key, { field, property, itemType, values }]) => {
+                              {[...fieldMap.entries()].map(([key, { field, property, itemType, itemId, values }]) => {
                                 const fieldKey = `${property}:${field}`
                                 const val = getField(property, field)
                                 return (
@@ -524,12 +496,13 @@ export default function GameEditorPage() {
                                       onChange={(e) => setField(fieldKey, e.target.value)}
                                       className="w-full rounded-md border bg-background pl-3 pr-8 py-2 text-sm"
                                     >
-                                      {values.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                                      {values.map((v: string) => <option key={v} value={v}>{itemType === 'image' ? gameImages.find(img => img.url === v)?.name ?? v.split('/').pop() ?? v : v}</option>)}
                                     </select>
                                   ) : (
                                     <ValueItemEditor
                                       property={property}
                                       itemType={itemType}
+                                      itemId={itemId}
                                       value={val}
                                       onChange={(v) => setField(fieldKey, v)}
                                       layout={game.layout}
@@ -639,10 +612,11 @@ export default function GameEditorPage() {
                     background: '#ffffff',
                   }}
                 >
-                  <img
+                  <LoadingImg
                     src={collection.back}
                     alt="Back preview"
                     className="w-full h-full"
+                    wrapperClassName="w-full h-full"
                     style={{
                       objectFit: collection.backFit === 'contain' ? 'contain' : collection.backFit === 'fill' ? 'fill' : 'cover',
                     }}
@@ -696,7 +670,41 @@ export default function GameEditorPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="data">
+          <TabsContent value="import">
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium">Merge from zip</Label>
+                <p className="text-xs text-muted-foreground mb-2">Load a zip to preview and selectively merge layouts, collections, cards, fonts, and images.</p>
+                <ZipMergePanel
+                  gameId={gameId!}
+                  storage={storage}
+                  layouts={game?.layout ? [game.layout] : []}
+                  collections={collection ? [collection] : []}
+                  gameFonts={gameFonts}
+                  gameImages={gameImages}
+                  onStatusChange={setStatus}
+                  onComplete={() => loadGame(storage)}
+                />
+              </div>
+              <div className="border-t pt-4">
+                <Label className="text-sm font-medium">Import cards from CSV</Label>
+                <p className="text-xs text-muted-foreground mb-2">Load a CSV to preview and selectively import cards.</p>
+                <ImportPanel
+                  gameId={gameId!}
+                  collectionId={collectionId}
+                  cards={cards}
+                  layout={game?.layout}
+                  gameFonts={gameFonts}
+                  storage={storage}
+                  collections={collection ? [collection] : []}
+                  onStatusChange={setStatus}
+                  onCardsChange={() => loadGame(storage)}
+                />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="export">
             <FilesPanel
               gameId={gameId!}
               collectionId={collectionId}

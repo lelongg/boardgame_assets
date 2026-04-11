@@ -3,7 +3,7 @@
  * Stores all data locally for offline/serverless use.
  */
 
-import { putAsset, deleteAsset, listAssets } from "./assetCache.js";
+import { getAsset, putAsset, deleteAsset, listAssets } from "./assetCache.js";
 import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
@@ -602,11 +602,15 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
 
     async listImages(gameId) {
       const prefix = `/api/games/${gameId}/images/`;
+      const namesPath = `${prefix}_names.json`;
       const keys = await listAssets(prefix);
-      return keys.map(key => {
+      let names = {};
+      const namesAsset = await getAsset(namesPath);
+      if (namesAsset) { try { names = JSON.parse(await namesAsset.blob.text()); } catch {} }
+      return keys.filter(k => !k.endsWith('_names.json')).map(key => {
         const file = key.slice(prefix.length);
-        return { file, url: key };
-      });
+        return { file, url: key, name: names[file] || file };
+      }).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     },
 
     async uploadImage(gameId, file) {
@@ -619,11 +623,44 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
 
       await putAsset(assetPath, new Blob([buf], { type: mimeType }), mimeType);
 
+      // Store original filename as display name
+      const prefix = `/api/games/${gameId}/images/`;
+      const namesPath = `${prefix}_names.json`;
+      let names = {};
+      const namesAsset = await getAsset(namesPath);
+      if (namesAsset) { try { names = JSON.parse(await namesAsset.blob.text()); } catch {} }
+      if (!names[fileName]) {
+        const displayName = file.name.includes(".") ? file.name.slice(0, file.name.lastIndexOf(".")) : file.name;
+        names[fileName] = displayName || fileName;
+        await putAsset(namesPath, new Blob([JSON.stringify(names)], { type: "application/json" }), "application/json");
+      }
+
       return assetPath;
     },
 
     async deleteImage(gameId, file) {
       await deleteAsset(`/api/games/${gameId}/images/${file}`);
+      // Remove from names map
+      const prefix = `/api/games/${gameId}/images/`;
+      const namesPath = `${prefix}_names.json`;
+      const namesAsset = await getAsset(namesPath);
+      if (namesAsset) {
+        try {
+          const names = JSON.parse(await namesAsset.blob.text());
+          delete names[file];
+          await putAsset(namesPath, new Blob([JSON.stringify(names)], { type: "application/json" }), "application/json");
+        } catch {}
+      }
+    },
+
+    async renameImage(gameId, file, newName) {
+      const prefix = `/api/games/${gameId}/images/`;
+      const namesPath = `${prefix}_names.json`;
+      let names = {};
+      const namesAsset = await getAsset(namesPath);
+      if (namesAsset) { try { names = JSON.parse(await namesAsset.blob.text()); } catch {} }
+      names[file] = newName;
+      await putAsset(namesPath, new Blob([JSON.stringify(names)], { type: "application/json" }), "application/json");
     },
   };
 };

@@ -67,7 +67,7 @@ const normalizeBindings = (obj: Record<string, unknown>): Record<string, Propert
     return Object.keys(result).length > 0 ? result : undefined;
 };
 
-const normalizeItem = (item: unknown): CardLayoutItem => {
+const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): CardLayoutItem => {
     const obj = item && typeof item === "object" ? item as Record<string, unknown> : {};
     // Base properties
     const id = safeString(obj.id, `item-${Date.now()}`);
@@ -79,8 +79,13 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
     const attachTargetType = safeEnum(attach.targetType, ["section", "item"] as const, "section");
     const attachTargetId = safeString(attach.targetId, "root");
     const attachAnchor = normalizeAnchorPoint(attach.anchor);
-    const widthPct = safeNumber(obj.widthPct, 50);
-    const heightPct = safeNumber(obj.heightPct, 50);
+    // Migration: convert legacy widthPct/heightPct (% of card) to mm
+    const widthMm = obj.widthMm != null ? safeNumber(obj.widthMm, 30)
+        : obj.widthPct != null ? Math.round(cardWidth * safeNumber(obj.widthPct, 50) / 100 * 10) / 10
+        : 30;
+    const heightMm = obj.heightMm != null ? safeNumber(obj.heightMm, 20)
+        : obj.heightPct != null ? Math.round(cardHeight * safeNumber(obj.heightPct, 50) / 100 * 10) / 10
+        : 20;
     // Determine item type - only if explicitly set
     const hasType = obj.type !== undefined && obj.type !== null && obj.type !== "";
     const type = hasType ? safeEnum(obj.type, ["text", "frame", "image", "emoji", "copy"] as const, "text" as const) : null;
@@ -94,10 +99,11 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
             targetId: attachTargetId,
             anchor: attachAnchor
         },
-        widthPct,
-        heightPct,
+        widthMm,
+        heightMm,
         offsetX: obj.offsetX !== undefined && obj.offsetX !== null ? safeNumber(obj.offsetX, 0) : undefined,
         offsetY: obj.offsetY !== undefined && obj.offsetY !== null ? safeNumber(obj.offsetY, 0) : undefined,
+        rotation: obj.rotation !== undefined && obj.rotation !== null ? safeNumber(obj.rotation, 0) : undefined,
     };
     if (type === "frame") {
         const frameItem: CardLayoutFrameItem = {
@@ -138,6 +144,7 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
             bindings: normalizeBindings(obj),
             type: "copy" as const,
             copyTargetId: typeof obj.copyTargetId === 'string' ? obj.copyTargetId : undefined,
+            scale: obj.scale !== undefined && obj.scale !== null ? safeNumber(obj.scale, 1) : undefined,
         };
     }
     // Default to text item (with optional type for legacy support)
@@ -157,7 +164,7 @@ const normalizeItem = (item: unknown): CardLayoutItem => {
 /**
  * Normalize a card layout section recursively.
  */
-const normalizeSection = (section: unknown): CardLayoutSection => {
+const normalizeSection = (section: unknown, cardWidth: number, cardHeight: number): CardLayoutSection => {
     const obj = section && typeof section === "object" ? section as Record<string, unknown> : {};
     const id = safeString(obj.id, `section-${Date.now()}`);
     const name = safeString(obj.name, "New Section");
@@ -169,10 +176,10 @@ const normalizeSection = (section: unknown): CardLayoutSection => {
     const sizePct = safeNumber(obj.sizePct, 100);
     const gap = safeNumber(obj.gap, 0);
     const children = Array.isArray(obj.children)
-        ? obj.children.map(child => normalizeSection(child))
+        ? obj.children.map(child => normalizeSection(child, cardWidth, cardHeight))
         : [];
     const items = Array.isArray(obj.items)
-        ? obj.items.map(item => normalizeItem(item))
+        ? obj.items.map(item => normalizeItem(item, cardWidth, cardHeight))
         : [];
     return {
         id,
@@ -209,7 +216,7 @@ export const normalizeLayout = (layout: unknown): CardLayout => {
         radius = pxToMm(radius);
         bleed = pxToMm(bleed);
     }
-    const root = normalizeSection(obj.root);
+    const root = normalizeSection(obj.root, width, height);
     // Parse bindingMeta
     const bindingMeta: Record<string, { default?: string; values?: string[] }> = {};
     const existingMeta = obj.bindingMeta && typeof obj.bindingMeta === "object" && !Array.isArray(obj.bindingMeta)

@@ -1,13 +1,17 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import Cropper from 'react-easy-crop'
 import { Button } from '@/components/ui/button'
+import { NumberEditor } from '@/components/layout/ControlPanel'
+import { X, Save, SaveAll } from 'lucide-react'
 
 type Area = { x: number; y: number; width: number; height: number }
 
 type ImageEditorProps = {
   src: string
   aspectRatio?: number
-  onSave: (dataUrl: string) => void
+  filename?: string
+  onSave: (dataUrl: string, filename?: string) => void
+  onSaveAsNew?: (dataUrl: string, filename?: string) => Promise<void>
   onCancel: () => void
 }
 
@@ -15,9 +19,10 @@ async function getCroppedImg(
   imageSrc: string,
   pixelCrop: Area,
   rotation: number,
-  targetDpi?: number,
   outputFormat: string = 'image/png',
   quality: number = 0.92,
+  outputWidth?: number,
+  outputHeight?: number,
 ): Promise<string> {
   const image = await createImage(imageSrc)
   const canvas = document.createElement('canvas')
@@ -36,18 +41,8 @@ async function getCroppedImg(
   const croppedCanvas = document.createElement('canvas')
   const croppedCtx = croppedCanvas.getContext('2d')!
 
-  let outW = pixelCrop.width
-  let outH = pixelCrop.height
-
-  // Downscale to target DPI if specified
-  if (targetDpi && targetDpi > 0) {
-    // Assume the original image is at screen DPI (~96). Scale to target card DPI.
-    // For a card at 300 DPI with 63.5mm width, the pixel width should be 63.5 * 300 / 25.4 = 750px
-    // We cap the output to the crop size (don't upscale)
-    const scale = Math.min(1, targetDpi / 300)
-    outW = Math.round(pixelCrop.width * scale)
-    outH = Math.round(pixelCrop.height * scale)
-  }
+  const outW = outputWidth ?? pixelCrop.width
+  const outH = outputHeight ?? pixelCrop.height
 
   croppedCanvas.width = outW
   croppedCanvas.height = outH
@@ -78,25 +73,95 @@ function rotateSize(width: number, height: number, rotation: number) {
   }
 }
 
-export default function ImageEditor({ src, aspectRatio, onSave, onCancel }: ImageEditorProps) {
+export default function ImageEditor({ src, aspectRatio, filename, onSave, onSaveAsNew, onCancel }: ImageEditorProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [rotation, setRotation] = useState(0)
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
-  const [outputFormat, setOutputFormat] = useState('image/png')
-  const [quality, setQuality] = useState(92)
   const [saving, setSaving] = useState(false)
+  const [editName, setEditName] = useState(filename ?? '')
+  const [prevFilename, setPrevFilename] = useState(filename)
+  if (filename !== prevFilename) {
+    setPrevFilename(filename)
+    setEditName(filename ?? '')
+  }
+  const [cropW, setCropW] = useState(0)
+  const [cropH, setCropH] = useState(0)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [containerSize, setContainerSize] = useState({ w: 400, h: 300 })
+
+  // Default crop to image size, constrained by aspect ratio if provided
+  useEffect(() => {
+    if (cropW > 0 && cropH > 0) return
+    createImage(src).then(img => {
+      const w = img.naturalWidth
+      const h = img.naturalHeight
+      if (aspectRatio) {
+        // Fit the aspect ratio within the image dimensions
+        if (w / h > aspectRatio) {
+          setCropW(Math.round(h * aspectRatio))
+          setCropH(h)
+        } else {
+          setCropW(w)
+          setCropH(Math.round(w / aspectRatio))
+        }
+      } else {
+        setCropW(w)
+        setCropH(h)
+      }
+    }).catch(() => {})
+  }, [src])
+
+  // Track container size for scaling cropSize
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const update = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight })
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Scale crop dimensions to fit within the container as CSS pixels
+  const cropSize = cropW > 0 && cropH > 0
+    ? (() => {
+        const maxW = containerSize.w
+        const maxH = containerSize.h
+        const scale = Math.min(maxW / cropW, maxH / cropH)
+        return { width: Math.round(cropW * scale), height: Math.round(cropH * scale) }
+      })()
+    : undefined
 
   const onCropComplete = useCallback((_: Area, croppedPixels: Area) => {
     setCroppedAreaPixels(croppedPixels)
   }, [])
 
+  const getCroppedResult = async () => {
+    if (!croppedAreaPixels) return null
+    const outW = cropW > 0 ? cropW : undefined
+    const outH = cropH > 0 ? cropH : undefined
+    return getCroppedImg(src, croppedAreaPixels, rotation, 'image/png', 1.0, outW, outH)
+  }
+
+  const editedName = editName.trim() || undefined
+
   const handleSave = async () => {
-    if (!croppedAreaPixels) return
     setSaving(true)
     try {
-      const result = await getCroppedImg(src, croppedAreaPixels, rotation, undefined, outputFormat, quality / 100)
-      onSave(result)
+      const result = await getCroppedResult()
+      if (result) onSave(result, editedName)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveAsNew = async () => {
+    if (!onSaveAsNew) return
+    setSaving(true)
+    try {
+      const result = await getCroppedResult()
+      if (result) await onSaveAsNew(result, editedName)
     } finally {
       setSaving(false)
     }
@@ -104,13 +169,27 @@ export default function ImageEditor({ src, aspectRatio, onSave, onCancel }: Imag
 
   return (
     <div className="space-y-3">
-      <div className="relative w-full rounded-md border overflow-hidden" style={{ height: 300, backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '12px 12px' }}>
+      {filename != null && (
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Filename</label>
+          <input
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+          />
+        </div>
+      )}
+
+      <div ref={containerRef} className="relative w-full rounded-md border overflow-hidden" style={{ height: 300, backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '12px 12px' }}>
         <Cropper
           image={src}
           crop={crop}
           zoom={zoom}
+          minZoom={0.1}
+          maxZoom={5}
           rotation={rotation}
-          aspect={aspectRatio}
+          cropSize={cropSize}
           onCropChange={setCrop}
           onCropComplete={onCropComplete}
           onZoomChange={setZoom}
@@ -123,34 +202,29 @@ export default function ImageEditor({ src, aspectRatio, onSave, onCancel }: Imag
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Zoom</label>
-          <input type="range" min={1} max={5} step={0.1} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-full" />
+          <NumberEditor value={String(zoom)} onChange={(v) => setZoom(Number(v))} min={0.1} max={5} step={0.1} />
         </div>
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Rotation</label>
-          <input type="range" min={0} max={360} step={1} value={rotation} onChange={(e) => setRotation(Number(e.target.value))} className="w-full" />
+          <NumberEditor value={String(rotation)} onChange={(v) => setRotation(Number(v))} min={-180} max={180} step={1} />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Format</label>
-          <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="w-full rounded-md border bg-background pl-3 pr-8 py-1.5 text-sm">
-            <option value="image/png">PNG</option>
-            <option value="image/jpeg">JPEG</option>
-            <option value="image/webp">WebP</option>
-          </select>
+          <label className="text-xs text-muted-foreground">Crop W</label>
+          <NumberEditor value={String(cropW)} onChange={(v) => setCropW(Math.max(1, Number(v)))} min={1} max={9999} step={1} />
         </div>
-        {outputFormat !== 'image/png' && (
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">Quality ({quality}%)</label>
-            <input type="range" min={10} max={100} step={5} value={quality} onChange={(e) => setQuality(Number(e.target.value))} className="w-full" />
-          </div>
-        )}
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Crop H</label>
+          <NumberEditor value={String(cropH)} onChange={(v) => setCropH(Math.max(1, Number(v)))} min={1} max={9999} step={1} />
+        </div>
       </div>
 
-      <div className="flex gap-2">
-        <Button size="sm" variant="outline" onClick={onCancel} className="flex-1">Cancel</Button>
-        <Button size="sm" onClick={handleSave} disabled={saving} className="flex-1">{saving ? 'Saving...' : 'Apply'}</Button>
+      <div className="flex gap-2 justify-end">
+        <Button size="sm" variant="secondary" onClick={handleSave} disabled={saving} title="Replace"><Save className="h-4 w-4" /></Button>
+        {onSaveAsNew && <Button size="sm" onClick={handleSaveAsNew} disabled={saving} title="Save as new"><SaveAll className="h-4 w-4" /></Button>}
+        <Button size="sm" variant="outline" onClick={onCancel} title="Cancel"><X className="h-4 w-4" /></Button>
       </div>
     </div>
   )

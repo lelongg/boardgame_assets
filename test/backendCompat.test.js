@@ -479,8 +479,9 @@ async function createFullTestGame(storage) {
         { id: "title-item", name: "Title", type: "text", defaultValue: "Untitled",
           bindings: { defaultValue: { field: "name" } },
           fontSize: 32, align: "center", verticalAlign: "middle", font: "title", color: "#1a1a2e",
+          rotation: 15,
           anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0.5, y: 0.5 } },
-          widthPct: 100, heightPct: 100 },
+          widthMm: 100, heightMm: 100 },
       ]},
       { id: "body", name: "Body", layout: "stack", sizePct: 70, gap: 0, columns: 2,
         children: [
@@ -489,24 +490,25 @@ async function createFullTestGame(storage) {
               bindings: { defaultValue: { field: "image" } },
               fit: "cover", cornerRadius: 12,
               anchor: { x: 0.5, y: 0 }, attach: { targetType: "section", targetId: "grid-section", anchor: { x: 0.5, y: 0 } },
-              widthPct: 100, heightPct: 80 },
+              widthMm: 100, heightMm: 80 },
           ]},
         ],
         items: [
           { id: "border-item", name: "Border", type: "frame",
             strokeWidth: 3, strokeColor: "#16213e", fillColor: "none", cornerRadius: 8,
+            rotation: -45,
             anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } },
-            widthPct: 95, heightPct: 95 },
+            widthMm: 95, heightMm: 95 },
           { id: "emoji-item", name: "Faction", type: "emoji", emoji: "⚔️",
             bindings: { emoji: { field: "faction" } },
             fontSize: 48,
             anchor: { x: 0.5, y: 1 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 1 } },
-            widthPct: 15, heightPct: 10 },
+            widthMm: 15, heightMm: 10 },
           { id: "desc-item", name: "Description", type: "text", defaultValue: "",
             bindings: { defaultValue: { field: "description" } },
             fontSize: 14, align: "left", verticalAlign: "top", color: "#333",
             anchor: { x: 0, y: 0 }, attach: { targetType: "item", targetId: "art-item", anchor: { x: 0, y: 1 } },
-            widthPct: 90, heightPct: 30 },
+            widthMm: 90, heightMm: 30 },
         ],
       },
     ],
@@ -563,12 +565,14 @@ async function verifyFullTestGame(storage, gameId) {
   assert.equal(title.bindings?.defaultValue?.field, "name"); assert.equal(title.defaultValue, "Untitled");
   assert.deepEqual(tpl.bindingMeta?.["defaultValue:name"]?.values, ["Warrior", "Mage", "Rogue"]);
   assert.equal(title.fontSize, 32); assert.equal(title.align, "center");
+  assert.equal(title.rotation, 15);
   assert.equal(title.font, "title"); assert.equal(title.color, "#1a1a2e");
 
   // Frame item
   const border = items.find(i => i.id === "border-item");
   assert.ok(border); assert.equal(border.type, "frame");
   assert.equal(border.strokeWidth, 3); assert.equal(border.cornerRadius, 8);
+  assert.equal(border.rotation, -45);
 
   // Image item
   const art = items.find(i => i.id === "art-item");

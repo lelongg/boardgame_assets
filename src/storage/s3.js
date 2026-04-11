@@ -10,7 +10,7 @@ import {
   DeleteObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
-import { putAsset, deleteAsset } from "./assetCache.js";
+import { getAsset, putAsset, deleteAsset } from "./assetCache.js";
 import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
@@ -517,7 +517,25 @@ export const createS3Storage = (options = {}) => {
       const assetPath = `/api/games/${gameId}/images/${fileName}`;
       await putAsset(assetPath, new Blob([buf], { type: mimeType }), mimeType);
 
+      // Store original filename as display name
+      const namesKey = `${prefix}/${gameId}/images/_names.json`;
+      let names = {};
+      try { names = await getJson(namesKey); } catch {}
+      if (!names[fileName]) {
+        const displayName = file.name.includes(".") ? file.name.slice(0, file.name.lastIndexOf(".")) : file.name;
+        names[fileName] = displayName || fileName;
+        await putJson(namesKey, names);
+      }
+
       return assetPath;
+    },
+
+    async renameImage(gameId, file, newName) {
+      const namesKey = `${prefix}/${gameId}/images/_names.json`;
+      let names = {};
+      try { names = await getJson(namesKey); } catch {}
+      names[file] = newName;
+      await putJson(namesKey, names);
     },
   };
 };

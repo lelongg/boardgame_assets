@@ -24,10 +24,11 @@ type CardLayoutItemBase = {
     targetId: string;
     anchor: AnchorPoint;
   };
-  widthPct: number;
-  heightPct: number;
+  widthMm: number;
+  heightMm: number;
   offsetX?: number;
   offsetY?: number;
+  rotation?: number;
   bindings?: Record<string, PropertyBinding>;
 };
 
@@ -70,6 +71,7 @@ export type CardLayoutEmojiItem = CardLayoutItemBase & {
 export type CardLayoutCopyItem = CardLayoutItemBase & {
   type: "copy";
   copyTargetId?: string;
+  scale?: number;
 };
 
 // Union type for all item types

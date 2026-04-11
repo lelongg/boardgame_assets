@@ -124,8 +124,8 @@ test("normalizeLayout handles item with empty anchor points", () => {
             targetId: "root",
             anchor: { x: "", y: "" }
           },
-          widthPct: "",
-          heightPct: "",
+          widthMm: "",
+          heightMm: "",
           fontSize: "",
           align: "",
           font: ""
@@ -168,8 +168,8 @@ test("normalizeLayout handles text item with empty values", () => {
             targetId: "root",
             anchor: { x: 0, y: 0 }
           },
-          widthPct: "",
-          heightPct: "",
+          widthMm: "",
+          heightMm: "",
           fontSize: "",
           align: "",
           font: ""
@@ -180,8 +180,8 @@ test("normalizeLayout handles text item with empty values", () => {
   const item = layout.root.items[0];
   assert.equal(item.type, "text");
   assert.equal(item.bindings, undefined);
-  assert.equal(item.widthPct, 50);
-  assert.equal(item.heightPct, 50);
+  assert.equal(item.widthMm, 30);
+  assert.equal(item.heightMm, 20);
   assert.equal(item.fontSize, 16);
   assert.equal(item.align, "center");
   assert.equal(item.font, undefined);
@@ -214,8 +214,8 @@ test("normalizeLayout handles frame item with empty values", () => {
             targetId: "root",
             anchor: { x: 0.5, y: 0.5 }
           },
-          widthPct: 80,
-          heightPct: 80,
+          widthMm: 80,
+          heightMm: 80,
           strokeWidth: "",
           cornerRadius: ""
         }
@@ -256,8 +256,8 @@ test("normalizeLayout handles image item with empty values", () => {
             targetId: "root",
             anchor: { x: 0.5, y: 0.5 }
           },
-          widthPct: 80,
-          heightPct: 80,
+          widthMm: 80,
+          heightMm: 80,
           fit: "",
           cornerRadius: ""
         }
@@ -298,8 +298,8 @@ test("normalizeLayout handles legacy item without type", () => {
             targetId: "root",
             anchor: { x: 0, y: 0 }
           },
-          widthPct: 50,
-          heightPct: 50,
+          widthMm: 50,
+          heightMm: 50,
           fontSize: 20,
           align: "center"
         }
@@ -375,8 +375,8 @@ test("normalizeLayout text item font accepts arbitrary string", () => {
           fieldId: "name",
           anchor: { x: 0, y: 0 },
           attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
-          widthPct: 80,
-          heightPct: 20,
+          widthMm: 80,
+          heightMm: 20,
           fontSize: 20,
           align: "left",
           font: "flavor"
@@ -415,8 +415,8 @@ test("normalizeLayout handles anchor point rounding", () => {
             targetId: "root",
             anchor: { x: 0.4, y: 0.6 }
           },
-          widthPct: 50,
-          heightPct: 50,
+          widthMm: 50,
+          heightMm: 50,
           fontSize: 20,
           align: "left"
         }

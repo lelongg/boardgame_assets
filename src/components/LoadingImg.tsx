@@ -1,11 +1,13 @@
 import { useState, type ImgHTMLAttributes } from 'react'
 import { ImageOff } from 'lucide-react'
+import useAssetUrl from '../hooks/useAssetUrl'
 
 type Props = ImgHTMLAttributes<HTMLImageElement> & {
   wrapperClassName?: string
 }
 
 export default function LoadingImg({ wrapperClassName, className, src, ...rest }: Props) {
+  const resolvedSrc = useAssetUrl(src)
   const [loaded, setLoaded] = useState(false)
   const [errored, setErrored] = useState(false)
   const [prevSrc, setPrevSrc] = useState(src)
@@ -29,15 +31,15 @@ export default function LoadingImg({ wrapperClassName, className, src, ...rest }
         <div className={`flex items-center justify-center rounded bg-muted/30 text-muted-foreground/40 ${className ?? ''}`} style={{ minHeight: 48 }}>
           <ImageOff className="h-5 w-5" />
         </div>
-      ) : (
+      ) : resolvedSrc ? (
         <img
-          src={src}
+          src={resolvedSrc}
           className={`${className ?? ''} transition-opacity duration-200 ${showShimmer ? 'opacity-0' : 'opacity-100'}`}
           onLoad={() => setLoaded(true)}
           onError={() => setErrored(true)}
           {...rest}
         />
-      )}
+      ) : null}
     </div>
   )
 }

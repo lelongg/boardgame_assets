@@ -1,4 +1,4 @@
-import type { CardLayoutSection, CardLayoutItem } from "../../types"
+import type { CardLayout, CardLayoutSection, CardLayoutItem } from "../../types"
 
 export type FlatNode = {
   id: string
@@ -96,6 +96,48 @@ export const isDescendant = (parent: CardLayoutSection, childId: string): boolea
     if (isDescendant(child, childId)) return true
   }
   return false
+}
+
+/** Compute the rendered aspect ratio (width/height) of an item within its layout. */
+export const getItemAspectRatio = (layout: CardLayout, itemId: string): number | undefined => {
+  type Rect = { width: number; height: number }
+  const sectionRects = new Map<string, Rect>()
+
+  const walk = (section: CardLayoutSection, rect: Rect) => {
+    sectionRects.set(section.id, rect)
+    if (!section.children.length) return
+    if (section.layout === "stack") {
+      section.children.forEach(c => walk(c, rect))
+      return
+    }
+    if (section.layout === "grid") {
+      const cols = (section as any).columns ?? 2
+      const rows = Math.ceil(section.children.length / cols)
+      const cellW = (rect.width - Math.max(cols - 1, 0) * section.gap) / cols
+      const cellH = (rect.height - Math.max(rows - 1, 0) * section.gap) / rows
+      section.children.forEach(c => walk(c, { width: cellW, height: cellH }))
+      return
+    }
+    const gapTotal = Math.max(section.children.length - 1, 0) * section.gap
+    const available = section.layout === "row" ? rect.width : rect.height
+    const totalPct = section.children.reduce((s, c) => s + (c.sizePct || 0), 0) || 100
+    section.children.forEach(c => {
+      const size = ((c.sizePct || 0) / totalPct) * (available - gapTotal)
+      walk(c, section.layout === "row" ? { width: size, height: rect.height } : { width: rect.width, height: size })
+    })
+  }
+
+  walk(layout.root, { width: layout.width, height: layout.height })
+
+  const parent = findParentSection(layout.root, itemId, "item")
+  if (!parent) return undefined
+  const item = parent.items.find(i => i.id === itemId)
+  if (!item) return undefined
+  const sr = sectionRects.get(parent.id)
+  if (!sr) return undefined
+  const w = item.widthMm
+  const h = item.heightMm
+  return h > 0 ? w / h : undefined
 }
 
 /**

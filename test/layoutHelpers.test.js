@@ -23,7 +23,7 @@ const makeLayout = () => ({
       gap: 0,
       children: [],
       items: [
-        { id: "title", name: "Title", type: "text", fieldId: "name", anchor: { x: 0, y: 0 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0, y: 0 } }, widthPct: 80, heightPct: 60, fontSize: 32, align: "left", font: "title" },
+        { id: "title", name: "Title", type: "text", fieldId: "name", anchor: { x: 0, y: 0 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0, y: 0 } }, widthMm: 80, heightMm: 60, fontSize: 32, align: "left", font: "title" },
       ],
     },
     {
@@ -34,8 +34,8 @@ const makeLayout = () => ({
       gap: 0,
       children: [],
       items: [
-        { id: "border", name: "Border", type: "frame", anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } }, widthPct: 90, heightPct: 90, strokeWidth: 3, cornerRadius: 12 },
-        { id: "desc", name: "Description", type: "text", fieldId: "description", anchor: { x: 0.5, y: 0 }, attach: { targetType: "item", targetId: "border", anchor: { x: 0.5, y: 1 } }, widthPct: 80, heightPct: 30, fontSize: 18, align: "center", font: "body" },
+        { id: "border", name: "Border", type: "frame", anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } }, widthMm: 90, heightMm: 90, strokeWidth: 3, cornerRadius: 12 },
+        { id: "desc", name: "Description", type: "text", fieldId: "description", anchor: { x: 0.5, y: 0 }, attach: { targetType: "item", targetId: "border", anchor: { x: 0.5, y: 1 } }, widthMm: 80, heightMm: 30, fontSize: 18, align: "center", font: "body" },
       ],
     },
   ],
