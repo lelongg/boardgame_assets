@@ -516,12 +516,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
   }
 
   const defs = (clipPaths.length > 0 || fontStyles) ? `<defs>${fontStyles}${clipPaths.join("")}</defs>` : "";
-
-  // Inject font CSS into each foreignObject's HTML for proper font rendering
-  let renderedItems = itemTexts;
-  if (fontStyles) {
-    renderedItems = renderedItems.replace(/(<div xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"[^>]*>)/g, `$1${fontStyles}`);
-  }
+  const renderedItems = itemTexts;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">

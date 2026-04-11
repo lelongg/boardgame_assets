@@ -676,13 +676,8 @@ export const embedFontsInSvg = async (svg: string, gameId: string, gameFonts: Re
   }
   if (!rules.length) return svg;
   const css = rules.join('\n');
-  // SVG <style> for <text> elements, plus a foreignObject <style> for HTML text wrapping
   const svgStyle = `<defs><style>${css}</style></defs>`;
-  let result = svg.replace(/(<svg[^>]*>)/, `$1${svgStyle}`);
-  // Inject @font-face into each foreignObject's HTML div so fonts work in blob URL <img>
-  const htmlFontStyle = `<style>${css}</style>`;
-  result = result.replace(/(<div xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"[^>]*>)/g, `$1${htmlFontStyle}`);
-  return result;
+  return svg.replace(/(<svg[^>]*>)/, `$1${svgStyle}`);
 };
 
 /** Fetch images referenced via /api/ URLs and embed them as base64 data URIs.

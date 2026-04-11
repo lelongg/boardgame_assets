@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Eye, Upload, Download, ArrowLeft, Copy, Save, Plus, Type, Image, Smile, List, LayoutGrid, Printer } from 'lucide-react'
+import { Upload, Download, ArrowLeft, Copy, Save, Plus, List, LayoutGrid, Printer } from 'lucide-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,9 +14,7 @@ import { ValueItemEditor } from '@/components/layout/ControlPanel'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import LayoutPreview from '@/components/LayoutPreview'
 import ConfirmButton from '@/components/ConfirmButton'
-import RichTextField from '@/components/RichTextField'
 import ListItem from '@/components/ListItem'
-import LoadingImg from '@/components/LoadingImg'
 import PageLayout from '@/components/PageLayout'
 import { cardsToCSV, csvToCards } from '../cardsCsv'
 import useStorage from '../hooks/useStorage'
@@ -30,7 +28,6 @@ export default function GameEditorPage() {
   const [cards, setCards] = useState<any[]>([])
   const [selectedCard, setSelectedCard] = useState<any>(null)
   const [cardPreview, setCardPreview] = useState<string>('')
-  const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set())
   const [editingName, setEditingName] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
