@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { ArrowLeft, Pencil, Copy, Plus, Check, Layers } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
@@ -19,7 +18,6 @@ import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from 
 import useStorage from '../hooks/useStorage'
 import FilesPanel from '@/components/FilesPanel'
 import useAssetUrl from '../hooks/useAssetUrl'
-
 const LazyImageEditor = lazy(() => import('@/components/ImageEditor'))
 
 function ResolvedImageEditor(props: { src: string; filename?: string; onSave: (dataUrl: string, filename?: string) => void; onSaveAsNew?: (dataUrl: string, filename?: string) => Promise<void>; onCancel: () => void }) {
@@ -66,11 +64,10 @@ function GameFilesPanel({ gameId, storage, game, layouts, collections, gameFonts
   )
 }
 
-function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onStatusChange, onCardsChange }: {
-  gameId: string; storage: any; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void; onCardsChange: () => void
+function GameImportPanel({ gameId, storage, collections, onStatusChange, onCardsChange }: {
+  gameId: string; storage: any; collections: any[]; onStatusChange: (msg: string) => void; onCardsChange: () => void
 }) {
   const [allCards, setAllCards] = useState<any[]>([])
-  const layout = layouts[0] ?? null
 
   useEffect(() => {
     if (!storage || !gameId || !collections.length) { setAllCards([]); return }
@@ -91,8 +88,6 @@ function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onS
     <ImportPanel
       gameId={gameId}
       cards={allCards}
-      layout={layout}
-      gameFonts={gameFonts}
       storage={storage}
       collections={collections}
       onStatusChange={onStatusChange}
@@ -120,7 +115,8 @@ export default function CollectionsPage() {
     try { return localStorage.getItem(`game:${gameId}:selectedLayout`) } catch { return null }
   })
   const [editingName, setEditingName] = useState(false)
-  const [activeTab, setActiveTab] = useState(() => (gameId && localStorage.getItem(`game:${gameId}:tab`)) || 'collections')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'collections'
   const [showFontAdd, setShowFontAdd] = useState(false)
   const [selectedFont, setSelectedFont] = useState<string | null>(null)
   const [fontPreviewText, setFontPreviewText] = useState(defaultPreviewText)
@@ -374,14 +370,14 @@ export default function CollectionsPage() {
       errorDetail={errorDetail}
       onDismissError={clearError}
     >
-        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (gameId) localStorage.setItem(`game:${gameId}:tab`, v) }} className="w-full">
+        <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="collections">Collections</TabsTrigger>
             <TabsTrigger value="layouts">Layouts</TabsTrigger>
             <TabsTrigger value="fonts">Fonts</TabsTrigger>
             <TabsTrigger value="images">Images</TabsTrigger>
             <TabsTrigger value="import">Import</TabsTrigger>
-            <TabsTrigger value="files">Export</TabsTrigger>
+            <TabsTrigger value="export">Export</TabsTrigger>
           </TabsList>
 
           <TabsContent value="collections">
@@ -426,7 +422,7 @@ export default function CollectionsPage() {
                   </button>
                   <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" onClick={() => {
                     setSelectedLayoutId(col.layoutId)
-                    setActiveTab('layouts')
+                    setSearchParams({ tab: 'layouts' }, { replace: true })
                   }} title="Edit layout">
                     <Layers className="h-4 w-4" />
                   </button>
@@ -812,29 +808,21 @@ export default function CollectionsPage() {
 
           <TabsContent value="import">
             <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Merge from zip</Label>
-                <p className="text-xs text-muted-foreground mb-2">Load a zip archive to preview and selectively merge layouts, collections, cards, fonts, and images.</p>
-                <ZipMergePanel
-                  gameId={gameId!}
-                  storage={storage}
-                  layouts={layouts}
-                  collections={collections}
-                  gameFonts={gameFonts}
-                  gameImages={gameImages}
-                  onStatusChange={setStatus}
-                  onComplete={() => loadData(storage)}
-                />
-              </div>
-              <div className="border-t pt-4">
-                <Label className="text-sm font-medium">Import cards from CSV</Label>
-                <p className="text-xs text-muted-foreground mb-2">Load a CSV file to preview and selectively import cards with add/update/delete detection.</p>
-                <GameImportPanel gameId={gameId!} storage={storage} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} onCardsChange={() => loadData(storage)} />
-              </div>
+              <ZipMergePanel
+                gameId={gameId!}
+                storage={storage}
+                layouts={layouts}
+                collections={collections}
+                gameFonts={gameFonts}
+                gameImages={gameImages}
+                onStatusChange={setStatus}
+                onComplete={() => loadData(storage)}
+              />
+              <GameImportPanel gameId={gameId!} storage={storage} collections={collections} onStatusChange={setStatus} onCardsChange={() => loadData(storage)} />
             </div>
           </TabsContent>
 
-          <TabsContent value="files">
+          <TabsContent value="export">
             <GameFilesPanel gameId={gameId!} storage={storage} game={game} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} />
           </TabsContent>
         </Tabs>

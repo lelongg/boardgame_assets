@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X } from 'lucide-react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -371,6 +371,8 @@ function DataSheet({ cards, storage, gameId, collectionId, layout, gameImages, o
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'cards'
   const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
   const [game, setGame] = useState<any>(null)
   const [collection, setCollection] = useState<any>(null)
@@ -388,6 +390,9 @@ export default function GameEditorPage() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newCardName, setNewCardName] = useState('')
   const cardEditor = useCollapsible()
+  const layoutSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const latestLayoutRef = useRef<any>(null)
+  useEffect(() => () => clearTimeout(layoutSaveTimer.current), [])
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
   const [cardSelection, _setCardSelection] = useState<Set<string>>(() => loadSet('cardSel'))
@@ -568,13 +573,17 @@ export default function GameEditorPage() {
     setCards(prev => prev.map(c => c.id === selectedCardId ? fn(c) : c))
   }
 
-  // Layout handlers
-  const handleLayoutSave = async (updatedLayout: any) => {
+  // Layout handlers – optimistic update + debounced persist
+  const handleLayoutSave = (updatedLayout: any) => {
     if (!gameId || !game || !collection) return
-    try {
-      await storage.saveLayout(gameId, collection.layoutId, updatedLayout)
-      setGame({ ...game, layout: updatedLayout })
-    } catch { setStatus('Error saving layout.') }
+    setGame((g: any) => g ? { ...g, layout: updatedLayout } : g)
+    latestLayoutRef.current = updatedLayout
+    clearTimeout(layoutSaveTimer.current)
+    layoutSaveTimer.current = setTimeout(async () => {
+      try {
+        await storage.saveLayout(gameId, collection!.layoutId, latestLayoutRef.current)
+      } catch { setStatus('Error saving layout.') }
+    }, 300)
   }
 
 
@@ -646,7 +655,7 @@ export default function GameEditorPage() {
       errorDetail={errorDetail}
       onDismissError={clearError}
     >
-        <Tabs defaultValue={localStorage.getItem(`editor:${gameId}:tab`) || 'cards'} onValueChange={(v) => localStorage.setItem(`editor:${gameId}:tab`, v)} className="w-full">
+        <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="cards">Cards</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
@@ -950,35 +959,25 @@ export default function GameEditorPage() {
 
           <TabsContent value="import">
             <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Merge from zip</Label>
-                <p className="text-xs text-muted-foreground mb-2">Load a zip to preview and selectively merge layouts, collections, cards, fonts, and images.</p>
-                <ZipMergePanel
-                  gameId={gameId!}
-                  storage={storage}
-                  layouts={game?.layout ? [game.layout] : []}
-                  collections={collection ? [collection] : []}
-                  gameFonts={gameFonts}
-                  gameImages={gameImages}
-                  onStatusChange={setStatus}
-                  onComplete={() => loadGame(storage)}
-                />
-              </div>
-              <div className="border-t pt-4">
-                <Label className="text-sm font-medium">Import cards from CSV</Label>
-                <p className="text-xs text-muted-foreground mb-2">Load a CSV to preview and selectively import cards.</p>
-                <ImportPanel
-                  gameId={gameId!}
-                  collectionId={collectionId}
-                  cards={cards}
-                  layout={game?.layout}
-                  gameFonts={gameFonts}
-                  storage={storage}
-                  collections={collection ? [collection] : []}
-                  onStatusChange={setStatus}
-                  onCardsChange={() => loadGame(storage)}
-                />
-              </div>
+              <ZipMergePanel
+                gameId={gameId!}
+                storage={storage}
+                layouts={game?.layout ? [game.layout] : []}
+                collections={collection ? [collection] : []}
+                gameFonts={gameFonts}
+                gameImages={gameImages}
+                onStatusChange={setStatus}
+                onComplete={() => loadGame(storage)}
+              />
+              <ImportPanel
+                gameId={gameId!}
+                collectionId={collectionId}
+                cards={cards}
+                storage={storage}
+                collections={collection ? [collection] : []}
+                onStatusChange={setStatus}
+                onCardsChange={() => loadGame(storage)}
+              />
             </div>
           </TabsContent>
 

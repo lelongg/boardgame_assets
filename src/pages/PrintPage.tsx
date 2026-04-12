@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Download, ChevronLeft, ChevronRight, Home, Settings } from 'lucide-react'
+import { ArrowLeft, Download, ChevronLeft, ChevronRight, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
@@ -401,9 +401,6 @@ export default function PrintPage() {
           <Download className="h-4 w-4 mr-2" />
           {exporting ? 'Exporting...' : 'Export PDF'}
         </Button>
-        <Button size="sm" variant={showOptions ? 'default' : 'outline'} onClick={() => setShowOptions(!showOptions)} title="Toggle options">
-          <Settings className="h-4 w-4" />
-        </Button>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -584,8 +581,16 @@ export default function PrintPage() {
         </div>
 
         {/* Config panel */}
-        <div className={`border-l overflow-y-auto shrink-0 transition-all ${showOptions ? 'w-64 p-3' : 'w-0 p-0 overflow-hidden'}`}>
-          <div className="space-y-3 min-w-[14rem] text-sm">
+        <div className={`border-l shrink-0 flex flex-col transition-all duration-200 ${showOptions ? 'w-64' : 'w-10'}`}>
+          <button
+            onClick={() => setShowOptions(!showOptions)}
+            className="flex items-center gap-1 h-8 px-2 border-b bg-card shrink-0 select-none hover:bg-accent/30 transition-colors"
+          >
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${showOptions ? '' : 'rotate-180'}`} />
+            <span className={`text-sm font-semibold whitespace-nowrap ${showOptions ? '' : 'hidden'}`}>Settings</span>
+          </button>
+          <div className={`overflow-y-auto flex-1 ${showOptions ? 'p-3' : 'overflow-hidden'}`}>
+          <div className={`space-y-3 min-w-[14rem] text-sm ${showOptions ? '' : 'hidden'}`}>
 
           {/* Print mode */}
           <div className="space-y-1">
@@ -712,6 +717,7 @@ export default function PrintPage() {
             <p>{entries.length} card{entries.length !== 1 ? 's' : ''}</p>
           </div>
 
+          </div>
           </div>
         </div>
       </div>

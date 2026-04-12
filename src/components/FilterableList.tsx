@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import useFuzzyFilter from '@/hooks/useFuzzyFilter'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 import ZoomablePreview from '@/components/ZoomablePreview'
@@ -16,10 +17,13 @@ type FilterableListProps<T> = {
   getPreviewSrc?: (item: T) => string
   selectedKey?: string | null
   onSelect?: (key: string | null) => void
-  renderItem: (item: T, viewMode: ViewMode, selected: boolean) => ReactNode
+  selectedKeys?: Set<string>
+  onSelectedKeysChange?: (keys: Set<string>) => void
+  renderItem: (item: T, viewMode: ViewMode, selected: boolean, index: number) => ReactNode
   toolbar?: ReactNode
   actions?: ReactNode
   drawer?: ReactNode
+  subheader?: ReactNode
   empty?: ReactNode
   maxHeight?: string
   grid?: { colsKey: string; defaultCols?: number }
@@ -28,7 +32,8 @@ type FilterableListProps<T> = {
 
 const COL_WIDTH = 120
 
-export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, selectedKey, onSelect, renderItem, toolbar, actions, drawer, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
+export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, selectedKey, onSelect, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
+  const multiSelect = !!(selectedKeys && onSelectedKeysChange)
   const [filtered, filterInput] = useFuzzyFilter(items, getName)
   const { collapsed, toggle } = useCollapsible()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -115,6 +120,28 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
     })
   }
 
+  const isItemSelected = (item: T) => multiSelect ? selectedKeys!.has(getKey(item)) : getKey(item) === selectedKey
+  const handleItemClick = (item: T) => {
+    const k = getKey(item)
+    if (multiSelect) {
+      const next = new Set(selectedKeys!)
+      next.has(k) ? next.delete(k) : next.add(k)
+      onSelectedKeysChange!(next)
+    } else {
+      onSelect?.(k)
+    }
+  }
+  const allFilteredSelected = multiSelect && filtered.length > 0 && filtered.every(i => selectedKeys!.has(getKey(i)))
+  const selectAllFiltered = (checked: boolean) => {
+    if (!multiSelect) return
+    const next = new Set(selectedKeys!)
+    for (const item of filtered) {
+      const k = getKey(item)
+      if (checked) next.add(k); else next.delete(k)
+    }
+    onSelectedKeysChange!(next)
+  }
+
   const hasSubheader = true
   const selectedItem = selectedKey ? items.find(i => getKey(i) === selectedKey) : null
   const selectedIdx = selectedItem ? items.indexOf(selectedItem) : -1
@@ -158,6 +185,13 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
                 {actions}
               </div>
             </>) : (<>
+              {multiSelect && (
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none shrink-0">
+                  <Checkbox checked={allFilteredSelected} onCheckedChange={(checked) => selectAllFiltered(!!checked)} />
+                  <span className="text-xs">{items.filter(i => selectedKeys!.has(getKey(i))).length}/{items.length}</span>
+                </label>
+              )}
+              {subheader && <div className="flex items-center gap-1 ml-2">{subheader}</div>}
               {isGrid && <>
                 <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30" disabled={cols <= 1}
                   onClick={() => setColsUser(c => Math.max(1, c - 1))} title="Larger">
@@ -205,8 +239,8 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
                     src={getPreviewSrc!(item)}
                     name={getName(item)}
                     aspectRatio="1"
-                    selected={getKey(item) === selectedKey}
-                    onClick={() => onSelect?.(getKey(item))}
+                    selected={isItemSelected(item)}
+                    onClick={() => handleItemClick(item)}
                   />
                 </div>
               ))}
@@ -222,16 +256,16 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
           <div className="overflow-y-scroll min-h-0">
             {isGrid ? (
               <div className="grid gap-3 p-4" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-                {filtered.map(item => {
+                {filtered.map((item, idx) => {
                   const k = getKey(item)
-                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }} onClick={() => onSelect?.(k)}>{renderItem(item, mode, k === selectedKey)}</div>
+                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }} onClick={() => handleItemClick(item)}>{renderItem(item, mode, isItemSelected(item), idx)}</div>
                 })}
               </div>
             ) : (
-              <div className="space-y-2 p-2">
-                {filtered.map(item => {
+              <div className="p-1">
+                {filtered.map((item, idx) => {
                   const k = getKey(item)
-                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }} onClick={() => onSelect?.(k)}>{renderItem(item, mode, k === selectedKey)}</div>
+                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }} onClick={() => handleItemClick(item)}>{renderItem(item, mode, isItemSelected(item), idx)}</div>
                 })}
               </div>
             )}

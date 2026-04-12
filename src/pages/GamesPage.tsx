@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Pencil, Plus, Printer, Upload, Archive, Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,7 +14,7 @@ import { exportGameZip, importGameZip } from '../gameZip'
 import { getProvider, setProvider, createStorageFor, BACKENDS, type BackendKey } from '../storage'
 import { config } from '../config'
 
-function SettingsPanel({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const { collapsed, toggle } = useCollapsible()
   return (
     <div className="rounded-lg border bg-card">
@@ -31,6 +31,8 @@ export default function GamesPage() {
   const [expandedGame, _setExpandedGame] = useState<string | null>(() => localStorage.getItem('games:selectedGame'))
   const setExpandedGame = (id: string | null) => { _setExpandedGame(id); if (id) localStorage.setItem('games:selectedGame', id); else localStorage.removeItem('games:selectedGame') }
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') || 'games'
   const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
 
   useEffect(() => {
@@ -236,7 +238,7 @@ export default function GamesPage() {
       onDismissError={clearError}
       maxWidth="max-w-4xl"
     >
-      <Tabs defaultValue="games">
+      <Tabs value={tab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
         <TabsList>
           <TabsTrigger value="games">Games</TabsTrigger>
           <TabsTrigger value="settings">Storage</TabsTrigger>
@@ -302,7 +304,7 @@ export default function GamesPage() {
 
         <TabsContent value="settings">
           <div className="space-y-4">
-            <SettingsPanel title="Storage Backend">
+            <Section title="Storage Backend">
               <div className="space-y-3 p-3">
                 {BACKENDS.map(backend => {
                   const { unavailable, reason } = getBackendStatus(backend.key)
@@ -337,10 +339,10 @@ export default function GamesPage() {
                   )
                 })()}
               </div>
-            </SettingsPanel>
+            </Section>
 
             {selectedProvider === 'googleDrive' && (
-              <SettingsPanel title="Google Drive">
+              <Section title="Google Drive">
                 <div className="p-3">
                   {!gdConfigured ? (
                     <p className="text-sm text-muted-foreground">Set a valid <code className="text-xs bg-muted px-1 py-0.5 rounded">clientId</code> in <code className="text-xs bg-muted px-1 py-0.5 rounded">src/config.ts</code> to enable Google Drive.</p>
@@ -367,11 +369,11 @@ export default function GamesPage() {
                     </Button>
                   )}
                 </div>
-              </SettingsPanel>
+              </Section>
             )}
 
             {selectedProvider === 's3' && (
-              <SettingsPanel title="S3 Configuration">
+              <Section title="S3 Configuration">
                 <div className="space-y-3 p-3">
                   {[
                     { key: 'bucket', label: 'Bucket', placeholder: 'my-bucket' },
@@ -393,10 +395,10 @@ export default function GamesPage() {
                     </div>
                   ))}
                 </div>
-              </SettingsPanel>
+              </Section>
             )}
 
-            <SettingsPanel title="Copy Games Between Backends">
+            <Section title="Copy Games Between Backends">
               <div className="space-y-4 p-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -469,7 +471,7 @@ export default function GamesPage() {
                   <p className="text-sm text-muted-foreground">{migrationStatus}</p>
                 )}
               </div>
-            </SettingsPanel>
+            </Section>
           </div>
         </TabsContent>
       </Tabs>

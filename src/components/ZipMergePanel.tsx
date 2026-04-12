@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react'
-import { Upload } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Upload, Check, X } from 'lucide-react'
 import JSZip from 'jszip'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import SelectionList from './SelectionList'
-import type { SelectionItem } from './SelectionList'
+import { Checkbox } from '@/components/ui/checkbox'
+import FilterableList from './FilterableList'
 
 type DiffItem = { name: string; status: 'added' | 'updated' | 'unchanged'; key: string }
 
@@ -98,7 +97,7 @@ function computeDiff(zipData: ZipData, layouts: any[], collections: any[], gameF
       const colName = zipData.collections[colId]?.name ?? colId
       return cardList.map(({ card }) => ({
         key: `${colId}:${card.id}`, name: card.name ?? card.id, collectionName: colName,
-        status: 'updated' as const, // simplified: treat all as updates
+        status: 'updated' as const,
       }))
     }),
     fonts: Object.entries(zipData.fonts).map(([slot, entry]: [string, any]) => ({
@@ -118,11 +117,14 @@ const statusBadge = (status: string) => {
   return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-muted text-muted-foreground w-16 text-center inline-block">unchanged</span>
 }
 
+type MergedItem = { id: string; name: string; status: string; group: string }
+
 export default function ZipMergePanel({ gameId, storage, layouts, collections, gameFonts, gameImages, onStatusChange, onComplete }: ZipMergePanelProps) {
   const [zipData, setZipData] = useState<ZipData | null>(null)
   const [diff, setDiff] = useState<ZipDiff | null>(null)
   const [selection, setSelection] = useState<Set<string>>(new Set())
   const [importing, setImporting] = useState(false)
+  const [badgeFilter, setBadgeFilter] = useState('all')
 
   const loadZip = async (file: File) => {
     onStatusChange('Parsing zip...')
@@ -130,7 +132,6 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
     const d = computeDiff(data, layouts, collections, gameFonts, gameImages)
     setZipData(data)
     setDiff(d)
-    // Select all non-unchanged by default (prefixed to avoid key collisions across types)
     const allKeys = new Set([
       ...d.layouts.filter(i => i.status !== 'unchanged').map(i => `layout:${i.key}`),
       ...d.collections.filter(i => i.status !== 'unchanged').map(i => `collection:${i.key}`),
@@ -146,18 +147,13 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
     if (!zipData || !diff) return
     setImporting(true)
     try {
-      // URL rewriting not needed for merge
       let count = 0
-
-      // Layouts
       for (const item of diff.layouts) {
         if (!selection.has(`layout:${item.key}`)) continue
         onStatusChange(`Importing layout: ${item.name}`)
         await storage.saveLayout(gameId, item.key, zipData.layouts[item.key])
         count++
       }
-
-      // Fonts
       for (const item of diff.fonts) {
         if (!selection.has(`font:${item.key}`)) continue
         const entry = zipData.fonts[item.key]
@@ -169,8 +165,6 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
         await storage.uploadFont(gameId, f, item.key)
         count++
       }
-
-      // Images
       for (const item of diff.images) {
         if (!selection.has(`image:${item.key}`)) continue
         onStatusChange(`Importing image: ${item.name}`)
@@ -181,8 +175,6 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
         await storage.uploadImage(gameId, f)
         count++
       }
-
-      // Collections + cards
       for (const colItem of diff.collections) {
         if (!selection.has(`collection:${colItem.key}`)) continue
         const col = zipData.collections[colItem.key]
@@ -193,14 +185,12 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
         }
         count++
       }
-
       for (const cardItem of diff.cards) {
         if (!selection.has(`card:${cardItem.key}`)) continue
         const [colId, cardId] = cardItem.key.split(':')
         const cardData = zipData.cards[colId]?.find(c => c.card.id === cardId)?.card
         if (!cardData) continue
         onStatusChange(`Importing card: ${cardItem.name}`)
-        // Ensure collection exists
         const colExists = collections.find(c => c.id === colId) || diff.collections.find(c => c.key === colId && selection.has(`collection:${c.key}`))
         if (!colExists) {
           const col = zipData.collections[colId]
@@ -209,7 +199,6 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
         await storage.saveCard(gameId, colId, cardData.id, cardData)
         count++
       }
-
       onStatusChange(`Merged ${count} items.`)
       setZipData(null)
       setDiff(null)
@@ -221,84 +210,81 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
     }
   }
 
-  // Generate thumbnails for cards
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
-  useEffect(() => {
-    if (!zipData || !diff) { setThumbnails({}); return }
-    const layout = Object.values(zipData.layouts)[0]
-    if (!layout) return
-    let cancelled = false
-    ;(async () => {
-      const { renderCardSvg } = await import('../render')
-      const t: Record<string, string> = {}
-      for (const cardItem of diff.cards) {
-        if (cancelled) return
-        const [colId, cardId] = cardItem.key.split(':')
-        const cardData = zipData.cards[colId]?.find(c => c.card.id === cardId)?.card
-        if (!cardData) continue
-        try {
-          const svg = renderCardSvg(cardData, layout)
-          t[cardItem.key] = `data:image/svg+xml,${encodeURIComponent(svg)}`
-        } catch { /* skip */ }
-      }
-      if (!cancelled) setThumbnails(t)
-    })()
-    return () => { cancelled = true }
-  }, [zipData, diff])
+  const allItems: MergedItem[] = useMemo(() => {
+    if (!diff) return []
+    return [
+      ...diff.layouts.map(i => ({ id: `layout:${i.key}`, name: i.name, status: i.status, group: 'Layouts' })),
+      ...diff.collections.map(i => ({ id: `collection:${i.key}`, name: i.name, status: i.status, group: 'Collections' })),
+      ...diff.cards.map(i => ({ id: `card:${i.key}`, name: i.name, status: i.status, group: `Cards — ${i.collectionName}` })),
+      ...diff.fonts.map(i => ({ id: `font:${i.key}`, name: i.name, status: i.status, group: 'Fonts' })),
+      ...diff.images.map(i => ({ id: `image:${i.key}`, name: i.name, status: i.status, group: 'Images' })),
+    ]
+  }, [diff])
 
-  if (!diff) {
-    return (
-      <Button variant="outline" onClick={() => {
+  const filteredItems = badgeFilter === 'all' ? allItems : allItems.filter(i => i.status === badgeFilter)
+  const hasZip = !!diff
+
+  const badgeCounts = hasZip ? {
+    all: allItems.length,
+    added: allItems.filter(i => i.status === 'added').length,
+    updated: allItems.filter(i => i.status === 'updated').length,
+    unchanged: allItems.filter(i => i.status === 'unchanged').length,
+  } : null
+
+  const clear = () => { setZipData(null); setDiff(null); setSelection(new Set()); setBadgeFilter('all') }
+
+  return (
+    <FilterableList<MergedItem>
+      title="Merge from zip"
+      items={hasZip ? filteredItems : []}
+      getKey={(i) => i.id}
+      getName={(i) => i.name}
+      selectedKeys={selection}
+      onSelectedKeysChange={setSelection}
+      renderItem={(item, _vm, selected, idx) => (
+        <div className={`flex items-center gap-2 text-sm cursor-pointer select-none rounded px-2 py-0.5 ${selected ? (idx % 2 === 0 ? 'bg-primary/10' : 'bg-primary/5') : idx % 2 === 0 ? 'bg-muted/30' : ''} hover:bg-accent/40`}>
+          <Checkbox checked={selected} className="pointer-events-none shrink-0" tabIndex={-1} />
+          <span className="truncate flex-1">{item.name}</span>
+          {statusBadge(item.status)}
+        </div>
+      )}
+      toolbar={hasZip ? <>
+        <Button size="sm" variant="ghost" disabled={selection.size === 0 || importing} onClick={handleMerge} title={`Merge ${selection.size} items`}>
+          <Check className="h-4 w-4" />
+          <span className="text-xs ml-1">{selection.size}</span>
+        </Button>
+        <Button size="sm" variant="ghost" onClick={clear} title="Clear zip">
+          <X className="h-4 w-4" />
+        </Button>
+      </> : <Button size="sm" variant="ghost" onClick={() => {
         const input = document.createElement('input')
         input.type = 'file'; input.accept = '.zip'
         input.onchange = async () => { const f = input.files?.[0]; if (f) loadZip(f) }
         input.click()
-      }}>Load zip to merge</Button>
-    )
-  }
-
-  // Build SelectionItems with groups and badges
-  const allItems: SelectionItem[] = [
-    ...diff.layouts.map(i => ({ key: `layout:${i.key}`, name: i.name, group: 'Layouts', badge: statusBadge(i.status), filterKey: i.status })),
-    ...diff.collections.map(i => ({ key: `collection:${i.key}`, name: i.name, group: 'Collections', badge: statusBadge(i.status), filterKey: i.status })),
-    ...diff.cards.map(i => ({ key: `card:${i.key}`, name: i.name, group: `Cards — ${i.collectionName}`, badge: statusBadge(i.status), thumbnail: thumbnails[i.key], filterKey: i.status })),
-    ...diff.fonts.map(i => ({ key: `font:${i.key}`, name: i.name, group: 'Fonts', badge: statusBadge(i.status), filterKey: i.status })),
-    ...diff.images.map(i => ({ key: `image:${i.key}`, name: i.name, group: 'Images', badge: statusBadge(i.status), filterKey: i.status })),
-  ]
-
-  const allDiffItems = [...diff.layouts, ...diff.collections, ...diff.cards, ...diff.fonts, ...diff.images]
-  const filters = [
-    { key: 'added', label: 'added', count: allDiffItems.filter(i => i.status === 'added').length },
-    { key: 'updated', label: 'updated', count: allDiffItems.filter(i => i.status === 'updated').length },
-    { key: 'unchanged', label: 'unchanged', count: allDiffItems.filter(i => i.status === 'unchanged').length },
-  ]
-
-  const zipLayout = Object.values(zipData!.layouts)[0]
-  const totalSelected = selection.size
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
-      <SelectionList
-        title="Zip contents"
-        items={allItems}
-        selection={selection}
-        onSelectionChange={setSelection}
-        aspectRatio={zipLayout ? zipLayout.height / zipLayout.width : undefined}
-        filters={filters}
-      />
-      <div className="space-y-4 md:w-64">
-        <Card>
-          <CardContent className="pt-6 space-y-3">
-            <Button className="w-full" variant="outline" disabled={totalSelected === 0 || importing} onClick={handleMerge}>
-              <Upload className="h-4 w-4 mr-2" />
-              {importing ? 'Merging...' : `Merge ${totalSelected} items`}
-            </Button>
-            <Button className="w-full" variant="outline" onClick={() => { setZipData(null); setDiff(null); setSelection(new Set()); setThumbnails({}) }}>
-              Clear
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+      }} title="Load zip">
+        <Upload className="h-4 w-4" />
+      </Button>}
+      subheader={badgeCounts ? <>
+        {(['all', 'added', 'updated', 'unchanged'] as const).map(f => {
+          const count = badgeCounts[f]
+          const disabled = count === 0 && f !== 'all'
+          return (
+            <button
+              key={f}
+              disabled={disabled}
+              onClick={() => setBadgeFilter(f)}
+              className={`rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
+                badgeFilter === f
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : disabled
+                    ? 'bg-background border-input text-muted-foreground/40 cursor-default'
+                    : 'bg-background border-input hover:bg-accent/50'
+              }`}
+            >{f} <span className="text-[0.65rem] opacity-60 ml-0.5">{count}</span></button>
+          )
+        })}
+      </> : undefined}
+      empty={<p className="text-sm text-muted-foreground">{hasZip ? 'No matching items.' : 'Load a zip to preview changes.'}</p>}
+    />
   )
 }

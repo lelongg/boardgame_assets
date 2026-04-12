@@ -1,18 +1,24 @@
-import { useState, useEffect } from 'react'
-import { Upload } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Upload, X, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import CardSelectionList from './CardSelectionList'
-import type { SelectableCard } from './CardSelectionList'
+import { Checkbox } from '@/components/ui/checkbox'
+import FilterableList from './FilterableList'
 import { csvToCards } from '../cardsCsv'
-import type { CardLayout } from '../types'
+import type { CardData } from '../types'
+
+export type SelectableCard = CardData & { collectionId?: string; collectionName?: string }
+
+type MergedItem = {
+  id: string
+  name: string
+  kind: 'existing' | 'new'
+  status?: 'replace' | 'missing'
+}
 
 type ImportPanelProps = {
   gameId: string
   collectionId?: string
   cards: SelectableCard[]
-  layout?: CardLayout
-  gameFonts?: Record<string, { name: string; file: string }>
   storage: any
   onStatusChange?: (msg: string) => void
   onCardsChange?: () => void
@@ -20,29 +26,26 @@ type ImportPanelProps = {
 }
 
 export default function ImportPanel({
-  gameId, collectionId, cards, layout, gameFonts, storage,
+  gameId, collectionId, cards, storage,
   onStatusChange, onCardsChange, collections = [],
 }: ImportPanelProps) {
   const storageKey = `import:${gameId}:${collectionId}`
 
-  const [cardSelection, setCardSelection] = useState<Set<string>>(() => {
-    try { const s = localStorage.getItem(`${storageKey}:cardSel`); return s ? new Set(JSON.parse(s)) : new Set(cards.map(c => c.id)) } catch { return new Set(cards.map(c => c.id)) }
+  const [selection, setSelection] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem(`${storageKey}:sel`); return s ? new Set(JSON.parse(s)) : new Set(cards.map(c => c.id)) } catch { return new Set(cards.map(c => c.id)) }
   })
   const [importStaged, setImportStaged] = useState<{ name: string; fields: Record<string, string> }[]>(() => {
     try { const s = localStorage.getItem(`${storageKey}:staged`); return s ? JSON.parse(s) : [] } catch { return [] }
   })
-  const [importSelection, setImportSelection] = useState<Set<number>>(() => {
-    try { const s = localStorage.getItem(`${storageKey}:importSel`); return s ? new Set(JSON.parse(s)) : new Set() } catch { return new Set() }
-  })
-  // Persist state
+  const [badgeFilter, setBadgeFilter] = useState<'all' | 'added' | 'updated' | 'deleted'>('all')
+
   useEffect(() => { localStorage.setItem(`${storageKey}:staged`, JSON.stringify(importStaged)) }, [importStaged, storageKey])
-  useEffect(() => { localStorage.setItem(`${storageKey}:importSel`, JSON.stringify([...importSelection])) }, [importSelection, storageKey])
-  useEffect(() => { localStorage.setItem(`${storageKey}:cardSel`, JSON.stringify([...cardSelection])) }, [cardSelection, storageKey])
+  useEffect(() => { localStorage.setItem(`${storageKey}:sel`, JSON.stringify([...selection])) }, [selection, storageKey])
 
   const setStatus = (msg: string) => onStatusChange?.(msg)
 
   useEffect(() => {
-    setCardSelection(prev => {
+    setSelection(prev => {
       const valid = new Set(cards.map(c => c.id))
       const next = new Set([...prev].filter(id => valid.has(id)))
       return next.size === prev.size ? prev : next
@@ -52,97 +55,146 @@ export default function ImportPanel({
   const hasImport = importStaged.length > 0
   const existingByName = new Map(cards.map(c => [c.name, c]))
   const stagedNames = hasImport ? new Set(importStaged.map(c => c.name)) : null
+
+  const mergedItems: MergedItem[] = useMemo(() => {
+    const items: MergedItem[] = cards.map(c => {
+      const isReplaced = hasImport && stagedNames?.has(c.name)
+      const isMissing = hasImport && !stagedNames?.has(c.name)
+      return { id: c.id, name: c.name, kind: 'existing' as const, status: isReplaced ? 'replace' as const : isMissing ? 'missing' as const : undefined }
+    })
+    if (hasImport) {
+      importStaged.forEach((s, i) => {
+        if (!existingByName.has(s.name)) items.push({ id: `import-${i}`, name: s.name, kind: 'new' })
+      })
+    }
+    return items
+  }, [cards, importStaged])
+
+  const filteredItems = !hasImport ? [] : badgeFilter === 'all' ? mergedItems : mergedItems.filter(i => {
+    if (badgeFilter === 'added') return i.kind === 'new'
+    if (badgeFilter === 'updated') return i.status === 'replace'
+    if (badgeFilter === 'deleted') return i.status === 'missing'
+    return true
+  })
+
+  const selectedCount = mergedItems.filter(i => selection.has(i.id)).length
   const missingCards = hasImport ? cards.filter(c => !stagedNames!.has(c.name)) : []
-  const selectedImport = hasImport ? importStaged.filter((_, i) => importSelection.has(i)).length : 0
+  const selectedMissing = hasImport ? missingCards.filter(c => selection.has(c.id)) : []
+
+  const loadCsv = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.csv,text/csv'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      try {
+        const text = await file.text()
+        const parsed = csvToCards(text)
+        setImportStaged(parsed)
+        setSelection(new Set([...cards.map(c => c.id), ...parsed.map((_, i) => `import-${i}`)]))
+      } catch (e: any) { setStatus(`Parse error: ${e.message || e}`) }
+    }
+    input.click()
+  }
+
+  const handleImport = async () => {
+    try {
+      setStatus('Importing...')
+      const colNameToId = new Map(collections.map(c => [c.name, c.id]))
+      const toImport = importStaged.filter((s, i) => {
+        const existing = existingByName.get(s.name)
+        return existing ? selection.has(existing.id) : selection.has(`import-${i}`)
+      })
+      for (const card of toImport) {
+        const existing = existingByName.get(card.name)
+        let colId = collectionId || (existing as any)?.collectionId
+        if (!colId && (card as any).collectionName) {
+          colId = colNameToId.get((card as any).collectionName)
+          if (!colId) {
+            const defaultLayout = collections[0]?.layoutId ?? 'default'
+            const newCol = await storage.createCollection(gameId, (card as any).collectionName, defaultLayout)
+            colId = newCol.id
+            colNameToId.set((card as any).collectionName, colId)
+          }
+        }
+        if (!colId) continue
+        await storage.saveCard(gameId, colId, existing?.id ?? null, existing ? { ...existing, fields: card.fields } : card)
+      }
+      for (const card of selectedMissing) {
+        const colId = collectionId || (card as any)?.collectionId
+        if (!colId) continue
+        await storage.deleteCard(gameId, colId, card.id)
+      }
+      onCardsChange?.()
+      setImportStaged([])
+      const deleted = selectedMissing.length > 0 ? `, deleted ${selectedMissing.length}` : ''
+      setStatus(`Imported ${toImport.length} card${toImport.length !== 1 ? 's' : ''}${deleted}.`)
+    } catch (e: any) { setStatus(`Import error: ${e.message || e}`) }
+  }
+
+  const badge = (item: MergedItem) => {
+    if (!hasImport) return null
+    if (item.kind === 'new') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-green-100 text-green-700 w-16 text-center inline-block">added</span>
+    if (item.status === 'replace') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-amber-100 text-amber-700 w-16 text-center inline-block">updated</span>
+    if (item.status === 'missing') return <span className="text-xs px-1.5 py-0.5 rounded shrink-0 bg-red-100 text-red-700 w-16 text-center inline-block">deleted</span>
+    return null
+  }
+
+  const badgeCounts = hasImport ? {
+    all: mergedItems.length,
+    added: mergedItems.filter(i => i.kind === 'new').length,
+    updated: mergedItems.filter(i => i.status === 'replace').length,
+    deleted: mergedItems.filter(i => i.status === 'missing').length,
+  } : null
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4">
-      <CardSelectionList
-        cards={cards}
-        layout={layout}
-        gameFonts={gameFonts}
-        collectionId={collectionId}
-        selection={cardSelection}
-        onSelectionChange={setCardSelection}
-        importStaged={importStaged}
-        importSelection={importSelection}
-        onImportSelectionChange={setImportSelection}
-      />
-
-      <div className="space-y-4 md:w-64">
-        <Card>
-          <CardContent className="pt-6 space-y-3">
-            <Button className="w-full" variant="outline" onClick={() => {
-            const input = document.createElement('input')
-            input.type = 'file'
-            input.accept = '.csv,text/csv'
-            input.onchange = async () => {
-              const file = input.files?.[0]
-              if (!file) return
-              try {
-                const text = await file.text()
-                const parsed = csvToCards(text)
-                setImportStaged(parsed)
-                setImportSelection(new Set(parsed.map((_, i) => i)))
-                setCardSelection(new Set(cards.map(c => c.id)))
-              } catch (e: any) { setStatus(`Parse error: ${e.message || e}`) }
-            }
-            input.click()
-          }}>
-            Load CSV
-          </Button>
-          {hasImport && (() => {
-            const selectedMissing = missingCards.filter(c => cardSelection.has(c.id))
-            return <>
-              {selectedMissing.length > 0 && (
-                <p className="text-xs text-red-600">{selectedMissing.length} card{selectedMissing.length !== 1 ? 's' : ''} selected for deletion</p>
-              )}
-              <Button className="w-full" variant="outline" disabled={selectedImport === 0 && selectedMissing.length === 0} onClick={async () => {
-                try {
-                  setStatus('Importing...')
-                  // Build collection name → id map, create missing collections
-                  const colNameToId = new Map(collections.map(c => [c.name, c.id]))
-                  const toImport = importStaged.filter((_, i) => importSelection.has(i))
-                  for (const card of toImport) {
-                    const existing = existingByName.get(card.name)
-                    let colId = collectionId || (existing as any)?.collectionId
-                    // Resolve from CSV collectionName
-                    if (!colId && (card as any).collectionName) {
-                      colId = colNameToId.get((card as any).collectionName)
-                      if (!colId) {
-                        // Create the collection
-                        const defaultLayout = collections[0]?.layoutId ?? 'default'
-                        const newCol = await storage.createCollection(gameId, (card as any).collectionName, defaultLayout)
-                        colId = newCol.id
-                        colNameToId.set((card as any).collectionName, colId)
-                      }
-                    }
-                    if (!colId) continue
-                    await storage.saveCard(gameId, colId, existing?.id ?? null, existing ? { ...existing, fields: card.fields } : card)
-                  }
-                  for (const card of selectedMissing) {
-                    const colId = collectionId || (card as any)?.collectionId
-                    if (!colId) continue
-                    await storage.deleteCard(gameId, colId, card.id)
-                  }
-                  onCardsChange?.()
-                  setImportStaged([])
-                  setImportSelection(new Set())
-                  const deleted = selectedMissing.length > 0 ? `, deleted ${selectedMissing.length}` : ''
-                  setStatus(`Imported ${toImport.length} card${toImport.length !== 1 ? 's' : ''}${deleted}.`)
-                } catch (e: any) { setStatus(`Import error: ${e.message || e}`) }
-              }}>
-                <Upload className="h-4 w-4 mr-2" />
-                Import {selectedImport} card{selectedImport !== 1 ? 's' : ''}
-              </Button>
-              <Button className="w-full" variant="outline" onClick={() => { setImportStaged([]); setImportSelection(new Set()) }}>
-                Clear CSV
-              </Button>
-            </>
-          })()}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    <FilterableList<MergedItem>
+      title="Import CSV"
+      items={filteredItems}
+      getKey={(i) => i.id}
+      getName={(i) => i.name}
+      selectedKeys={selection}
+      onSelectedKeysChange={setSelection}
+      renderItem={(item, _vm, selected, idx) => (
+        <div className={`flex items-center gap-2 text-sm cursor-pointer select-none rounded px-2 py-0.5 ${selected ? (idx % 2 === 0 ? 'bg-primary/10' : 'bg-primary/5') : idx % 2 === 0 ? 'bg-muted/30' : ''} hover:bg-accent/40`}>
+          <Checkbox checked={selected} className="pointer-events-none shrink-0" tabIndex={-1} />
+          <span className="truncate flex-1">{item.name}</span>
+          {badge(item)}
+        </div>
+      )}
+      toolbar={hasImport ? <>
+        <Button size="sm" variant="ghost" disabled={selectedCount === 0 && selectedMissing.length === 0} onClick={handleImport} title={`Import ${selectedCount} card${selectedCount !== 1 ? 's' : ''}`}>
+          <Check className="h-4 w-4" />
+          <span className="text-xs ml-1">{selectedCount}</span>
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => { setImportStaged([]); setBadgeFilter('all') }} title="Clear CSV">
+          <X className="h-4 w-4" />
+        </Button>
+      </> : <Button size="sm" variant="ghost" onClick={loadCsv} title="Load CSV">
+        <Upload className="h-4 w-4" />
+      </Button>}
+      subheader={badgeCounts ? <>
+        {(['all', 'added', 'updated', 'deleted'] as const).map(f => {
+          const count = badgeCounts[f]
+          const disabled = count === 0 && f !== 'all'
+          return (
+            <button
+              key={f}
+              disabled={disabled}
+              onClick={() => setBadgeFilter(f)}
+              className={`rounded-full border px-2 py-0.5 text-xs font-medium transition-colors ${
+                badgeFilter === f
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : disabled
+                    ? 'bg-background border-input text-muted-foreground/40 cursor-default'
+                    : 'bg-background border-input hover:bg-accent/50'
+              }`}
+            >{f} <span className="text-[0.65rem] opacity-60 ml-0.5">{count}</span></button>
+          )
+        })}
+      </> : undefined}
+      empty={<p className="text-sm text-muted-foreground">{hasImport ? 'No matching cards.' : 'Load a CSV to preview changes.'}</p>}
+    />
   )
 }
