@@ -127,7 +127,7 @@ function FloatingSelect({
         </span>
       </div>
       <SelectContent>
-        {options.map((opt) => (
+        {options.filter((opt, i, arr) => arr.findIndex(o => o.value === opt.value) === i).map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
         ))}
       </SelectContent>

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { ArrowLeft, Copy, Plus, Check } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X } from 'lucide-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -7,6 +7,20 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ValueItemEditor, getEditorType } from '@/components/layout/ControlPanel'
+import PortalDropdown from '@/components/ui/PortalDropdown'
+import { Palette, Smile, Image, ToggleLeft } from 'lucide-react'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  flexRender,
+  type SortingState,
+  type ColumnFiltersState,
+  type ColumnOrderState,
+  type ColumnSizingState,
+} from '@tanstack/react-table'
 import LayoutEditorPanel from '@/components/layout/LayoutEditorPanel'
 import { FloatingInput, FloatingSelect } from '@/components/ui/floating-field'
 import ZoomablePreview from '@/components/ZoomablePreview'
@@ -22,6 +36,338 @@ import ImportPanel from '@/components/ImportPanel'
 import ZipMergePanel from '@/components/ZipMergePanel'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 
+const EDITOR_ICONS: Record<string, typeof Palette> = {
+  color: Palette,
+  emoji: Smile,
+  'image-upload': Image,
+  boolean: ToggleLeft,
+}
+
+function EditableCell({ value, onSave, bold, editorType, editorProps, allowedValues }: {
+  value: string; onSave: (v: string) => void; bold?: boolean
+  editorType?: string; editorProps?: Record<string, any>
+  allowedValues?: string[]
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  useEffect(() => { if (!editing) setDraft(value) }, [value, editing])
+
+  const AdornIcon = editorType ? EDITOR_ICONS[editorType] : null
+
+  const adornment = AdornIcon ? (
+    <PortalDropdown
+      align="right"
+      trigger={({ ref, onClick }) => (
+        <button ref={ref} onClick={(e) => { e.stopPropagation(); onClick() }} className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+          <AdornIcon className="h-3.5 w-3.5" />
+        </button>
+      )}
+    >
+      {(close) => (
+        <div className="p-2 min-w-[200px]" onClick={e => e.stopPropagation()}>
+          <ValueItemEditor
+            property={editorProps?.property ?? ''}
+            itemType={editorProps?.itemType}
+            value={value}
+            onChange={v => { onSave(String(v)); close() }}
+            layout={editorProps?.layout}
+            gameImages={editorProps?.gameImages}
+          />
+        </div>
+      )}
+    </PortalDropdown>
+  ) : null
+
+  if (allowedValues?.length) {
+    return (
+      <select
+        className="w-full bg-transparent text-sm px-1 py-0.5 rounded outline-none cursor-pointer focus:ring-1 focus:ring-primary"
+        value={value}
+        onChange={e => onSave(e.target.value)}
+      >
+        {!allowedValues.includes(value) && <option value={value}>{value || '-'}</option>}
+        {allowedValues.map(v => <option key={v} value={v}>{v || '(empty)'}</option>)}
+      </select>
+    )
+  }
+
+  return (
+    <div
+      className={`flex items-center rounded ring-1 ${editing ? 'ring-primary bg-background' : 'ring-transparent cursor-text'}`}
+      onClick={() => { if (!editing) setEditing(true) }}
+      onMouseDown={e => { if (editing && !(e.target as HTMLElement).closest('input')) e.preventDefault() }}
+    >
+      {editing ? (
+        <input
+          autoFocus
+          className={`flex-1 min-w-0 bg-transparent outline-none text-sm px-1 py-0.5 ${bold ? 'font-medium' : ''}`}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={() => { setEditing(false); if (draft !== value) onSave(draft) }}
+          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { setDraft(value); setEditing(false) } }}
+        />
+      ) : (
+        <div className={`flex-1 px-1 py-0.5 min-h-[1.5rem] truncate ${bold ? 'font-medium' : ''}`}>
+          {editorType === 'color' && draft ? (
+            <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ backgroundColor: draft }} />{draft}</span>
+          ) : draft || <span className="text-muted-foreground/50 italic">-</span>}
+        </div>
+      )}
+      {adornment
+        ? <div className={editing ? '' : 'invisible'}>{adornment}</div>
+        : null}
+    </div>
+  )
+}
+
+function DataSheet({ cards, storage, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange }: {
+  cards: any[]
+  storage: any
+  gameId: string
+  collectionId: string
+  layout?: any
+  gameImages?: { file: string; url: string; name: string }[]
+  onCardsChange: (cards: any[]) => void
+  onStatusChange: (msg: string) => void
+}) {
+  const stateKey = `dataSheet:${gameId}:${collectionId}`
+  const loadState = <T,>(key: string, fallback: T): T => {
+    try { const v = localStorage.getItem(`${stateKey}:${key}`); return v ? JSON.parse(v) : fallback } catch { return fallback }
+  }
+  const saveState = (key: string, value: any) => {
+    try { localStorage.setItem(`${stateKey}:${key}`, JSON.stringify(value)) } catch {}
+  }
+
+  const [sorting, setSorting] = useState<SortingState>(() => loadState('sorting', []))
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [globalFilter, setGlobalFilter] = useState('')
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => loadState('order', []))
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => loadState('sizing', {}))
+
+  useEffect(() => { saveState('sorting', sorting) }, [sorting])
+  useEffect(() => { saveState('order', columnOrder) }, [columnOrder])
+  useEffect(() => { saveState('sizing', columnSizing) }, [columnSizing])
+
+  const fieldNames = useMemo(() => [...new Set(cards.flatMap(c => Object.keys(c.fields ?? {})))], [cards])
+
+  const saveCard = async (cardId: string, updated: any) => {
+    onCardsChange(cards.map(c => c.id === cardId ? updated : c))
+    try { await storage.saveCard(gameId, collectionId, cardId, updated) }
+    catch { onStatusChange('Error saving card.') }
+  }
+
+  const naturalSort = (a: any, b: any, columnId: string) => {
+    const va = String(a.getValue(columnId) ?? '')
+    const vb = String(b.getValue(columnId) ?? '')
+    return va.localeCompare(vb, undefined, { numeric: true, sensitivity: 'base' })
+  }
+
+  const columns = useMemo(() => [
+    {
+      accessorKey: 'name',
+      header: 'Name',
+      sortingFn: naturalSort,
+      cell: ({ row }: any) => (
+        <EditableCell
+          bold
+          value={row.original.name ?? ''}
+          onSave={v => { const c = row.original; saveCard(c.id, { ...c, name: v }) }}
+        />
+      ),
+    },
+    ...fieldNames.map(f => {
+      const property = f.includes(':') ? f.split(':')[0] : f
+      const edType = getEditorType(property)
+      const hasSpecialEditor = edType !== 'text' && edType !== 'number' && edType !== 'select' && edType !== 'richtext'
+      const allowed = layout?.bindingMeta?.[f]?.values as string[] | undefined
+      return {
+        id: f,
+        accessorFn: (row: any) => row.fields?.[f] ?? '',
+        header: f.includes(':') ? f.split(':').pop()! : f,
+        sortingFn: naturalSort,
+        cell: ({ row }: any) => (
+          <EditableCell
+            value={row.original.fields?.[f] ?? ''}
+            onSave={v => { const c = row.original; saveCard(c.id, { ...c, fields: { ...c.fields, [f]: v } }) }}
+            allowedValues={allowed}
+            editorType={!allowed?.length && hasSpecialEditor ? edType : undefined}
+            editorProps={!allowed?.length && hasSpecialEditor ? { property, layout, gameImages } : undefined}
+          />
+        ),
+      }
+    }),
+  ], [fieldNames, cards])
+
+  const table = useReactTable({
+    data: cards,
+    columns,
+    state: { sorting, columnFilters, globalFilter, columnOrder, columnSizing },
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnOrderChange: setColumnOrder,
+    onColumnSizingChange: setColumnSizing,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    columnResizeMode: 'onChange',
+    initialState: { pagination: { pageSize: 50 } },
+  })
+
+  const dragCol = useRef<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+
+  if (cards.length === 0) {
+    return <p className="text-sm text-muted-foreground text-center py-8">No cards yet.</p>
+  }
+
+  const SortIcon = ({ column }: { column: any }) => {
+    const sorted = column.getIsSorted()
+    if (sorted === 'asc') return <ArrowUp className="h-3 w-3" />
+    if (sorted === 'desc') return <ArrowDown className="h-3 w-3" />
+    return <ArrowUpDown className="h-3 w-3 opacity-30" />
+  }
+
+  const resetState = () => {
+    setSorting([]); setColumnOrder([]); setColumnSizing({})
+    setColumnFilters([]); setGlobalFilter('')
+    ;['sorting', 'order', 'sizing'].forEach(k => { try { localStorage.removeItem(`${stateKey}:${k}`) } catch {} })
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="relative max-w-xs flex-1">
+          <Input
+            value={globalFilter}
+            onChange={e => setGlobalFilter(e.target.value)}
+            placeholder="Search all columns..."
+            className="h-8 text-sm pr-7"
+          />
+          {globalFilter && (
+            <button className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setGlobalFilter('')}>
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <Button size="sm" variant="ghost" onClick={resetState} title="Reset sheet">
+          <RotateCcw className="h-3.5 w-3.5" />
+        </Button>
+        <span className="text-xs text-muted-foreground ml-auto">
+          {table.getFilteredRowModel().rows.length} / {cards.length} cards
+        </span>
+      </div>
+      <div className="overflow-auto rounded-lg border max-h-[75vh]">
+        <table className="text-sm" style={{ minWidth: '100%', width: table.getCenterTotalSize() }}>
+          <thead className="sticky top-0 bg-muted z-10">
+            {table.getHeaderGroups().map((hg: any) => (
+              <tr key={hg.id}>
+                {hg.headers.map((header: any) => (
+                  <th
+                    key={header.id}
+                    className={`relative px-2 py-1 text-left font-medium text-muted-foreground whitespace-nowrap border-b select-none group transition-colors ${dropTarget === header.column.id ? 'bg-primary/10' : ''}`}
+                    style={{ width: header.getSize() }}
+                    draggable
+                    onDragStart={e => {
+                      if (!dragCol.current) { e.preventDefault(); return }
+                    }}
+                    onDragOver={e => { e.preventDefault(); if (dragCol.current && dragCol.current !== header.column.id) setDropTarget(header.column.id) }}
+                    onDragLeave={() => { if (dropTarget === header.column.id) setDropTarget(null) }}
+                    onDrop={() => {
+                      if (dragCol.current && dragCol.current !== header.column.id) {
+                        setColumnOrder(prev => {
+                          const current = prev.length ? [...prev] : table.getAllLeafColumns().map((c: any) => c.id)
+                          const from = current.indexOf(dragCol.current!)
+                          const to = current.indexOf(header.column.id)
+                          if (from >= 0 && to >= 0 && from !== to) {
+                            current.splice(from, 1)
+                            current.splice(to, 0, dragCol.current!)
+                            return current
+                          }
+                          return prev
+                        })
+                      }
+                      dragCol.current = null; setDropTarget(null)
+                    }}
+                    onDragEnd={() => { dragCol.current = null; setDropTarget(null) }}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-0.5">
+                        <div
+                          onMouseDown={() => { dragCol.current = header.column.id }}
+                          onMouseUp={() => { dragCol.current = null }}
+                          className="shrink-0 cursor-grab opacity-0 group-hover:opacity-40 active:opacity-70"
+                        >
+                          <GripVertical className="h-3 w-3" />
+                        </div>
+                        <button
+                          className="flex items-center gap-1 hover:text-foreground transition-colors min-w-0 truncate"
+                          onClick={header.column.getToggleSortingHandler()}
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          <SortIcon column={header.column} />
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          className="w-full h-6 rounded border bg-background px-1 pr-5 text-xs font-normal focus:ring-1 focus:ring-primary outline-none"
+                          placeholder="Filter..."
+                          value={(header.column.getFilterValue() as string) ?? ''}
+                          onChange={e => header.column.setFilterValue(e.target.value || undefined)}
+                        />
+                        {header.column.getFilterValue() && (
+                          <button
+                            className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            onClick={() => header.column.setFilterValue(undefined)}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div
+                      onMouseDown={header.getResizeHandler()}
+                      onTouchStart={header.getResizeHandler()}
+                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary"
+                    />
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row: any) => (
+              <tr key={row.id} className="border-b last:border-0 hover:bg-muted/30">
+                {row.getVisibleCells().map((cell: any) => (
+                  <td key={cell.id} className="px-2 py-0.5 overflow-hidden" style={{ width: cell.column.getSize() }}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {table.getPageCount() > 1 && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
   const navigate = useNavigate()
@@ -29,7 +375,8 @@ export default function GameEditorPage() {
   const [game, setGame] = useState<any>(null)
   const [collection, setCollection] = useState<any>(null)
   const [cards, setCards] = useState<any[]>([])
-  const [selectedCard, setSelectedCard] = useState<any>(null)
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const selectedCard = useMemo(() => cards.find(c => c.id === selectedCardId) ?? null, [cards, selectedCardId])
   const [cardPreview, setCardPreview] = useState<string>('')
   const [editingName, setEditingName] = useState(false)
   const [editingColName, setEditingColName] = useState(false)
@@ -133,16 +480,10 @@ export default function GameEditorPage() {
     return () => clearTimeout(timer)
   }, [selectedCard, gameId, storage])
 
-  const selectCard = async (s: any, cardId: string) => {
-    try {
-      if (!gameId || !collectionId) return
-      const cardData = await s.getCard(gameId, collectionId, cardId)
-      setSavedCardJson(JSON.stringify(cardData))
-      setSelectedCard(cardData)
-      localStorage.setItem(`editor:${gameId}:${collectionId}:selectedCard`, cardId)
-    } catch (error) {
-      console.error('Error loading card:', error)
-    }
+  const selectCard = (_s: any, cardId: string) => {
+    setSelectedCardId(cardId)
+    setSavedCardJson(JSON.stringify(cards.find(c => c.id === cardId) ?? ''))
+    if (gameId && collectionId) localStorage.setItem(`editor:${gameId}:${collectionId}:selectedCard`, cardId)
   }
 
   const loadGame = async (s: any) => {
@@ -172,9 +513,10 @@ export default function GameEditorPage() {
       setCards(cardList)
 
       if (cardList.length > 0) {
-        const savedCardId = localStorage.getItem(`editor:${gameId}:${collectionId}:selectedCard`)
-        const cardToSelect = savedCardId && cardList.some((c: any) => c.id === savedCardId) ? savedCardId : cardList[0].id
-        await selectCard(s, cardToSelect)
+        const saved = localStorage.getItem(`editor:${gameId}:${collectionId}:selectedCard`)
+        const cardToSelect = saved && cardList.some((c: any) => c.id === saved) ? saved : cardList[0].id
+        setSelectedCardId(cardToSelect)
+        setSavedCardJson(JSON.stringify(cardList.find((c: any) => c.id === cardToSelect) ?? ''))
       }
 
       setStatus('Ready.')
@@ -188,7 +530,7 @@ export default function GameEditorPage() {
     const cardName = name?.trim() || `New Card ${cards.length + 1}`
     const newCard = { id: crypto.randomUUID(), name: cardName, fields: {} }
     setCards(prev => [...prev, newCard as any])
-    setSelectedCard(newCard)
+    setSelectedCardId(newCard.id)
     setSavedCardJson(JSON.stringify(newCard))
     try {
       await storage.saveCard(gameId, collectionId, newCard.id, newCard)
@@ -199,28 +541,31 @@ export default function GameEditorPage() {
   }
 
   const handleDeleteCard = async () => {
-    if (!gameId || !collectionId || !selectedCard) return
+    if (!gameId || !collectionId || !selectedCardId) return
     const prevCards = cards
-    const prevCard = selectedCard
-    const updatedCards = cards.filter(c => c.id !== selectedCard.id)
+    const prevId = selectedCardId
+    const idx = cards.findIndex(c => c.id === selectedCardId)
+    const updatedCards = cards.filter(c => c.id !== selectedCardId)
     setCards(updatedCards)
     if (updatedCards.length > 0) {
-      await selectCard(storage, updatedCards[0].id)
+      const nextIdx = Math.min(idx, updatedCards.length - 1)
+      setSelectedCardId(updatedCards[nextIdx].id)
     } else {
-      setSelectedCard(null)
+      setSelectedCardId(null)
       setCardPreview('')
     }
     try {
-      await storage.deleteCard(gameId, collectionId, prevCard.id)
+      await storage.deleteCard(gameId, collectionId, prevId)
     } catch {
       setCards(prevCards)
-      setSelectedCard(prevCard)
+      setSelectedCardId(prevId)
       setStatus('Error deleting card.')
     }
   }
 
-  const updateCardField = (field: string, value: any) => {
-    setSelectedCard((prev: any) => ({ ...prev, [field]: value }))
+  const updateCard = (fn: (card: any) => any) => {
+    if (!selectedCardId) return
+    setCards(prev => prev.map(c => c.id === selectedCardId ? fn(c) : c))
   }
 
   // Layout handlers
@@ -236,7 +581,7 @@ export default function GameEditorPage() {
   if (!game) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p className="text-muted-foreground">{status}</p>
+        <p className="text-muted-foreground animate-pulse">{status}</p>
       </div>
     )
   }
@@ -304,6 +649,7 @@ export default function GameEditorPage() {
         <Tabs defaultValue={localStorage.getItem(`editor:${gameId}:tab`) || 'cards'} onValueChange={(v) => localStorage.setItem(`editor:${gameId}:tab`, v)} className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="cards">Cards</TabsTrigger>
+            <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="layout">Layout</TabsTrigger>
             <TabsTrigger value="back">Back</TabsTrigger>
             <TabsTrigger value="import">Import</TabsTrigger>
@@ -321,19 +667,19 @@ export default function GameEditorPage() {
                 viewMode={{ key: `editor:${gameId}:viewMode`, default: 'compact' }}
                 grid={{ colsKey: `editor:${gameId}:galleryCols`, defaultCols: 2 }}
                 getPreviewSrc={(card: any) => cardThumbnails[card.id] ?? ''}
-                selectedKey={selectedCard?.id ?? null}
-                onSelect={(key) => { if (key) selectCard(storage, key); else setSelectedCard(null) }}
+                selectedKey={selectedCardId}
+                onSelect={(key) => { if (key) selectCard(storage, key); else setSelectedCardId(null) }}
                 actions={selectedCard && (<>
                   <button className="rounded p-1 text-muted-foreground hover:text-primary transition-colors" title="Copy" onClick={async () => {
                     const card = selectedCard
                     const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
                     setCards(prev => [...prev, opt])
-                    setSelectedCard(opt)
+                    setSelectedCardId(opt.id)
                     setSavedCardJson(JSON.stringify(opt))
                     try {
                       const copy = await storage.copyCard(gameId, collectionId, card.id)
                       setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
-                      setSelectedCard(copy)
+                      setSelectedCardId(copy.id)
                       setSavedCardJson(JSON.stringify(copy))
                     } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
                   }}>
@@ -364,18 +710,14 @@ export default function GameEditorPage() {
                     <Button size="sm" variant="outline" type="submit" className="w-full border-green-600 text-green-600 hover:bg-green-600 hover:text-white"><Check className="h-4 w-4" /></Button>
                   </form>
                 ) : undefined}
-                renderItem={(card: any, vm) => vm === 'gallery' ? (
+                renderItem={(card: any, vm, selected) => vm === 'gallery' ? (
                   <CardThumbnail
                     src={cardThumbnails[card.id] ?? ''}
                     name={card.name ?? ''}
-                    selected={selectedCard?.id === card.id}
-                    onClick={() => selectCard(storage, card.id)}
+                    selected={selected}
                   />
                 ) : (
-                  <ListItem
-                    selected={selectedCard?.id === card.id}
-                    onClick={() => selectCard(storage, card.id)}
-                  >
+                  <ListItem selected={selected}>
                     <div className={vm === 'detailed' ? 'flex items-center gap-3' : ''}>
                       {vm === 'detailed' && cardThumbnails[card.id] && (
                         <LoadingImg src={cardThumbnails[card.id]} alt="" className="h-16 w-auto rounded border object-contain shrink-0 bg-white" />
@@ -396,7 +738,7 @@ export default function GameEditorPage() {
                       <FloatingInput
                         label="Name"
                         value={selectedCard.name || ''}
-                        onChange={(e) => updateCardField('name', e.target.value)}
+                        onChange={(e) => updateCard(c => ({ ...c, name: e.target.value }))}
                       />
 
                       {game?.layout?.root && (() => {
@@ -426,7 +768,7 @@ export default function GameEditorPage() {
                         if (fieldMap.size === 0) return null
 
                         const setField = (fieldKey: string, val: string) =>
-                          setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldKey]: val } }))
+                          updateCard(c => ({ ...c, fields: { ...c.fields, [fieldKey]: val } }))
 
                         const getField = (property: string, field: string) =>
                           selectedCard.fields?.[`${property}:${field}`] ?? selectedCard.fields?.[field] ?? bm[`${property}:${field}`]?.default ?? ''
@@ -492,6 +834,19 @@ export default function GameEditorPage() {
                 <ZoomablePreview src={cardPreview} alt="Card preview" backImage={collection?.back} backFit={collection?.backFit} />
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="data">
+            <DataSheet
+              cards={cards}
+              storage={storage}
+              gameId={gameId!}
+              collectionId={collectionId!}
+              layout={game?.layout}
+              gameImages={gameImages}
+              onCardsChange={setCards}
+              onStatusChange={setStatus}
+            />
           </TabsContent>
 
           <TabsContent value="layout">

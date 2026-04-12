@@ -11,10 +11,11 @@ type CollapsibleHeaderProps = {
 export default function CollapsibleHeader({ children, toolbar, collapsed = false, onToggle }: CollapsibleHeaderProps) {
   return (
     <div
-      className="flex items-center gap-1 h-10 shrink-0 px-2 border-b bg-card z-10 cursor-pointer select-none"
-      onClick={onToggle}
+      className="flex items-center gap-1 h-10 shrink-0 px-2 border-b bg-card z-10 select-none"
     >
-      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${collapsed ? '-rotate-90' : ''}`} />
+      <button type="button" onClick={onToggle} className="shrink-0 p-0.5 rounded hover:bg-accent/50 cursor-pointer transition-colors">
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+      </button>
       {toolbar && <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>{toolbar}</div>}
       {children}
     </div>

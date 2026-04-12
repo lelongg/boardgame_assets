@@ -3,6 +3,7 @@ import { createStorage } from '../storage'
 
 export default function useStorage() {
   const [storage, setStorage] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState('Loading...')
   const [errorDetail, setErrorDetail] = useState<string | null>(null)
   const [isAuthorized, setIsAuthorized] = useState(false)
@@ -27,11 +28,13 @@ export default function useStorage() {
       } catch (error) {
         if (cancelled) return
         setError('Storage initialization failed', error)
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
     init()
     return () => { cancelled = true }
   }, [])
 
-  return { storage, status, setStatus, setError, errorDetail, clearError, isAuthorized, setIsAuthorized }
+  return { storage, loading, status, setStatus, setError, errorDetail, clearError, isAuthorized, setIsAuthorized }
 }

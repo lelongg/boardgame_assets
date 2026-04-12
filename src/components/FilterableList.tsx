@@ -16,7 +16,7 @@ type FilterableListProps<T> = {
   getPreviewSrc?: (item: T) => string
   selectedKey?: string | null
   onSelect?: (key: string | null) => void
-  renderItem: (item: T, viewMode: ViewMode) => ReactNode
+  renderItem: (item: T, viewMode: ViewMode, selected: boolean) => ReactNode
   toolbar?: ReactNode
   actions?: ReactNode
   drawer?: ReactNode
@@ -115,7 +115,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
     })
   }
 
-  const hasSubheader = isGrid || actions
+  const hasSubheader = true
   const selectedItem = selectedKey ? items.find(i => getKey(i) === selectedKey) : null
   const selectedIdx = selectedItem ? items.indexOf(selectedItem) : -1
   const previewSrc = selectedItem && getPreviewSrc ? getPreviewSrc(selectedItem) : ''
@@ -169,6 +169,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
                   <Plus className="h-3.5 w-3.5" />
                 </button>
               </>}
+
               <div className="flex items-center gap-1 ml-auto">
                 {isGrid && getPreviewSrc && (
                   <button
@@ -223,14 +224,14 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
               <div className="grid gap-3 p-4" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                 {filtered.map(item => {
                   const k = getKey(item)
-                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }}>{renderItem(item, mode)}</div>
+                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }} onClick={() => onSelect?.(k)}>{renderItem(item, mode, k === selectedKey)}</div>
                 })}
               </div>
             ) : (
               <div className="space-y-2 p-2">
                 {filtered.map(item => {
                   const k = getKey(item)
-                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }}>{renderItem(item, mode)}</div>
+                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }} onClick={() => onSelect?.(k)}>{renderItem(item, mode, k === selectedKey)}</div>
                 })}
               </div>
             )}

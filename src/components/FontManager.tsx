@@ -93,7 +93,10 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
         delete updated[slotKey]
         onFontsChange(updated)
       }
-      if (selectedFont === slotKey) onSelectFont(null)
+      const entries = Object.keys(fonts).filter(k => k !== slotKey)
+      const idx = Object.keys(fonts).indexOf(slotKey)
+      const nextIdx = Math.min(idx, entries.length - 1)
+      onSelectFont(entries[nextIdx] ?? null)
       onStatus('Font deleted.')
     } catch (err: any) {
       onStatus(`Error: ${err.message}`)
@@ -111,18 +114,19 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
         items={fontEntries}
         getKey={([key]) => key}
         getName={([, font]) => font.name}
+        selectedKey={selectedFont}
+        onSelect={onSelectFont}
         toolbar={
           <Button size="sm" variant="ghost" onClick={() => setShowAddForm(true)} title="Add font">
             <Plus className="h-4 w-4" />
           </Button>
         }
+        actions={selectedFont ? (
+          <ConfirmButton iconOnly onConfirm={() => handleDelete(selectedFont)} disabled={loading} />
+        ) : undefined}
         empty={!showAddForm ? <p className="text-sm text-muted-foreground">No fonts yet.</p> : undefined}
-        renderItem={([key, font]) => (
-          <ListItem
-            selected={selectedFont === key}
-            onClick={() => onSelectFont(selectedFont === key ? null : key)}
-            actions={<ConfirmButton onConfirm={() => handleDelete(key)} disabled={loading} />}
-          >
+        renderItem={([, font], _vm, selected) => (
+          <ListItem selected={selected}>
             <span className="font-medium">{font.name}</span>
             <span className="ml-2 text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
           </ListItem>

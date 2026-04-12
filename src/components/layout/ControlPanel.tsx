@@ -290,13 +290,14 @@ function ImageGalleryPicker({ images, selected, onSelect }: { images: { file: st
       getName={img => img.name}
       grid={{ colsKey: 'pickerCols' }}
       maxHeight="12rem"
-      renderItem={(img) => (
+      selectedKey={images.find(i => i.url === selected)?.file}
+      onSelect={(key) => { const img = images.find(i => i.file === key); if (img) onSelect(img.url) }}
+      renderItem={(img, _vm, sel) => (
         <CardThumbnail
           src={img.url}
           name={img.name}
           aspectRatio="1"
-          selected={selected === img.url}
-          onClick={() => onSelect(img.url)}
+          selected={sel}
         />
       )}
     />
@@ -535,14 +536,15 @@ function BindingEditor({ property, itemType, layout, gameImages, onUploadFile, b
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [valuesCollapsed, setValuesCollapsed] = useState(true)
   const field = binding?.field ?? ''
-  const values = externalValues
+  const values = externalValues.filter((s, i) => externalValues.indexOf(s) === i)
 
   const updateField = (f: string) => {
     onChange(f ? { field: f } : { field: '' })
   }
   const updateValues = (v: string[]) => {
     if (!field) return
-    onValuesChange(v.length ? v : null)
+    const unique = v.filter((s, i) => v.indexOf(s) === i)
+    onValuesChange(unique.length ? unique : null)
   }
   const updateAt = (i: number, v: string) => { const next = [...values]; next[i] = v; updateValues(next) }
   const removeAt = (i: number) => { updateValues(values.filter((_, j) => j !== i)); setSelectedIdx(null) }
