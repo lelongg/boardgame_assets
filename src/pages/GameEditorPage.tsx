@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Copy, Plus, List, LayoutGrid } from 'lucide-react'
+import { ArrowLeft, Copy, Plus, Check } from 'lucide-react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -10,18 +10,21 @@ import NodeTree from '@/components/layout/NodeTree'
 import PropertyPanel from '@/components/layout/PropertyPanel'
 import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/layoutHelpers'
 import { applyPropertyChange } from '@/components/layout/applyPropertyChange'
-import { ValueItemEditor } from '@/components/layout/ControlPanel'
+import { ValueItemEditor, getEditorType } from '@/components/layout/ControlPanel'
+import { FloatingInput, FloatingSelect } from '@/components/ui/floating-field'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import LayoutPreview from '@/components/LayoutPreview'
 import ConfirmButton from '@/components/ConfirmButton'
 import LoadingImg from '@/components/LoadingImg'
 import FilterableList from '@/components/FilterableList'
 import ListItem from '@/components/ListItem'
+import CardThumbnail from '@/components/CardThumbnail'
 import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
 import FilesPanel from '@/components/FilesPanel'
 import ImportPanel from '@/components/ImportPanel'
 import ZipMergePanel from '@/components/ZipMergePanel'
+import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 
 export default function GameEditorPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId: string }>()
@@ -41,8 +44,11 @@ export default function GameEditorPage() {
   const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
   const [gameImages, setGameImages] = useState<{ file: string; url: string; name: string }[]>([])
   const [allLayouts, setAllLayouts] = useState<any[]>([])
-  const [detailedView, setDetailedView] = useState(false)
   const [cardThumbnails, setCardThumbnails] = useState<Record<string, string>>({})
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [newCardName, setNewCardName] = useState('')
+  const cardEditor = useCollapsible()
+  const propertyEditor = useCollapsible()
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
   const [cardSelection, _setCardSelection] = useState<Set<string>>(() => loadSet('cardSel'))
@@ -101,9 +107,9 @@ export default function GameEditorPage() {
     return () => { cancelled = true; clearTimeout(timer) }
   }, [selectedCard, game?.layout, gameId, collection?.back])
 
-  // Generate thumbnails for detailed view
+  // Generate thumbnails for detailed/gallery views
   useEffect(() => {
-    if (!detailedView || !game?.layout || !gameId || cards.length === 0) return
+    if (!game?.layout || !gameId || cards.length === 0) return
     let cancelled = false
     ;(async () => {
       const { renderCardSvg } = await import('../render')
@@ -118,7 +124,7 @@ export default function GameEditorPage() {
       if (!cancelled) setCardThumbnails(thumbs)
     })()
     return () => { cancelled = true }
-  }, [detailedView, cards, game?.layout, gameId])
+  }, [cards, game?.layout, gameId])
 
   // Auto-save card
   useEffect(() => {
@@ -185,9 +191,10 @@ export default function GameEditorPage() {
     }
   }
 
-  const handleCreateCard = async () => {
+  const handleCreateCard = async (name?: string) => {
     if (!gameId || !collectionId) return
-    const newCard = { id: crypto.randomUUID(), name: `New Card ${cards.length + 1}`, fields: {} }
+    const cardName = name?.trim() || `New Card ${cards.length + 1}`
+    const newCard = { id: crypto.randomUUID(), name: cardName, fields: {} }
     setCards(prev => [...prev, newCard as any])
     setSelectedCard(newCard)
     setSavedCardJson(JSON.stringify(newCard))
@@ -393,44 +400,73 @@ export default function GameEditorPage() {
           </TabsList>
 
           <TabsContent value="cards">
-            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
               <FilterableList
                 title="Cards"
                 items={cards}
                 getKey={(card: any) => card.id}
                 getName={(card: any) => card.name ?? ''}
-                toolbar={<>
-                  <Button size="sm" variant="ghost" onClick={() => setDetailedView(!detailedView)} title={detailedView ? 'Compact view' : 'Detailed view'}>
-                    {detailedView ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+                maxHeight="60vh"
+                viewMode={{ key: `editor:${gameId}:viewMode`, default: 'compact' }}
+                grid={{ colsKey: `editor:${gameId}:galleryCols`, defaultCols: 2 }}
+                getPreviewSrc={(card: any) => cardThumbnails[card.id] ?? ''}
+                selectedKey={selectedCard?.id ?? null}
+                onSelect={(key) => { if (key) selectCard(storage, key); else setSelectedCard(null) }}
+                actions={selectedCard && (<>
+                  <button className="rounded p-1 text-muted-foreground hover:text-primary transition-colors" title="Copy" onClick={async () => {
+                    const card = selectedCard
+                    const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
+                    setCards(prev => [...prev, opt])
+                    setSelectedCard(opt)
+                    setSavedCardJson(JSON.stringify(opt))
+                    try {
+                      const copy = await storage.copyCard(gameId, collectionId, card.id)
+                      setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
+                      setSelectedCard(copy)
+                      setSavedCardJson(JSON.stringify(copy))
+                    } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
+                  }}>
+                    <Copy className="h-4 w-4" />
+                  </button>
+                  <ConfirmButton iconOnly onConfirm={handleDeleteCard} />
+                </>)}
+                toolbar={
+                  <Button size="sm" variant="ghost" onClick={() => { setShowCreateForm(v => { if (!v) setNewCardName(`Card ${cards.length + 1}`); else setNewCardName(''); return !v }) }} title={showCreateForm ? 'Cancel' : 'New card'}>
+                    <Plus className={`h-4 w-4 transition-transform ${showCreateForm ? 'rotate-45' : ''}`} />
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={handleCreateCard} title="New card">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </>}
-                renderItem={(card: any) => (
+                }
+                drawer={showCreateForm ? (
+                  <form className="px-2 py-2 border-b space-y-2" onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (!newCardName.trim()) return
+                    await handleCreateCard(newCardName)
+                    setNewCardName('')
+                    setShowCreateForm(false)
+                  }}>
+                    <Input
+                      autoFocus
+                      value={newCardName}
+                      onChange={(e) => setNewCardName(e.target.value)}
+                      placeholder="Card name"
+                      className="h-8 text-sm"
+                    />
+                    <Button size="sm" variant="outline" type="submit" className="w-full border-green-600 text-green-600 hover:bg-green-600 hover:text-white"><Check className="h-4 w-4" /></Button>
+                  </form>
+                ) : undefined}
+                renderItem={(card: any, vm) => vm === 'gallery' ? (
+                  <CardThumbnail
+                    src={cardThumbnails[card.id] ?? ''}
+                    name={card.name ?? ''}
+                    selected={selectedCard?.id === card.id}
+                    onClick={() => selectCard(storage, card.id)}
+                  />
+                ) : (
                   <ListItem
                     selected={selectedCard?.id === card.id}
                     onClick={() => selectCard(storage, card.id)}
-                    actions={<>
-                      <Button size="sm" variant="outline" onClick={async () => {
-                        const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
-                        setCards(prev => [...prev, opt])
-                        setSelectedCard(opt)
-                        setSavedCardJson(JSON.stringify(opt))
-                        try {
-                          const copy = await storage.copyCard(gameId, collectionId, card.id)
-                          setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
-                          setSelectedCard(copy)
-                          setSavedCardJson(JSON.stringify(copy))
-                        } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
-                      }}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <ConfirmButton onConfirm={handleDeleteCard} />
-                    </>}
                   >
-                    <div className={detailedView ? 'flex items-center gap-3' : ''}>
-                      {detailedView && cardThumbnails[card.id] && (
+                    <div className={vm === 'detailed' ? 'flex items-center gap-3' : ''}>
+                      {vm === 'detailed' && cardThumbnails[card.id] && (
                         <LoadingImg src={cardThumbnails[card.id]} alt="" className="h-16 w-auto rounded border object-contain shrink-0 bg-white" />
                       )}
                       <span className="text-sm font-medium">{card.name}</span>
@@ -440,68 +476,75 @@ export default function GameEditorPage() {
               />
 
               {selectedCard ? (
-                <Card>
-                  <CardContent className="pt-6">
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>Name</Label>
-                          <Input
-                            value={selectedCard.name || ''}
-                            onChange={(e) => updateCardField('name', e.target.value)}
-                          />
-                        </div>
+                <div className="rounded-lg border bg-card">
+                  <CollapsibleHeader collapsed={cardEditor.collapsed} onToggle={cardEditor.toggle}>
+                    <span className="text-sm font-semibold">Editor</span>
+                  </CollapsibleHeader>
+                  {!cardEditor.collapsed && (
+                    <div className="p-4 space-y-4">
+                      <FloatingInput
+                        label="Name"
+                        value={selectedCard.name || ''}
+                        onChange={(e) => updateCardField('name', e.target.value)}
+                      />
 
-                        {game?.layout?.root && (() => {
-                          // Discover fields from bindings, keyed by field\0property
-                          const bm = game.layout.bindingMeta ?? {}
-                          const fieldMap = new Map<string, { field: string; property: string; itemType: string; itemId?: string; values?: string[] }>()
-                          const addBindings = (bindings: Record<string, { field: string }> | undefined, nodeType: string, nodeId?: string) => {
-                            if (!bindings) return
-                            for (const [prop, binding] of Object.entries(bindings)) {
-                              if (binding.field === 'name') continue
-                              const key = `${binding.field}\0${prop}`
-                              if (fieldMap.has(key)) continue
-                              fieldMap.set(key, {
-                                field: binding.field,
-                                property: prop,
-                                itemType: nodeType,
-                                itemId: nodeId,
-                                values: bm[`${prop}:${binding.field}`]?.values,
-                              })
-                            }
+                      {game?.layout?.root && (() => {
+                        const bm = game.layout.bindingMeta ?? {}
+                        const fieldMap = new Map<string, { field: string; property: string; itemType: string; itemId?: string; values?: string[] }>()
+                        const addBindings = (bindings: Record<string, { field: string }> | undefined, nodeType: string, nodeId?: string) => {
+                          if (!bindings) return
+                          for (const [prop, binding] of Object.entries(bindings)) {
+                            if (binding.field === 'name') continue
+                            const key = `${binding.field}\0${prop}`
+                            if (fieldMap.has(key)) continue
+                            fieldMap.set(key, {
+                              field: binding.field,
+                              property: prop,
+                              itemType: nodeType,
+                              itemId: nodeId,
+                              values: bm[`${prop}:${binding.field}`]?.values,
+                            })
                           }
-                          const collectBindings = (section: any) => {
-                            addBindings(section.bindings, 'section', section.id)
-                            section.items?.forEach((item: any) => addBindings(item.bindings, item.type ?? 'text', item.id))
-                            section.children?.forEach(collectBindings)
-                          }
-                          collectBindings(game.layout.root)
-                          if (fieldMap.size === 0) return null
+                        }
+                        const collectBindings = (section: any) => {
+                          addBindings(section.bindings, 'section', section.id)
+                          section.items?.forEach((item: any) => addBindings(item.bindings, item.type ?? 'text', item.id))
+                          section.children?.forEach(collectBindings)
+                        }
+                        collectBindings(game.layout.root)
+                        if (fieldMap.size === 0) return null
 
-                          const setField = (fieldKey: string, val: string) =>
-                            setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldKey]: val } }))
+                        const setField = (fieldKey: string, val: string) =>
+                          setSelectedCard((prev: any) => ({ ...prev, fields: { ...prev.fields, [fieldKey]: val } }))
 
-                          // Resolve the card field value: scoped key → plain key → binding default
-                          const getField = (property: string, field: string) =>
-                            selectedCard.fields?.[`${property}:${field}`] ?? selectedCard.fields?.[field] ?? bm[`${property}:${field}`]?.default ?? ''
+                        const getField = (property: string, field: string) =>
+                          selectedCard.fields?.[`${property}:${field}`] ?? selectedCard.fields?.[field] ?? bm[`${property}:${field}`]?.default ?? ''
 
-                          return (
-                            <div className="space-y-3">
-                              {[...fieldMap.entries()].map(([key, { field, property, itemType, itemId, values }]) => {
-                                const fieldKey = `${property}:${field}`
-                                const val = getField(property, field)
-                                return (
-                                <div key={key} className="space-y-1">
-                                  <Label className="text-sm">{field}</Label>
-                                  {values ? (
-                                    <select
-                                      value={val}
-                                      onChange={(e) => setField(fieldKey, e.target.value)}
-                                      className="w-full rounded-md border bg-background pl-3 pr-8 py-2 text-sm"
-                                    >
-                                      {values.map((v: string) => <option key={v} value={v}>{itemType === 'image' ? gameImages.find(img => img.url === v)?.name ?? v.split('/').pop() ?? v : v}</option>)}
-                                    </select>
-                                  ) : (
+                        return (
+                          <div className="space-y-4">
+                            {[...fieldMap.entries()].map(([key, { field, property, itemType, itemId, values }]) => {
+                              const fieldKey = `${property}:${field}`
+                              const val = getField(property, field)
+                              const editorType = getEditorType(property, itemType)
+                              const isFloatable = !values && (editorType === 'text' || editorType === 'select')
+                              return (
+                              <div key={key}>
+                                {values ? (
+                                  <FloatingSelect
+                                    label={field}
+                                    value={val}
+                                    onValueChange={(v) => setField(fieldKey, v)}
+                                    options={values.map((v: string) => ({ value: v, label: itemType === 'image' ? gameImages.find(img => img.url === v)?.name ?? v.split('/').pop() ?? v : v }))}
+                                  />
+                                ) : isFloatable ? (
+                                  <FloatingInput
+                                    label={field}
+                                    value={val}
+                                    onChange={(e) => setField(fieldKey, e.target.value)}
+                                  />
+                                ) : (
+                                  <div className="space-y-1">
+                                    <Label className="text-sm">{field}</Label>
                                     <ValueItemEditor
                                       property={property}
                                       itemType={itemType}
@@ -517,64 +560,62 @@ export default function GameEditorPage() {
                                         return url
                                       }}
                                     />
-                                  )}
-                                </div>
-                                )
-                              })}
-                            </div>
-                          )
-                        })()}
-
-                      </div>
-                  </CardContent>
-                </Card>
+                                  </div>
+                                )}
+                              </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="flex items-center justify-center rounded-lg border bg-card p-8">
                   <p className="text-sm text-muted-foreground">Select a card or create a new one to start editing</p>
                 </div>
               )}
 
-              <div className="flex items-start justify-center">
-                {cardPreview && (
-                  <ZoomablePreview src={cardPreview} alt="Card preview" backImage={collection?.back} backFit={collection?.backFit} />
-                )}
-              </div>
+              {cardPreview && (
+                <ZoomablePreview src={cardPreview} alt="Card preview" backImage={collection?.back} backFit={collection?.backFit} />
+              )}
             </div>
           </TabsContent>
 
           <TabsContent value="layout">
-            {allLayouts.length > 0 && (
-              <div className="mb-4">
-                <select
-                  value={collection?.layoutId ?? ''}
-                  onChange={async (e) => {
-                    const newLayoutId = e.target.value
-                    if (!gameId || !collectionId || newLayoutId === collection?.layoutId) return
-                    const prevCollection = collection
-                    const prevGame = game
-                    setCollection((prev: any) => ({ ...prev, layoutId: newLayoutId }))
-                    try {
-                      await storage.updateCollection(gameId, collectionId, { layoutId: newLayoutId })
-                      const newLayout = await storage.getLayout(gameId, newLayoutId)
-                      setGame((prev: any) => ({ ...prev, layout: newLayout }))
-                      if (newLayout?.root?.id) setSelectedNodeId(newLayout.root.id)
-                    } catch {
-                      setCollection(prevCollection)
-                      setGame(prevGame)
-                      setStatus('Error changing layout.')
-                    }
-                  }}
-                  className="rounded-md border bg-background pl-3 pr-8 py-2 text-sm"
-                >
-                  {allLayouts.map((l: any) => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
               {game.layout?.root && (
                 <div className="overflow-y-auto max-h-[60vh] rounded-lg border bg-card">
+                  {allLayouts.length > 0 && (
+                    <div className="px-2 py-1.5 border-b">
+                      <select
+                        value={collection?.layoutId ?? ''}
+                        onChange={async (e) => {
+                          const newLayoutId = e.target.value
+                          if (!gameId || !collectionId || newLayoutId === collection?.layoutId) return
+                          const prevCollection = collection
+                          const prevGame = game
+                          setCollection((prev: any) => ({ ...prev, layoutId: newLayoutId }))
+                          try {
+                            await storage.updateCollection(gameId, collectionId, { layoutId: newLayoutId })
+                            const newLayout = await storage.getLayout(gameId, newLayoutId)
+                            setGame((prev: any) => ({ ...prev, layout: newLayout }))
+                            if (newLayout?.root?.id) setSelectedNodeId(newLayout.root.id)
+                          } catch {
+                            setCollection(prevCollection)
+                            setGame(prevGame)
+                            setStatus('Error changing layout.')
+                          }
+                        }}
+                        className="w-full rounded-md border bg-background pl-3 pr-8 py-1.5 text-sm"
+                      >
+                        {allLayouts.map((l: any) => (
+                          <option key={l.id} value={l.id}>{l.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <NodeTree
                     root={game.layout.root}
                     selectedNodeId={selectedNodeId}
@@ -593,30 +634,35 @@ export default function GameEditorPage() {
                 </div>
               )}
               {selectedNodeId ? (
-                <Card>
-                  <CardContent className="pt-4">
-                    <PropertyPanel
-                      layout={game.layout}
-                      gameFonts={gameFonts}
-                      gameImages={gameImages}
-                      onUploadFile={async (file) => {
-                        const url = await storage.uploadImage(gameId, file)
-                        const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
-                        setGameImages(imgs)
-                        return url
-                      }}
-                      selectedNodeId={selectedNodeId}
-                      selectedProperty={selectedProperty}
-                      onSelectProperty={(prop) => {
-                        setSelectedProperty(prop)
-                        if (selectedNodeId) {
-                          setPropertyByType(prev => ({ ...prev, [getNodeTypeKey(selectedNodeId)]: prop }))
-                        }
-                      }}
-                      onPropertyChange={handlePropertyChange}
-                    />
-                  </CardContent>
-                </Card>
+                <div className="rounded-lg border bg-card">
+                  <CollapsibleHeader collapsed={propertyEditor.collapsed} onToggle={propertyEditor.toggle}>
+                    <span className="text-sm font-semibold">Properties</span>
+                  </CollapsibleHeader>
+                  {!propertyEditor.collapsed && (
+                    <div className="p-4">
+                      <PropertyPanel
+                        layout={game.layout}
+                        gameFonts={gameFonts}
+                        gameImages={gameImages}
+                        onUploadFile={async (file) => {
+                          const url = await storage.uploadImage(gameId, file)
+                          const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
+                          setGameImages(imgs)
+                          return url
+                        }}
+                        selectedNodeId={selectedNodeId}
+                        selectedProperty={selectedProperty}
+                        onSelectProperty={(prop) => {
+                          setSelectedProperty(prop)
+                          if (selectedNodeId) {
+                            setPropertyByType(prev => ({ ...prev, [getNodeTypeKey(selectedNodeId)]: prop }))
+                          }
+                        }}
+                        onPropertyChange={handlePropertyChange}
+                      />
+                    </div>
+                  )}
+                </div>
               ) : <div />}
               {game.layout && (
                 <LayoutPreview
@@ -633,28 +679,8 @@ export default function GameEditorPage() {
           </TabsContent>
 
           <TabsContent value="back">
-            {collection?.back && game?.layout && (
-              <div className="flex justify-center mb-4 p-4 rounded-lg" style={{ backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '16px 16px' }}>
-                <div
-                  className="relative overflow-hidden drop-shadow-lg"
-                  style={{
-                    width: 200,
-                    height: 200 * (game.layout.height / game.layout.width),
-                    borderRadius: `${game.layout.radius / game.layout.width * 200}px`,
-                    background: '#ffffff',
-                  }}
-                >
-                  <LoadingImg
-                    src={collection.back}
-                    alt="Back preview"
-                    className="w-full h-full"
-                    wrapperClassName="w-full h-full"
-                    style={{
-                      objectFit: collection.backFit === 'contain' ? 'contain' : collection.backFit === 'fill' ? 'fill' : 'cover',
-                    }}
-                  />
-                </div>
-              </div>
+            {collection?.back && (
+              <ZoomablePreview src={collection.back} alt="Back preview" maxImgHeight="30vh" />
             )}
             <Card>
               <CardContent className="pt-6 space-y-4">
@@ -681,21 +707,20 @@ export default function GameEditorPage() {
                 </div>
                 {collection?.back && (
                   <div className="space-y-2">
-                    <Label>Fit Mode</Label>
-                    <select
+                    <FloatingSelect
+                      label="Fit Mode"
                       value={collection?.backFit || 'cover'}
-                      onChange={async (e) => {
-                        const fit = e.target.value as 'cover' | 'contain' | 'fill'
+                      onValueChange={async (fit) => {
                         setCollection((prev: any) => ({ ...prev, backFit: fit }))
                         try { await storage.updateCollection(gameId, collectionId, { backFit: fit }) }
                         catch { setStatus('Error saving back fit.') }
                       }}
-                      className="w-full rounded-md border bg-background pl-3 pr-8 py-2 text-sm"
-                    >
-                      <option value="cover">Cover</option>
-                      <option value="contain">Contain</option>
-                      <option value="fill">Fill</option>
-                    </select>
+                      options={[
+                        { value: 'cover', label: 'Cover' },
+                        { value: 'contain', label: 'Contain' },
+                        { value: 'fill', label: 'Fill' },
+                      ]}
+                    />
                   </div>
                 )}
               </CardContent>

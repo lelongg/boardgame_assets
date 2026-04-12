@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { Smile, Upload, X, Eye, Pencil, Image as ImageIcon, ClipboardPaste } from 'lucide-react'
 import CardThumbnail from '@/components/CardThumbnail'
-import Gallery from '@/components/Gallery'
+import FilterableList from '@/components/FilterableList'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { FloatingSelect } from '@/components/ui/floating-field'
+import { Slider } from '@/components/ui/slider'
 import { RgbaColorPicker } from 'react-colorful'
 import { getAsset } from '@/storage/assetCache'
 import AnchorGrid from './AnchorGrid'
@@ -16,6 +18,7 @@ import type { CardLayout, PropertyBinding } from '../../types'
 
 type ControlPanelProps = {
   property: string
+  label?: string
   value: unknown
   binding?: PropertyBinding
   bindingValues?: string[]
@@ -280,11 +283,12 @@ const LazyImageEditor = lazy(() => import('@/components/ImageEditor'))
 
 function ImageGalleryPicker({ images, selected, onSelect }: { images: { file: string; url: string; name: string }[]; selected: string; onSelect: (url: string) => void }) {
   return (
-    <Gallery
+    <FilterableList
+      title="Images"
       items={images}
       getKey={img => img.file}
       getName={img => img.name}
-      colsKey="pickerCols"
+      grid={{ colsKey: 'pickerCols' }}
       maxHeight="12rem"
       renderItem={(img) => (
         <CardThumbnail
@@ -338,25 +342,27 @@ function ImageUploadEditor({ value, onChange, aspectRatio, gameImages, onUploadF
 
   if (editing && value) {
     const editorSrc = bgUrl || value
+    const imgEntry = gameImages?.find(img => img.url === value)
     return (
       <Suspense fallback={<div className="p-4 text-center text-sm text-muted-foreground">Loading editor...</div>}>
         <LazyImageEditor
           src={editorSrc}
           aspectRatio={aspectRatio}
-          onSave={onUploadFile ? async (dataUrl: string) => {
+          filename={imgEntry?.name ?? ''}
+          onSave={onUploadFile ? async (dataUrl: string, name?: string) => {
             const resp = await fetch(dataUrl)
             const blob = await resp.blob()
             const ext = dataUrl.startsWith('data:image/jpeg') ? 'jpg' : dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
-            const file = new File([blob], `cropped.${ext}`, { type: blob.type })
+            const file = new File([blob], name || `cropped.${ext}`, { type: blob.type })
             const url = await onUploadFile(file)
             onChange(url)
             setEditing(false)
           } : (dataUrl: string) => { onChange(dataUrl); setEditing(false) }}
-          onSaveAsNew={onUploadFile ? async (dataUrl: string) => {
+          onSaveAsNew={onUploadFile ? async (dataUrl: string, name?: string) => {
             const resp = await fetch(dataUrl)
             const blob = await resp.blob()
             const ext = dataUrl.startsWith('data:image/jpeg') ? 'jpg' : dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
-            const file = new File([blob], `cropped.${ext}`, { type: blob.type })
+            const file = new File([blob], name || `cropped.${ext}`, { type: blob.type })
             const url = await onUploadFile(file)
             onChange(url)
             setEditing(false)
@@ -481,7 +487,7 @@ export function NumberEditor({ value, onChange, min, max, step }: { value: strin
   valRef.current = numVal
   return (
     <div className="space-y-2">
-      <input type="range" min={min} max={max} step={step} value={numVal} onChange={(e) => onChange(e.target.value)} className="w-full" />
+      <Slider min={min} max={max} step={step} value={[numVal]} onValueChange={([v]) => onChange(String(v))} />
       <div className="relative">
         <Input type="number" min={min} max={max} step={step} value={numVal} onChange={(e) => onChange(e.target.value)} className="text-center px-9" />
         <div className="absolute left-1 top-1/2 -translate-y-1/2" onPointerDown={(e) => e.preventDefault()}>
@@ -513,9 +519,7 @@ export function ValueItemEditor({ property, itemType, itemId, value, onChange, l
     const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
     const meta = getFieldMeta(property, dummyLayout)
     return (
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-md border bg-background pl-3 pr-8 py-2 text-sm">
-        {meta.options?.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-      </select>
+      <FloatingSelect label={property} value={value} onValueChange={onChange} options={meta.options ?? []} />
     )
   }
   if (type === 'boolean') return (
@@ -593,18 +597,17 @@ function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, on
   const meta = getFieldMeta(property, layout, selectedNodeId, gameFonts)
   const allowedValues = bindingValues
   if (allowedValues?.length) {
-    const label = meta.type === 'image-upload'
+    const labelFn = meta.type === 'image-upload'
       ? (v: string) => gameImages?.find(img => img.url === v)?.name ?? v.split('/').pop() ?? v
       : (v: string) => v
     return (
-      <select
+      <FloatingSelect
+        label={property}
         value={String(value ?? '')}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-      >
-        <option value="">— select —</option>
-        {allowedValues.map((v) => <option key={v} value={v}>{label(v)}</option>)}
-      </select>
+        onValueChange={(v) => onChange(v)}
+        options={allowedValues.map((v) => ({ value: v, label: labelFn(v) }))}
+        placeholder="— select —"
+      />
     )
   }
 
@@ -614,15 +617,12 @@ function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, on
 
   if (meta.type === 'select') {
     return (
-      <select
+      <FloatingSelect
+        label={property}
         value={String(value ?? '')}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-      >
-        {meta.options?.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
+        onValueChange={(v) => onChange(v)}
+        options={meta.options ?? []}
+      />
     )
   }
 

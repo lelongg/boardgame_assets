@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Lock, Unlock, Home, Box } from 'lucide-react'
 import useAssetUrl from '../hooks/useAssetUrl'
+import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 
 type HitArea = { id: string; x: number; y: number; width: number; height: number }
 
@@ -15,15 +16,17 @@ type ZoomablePreviewProps = {
   extraButtons?: React.ReactNode
   backImage?: string
   backFit?: 'cover' | 'contain' | 'fill'
+  maxImgHeight?: string
 }
 
 type ViewState = { scale: number; x: number; y: number }
 type Rotation = { x: number; y: number }
 
 
-export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitAreas, selectedHitAreaId, onHitAreaClick, extraButtons, backImage, backFit = 'cover' }: ZoomablePreviewProps) {
+export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitAreas, selectedHitAreaId, onHitAreaClick, extraButtons, backImage, backFit = 'cover', maxImgHeight = '60vh' }: ZoomablePreviewProps) {
   const resolvedSrc = useAssetUrl(src) ?? src
   const resolvedBack = useAssetUrl(backImage) ?? backImage
+  const { collapsed: panelCollapsed, toggle: togglePanel } = useCollapsible()
   const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 })
   const [unlocked, setUnlocked] = useState(false)
   const [mode3d, setMode3d] = useState(false)
@@ -144,46 +147,48 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   const checkerboard = { backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '16px 16px' }
 
   return (
-    <div className="rounded-lg border bg-card overflow-hidden">
-      <div className="flex items-center justify-end gap-0.5 px-1 h-8 border-b">
-        {extraButtons}
-        <button
-          onClick={toggle3d}
-          className={`rounded p-1 transition-colors ${
-            mode3d
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          title={mode3d ? 'Exit 3D mode' : '3D mode'}
-        >
-          <Box className="h-4 w-4" />
-        </button>
-        <button
-          disabled={mode3d ? !is3dTransformed : !isTransformed}
-          onClick={() => mode3d ? (setRotation({ x: 0, y: 0 }), setZoom3d(1)) : setView({ scale: 1, x: 0, y: 0 })}
-          className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
-          title={mode3d ? 'Reset rotation' : 'Reset view'}
-        >
-          <Home className="h-4 w-4" />
-        </button>
-        <button
-          disabled={mode3d}
-          onClick={toggle}
-          className={`rounded p-1 transition-colors ${
-            mode3d
-              ? 'opacity-30 pointer-events-none text-muted-foreground'
-              : unlocked
+    <div className="rounded-lg border bg-card overflow-hidden flex flex-col">
+      <CollapsibleHeader collapsed={panelCollapsed} onToggle={togglePanel}>
+        <div className="ml-auto flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+          {extraButtons}
+          <button
+            onClick={toggle3d}
+            className={`rounded p-1 transition-colors ${
+              mode3d
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground'
-          }`}
-          title={unlocked ? 'Lock pan/zoom' : 'Unlock pan/zoom'}
-        >
-          {unlocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-        </button>
-      </div>
-      <div
+            }`}
+            title={mode3d ? 'Exit 3D mode' : '3D mode'}
+          >
+            <Box className="h-4 w-4" />
+          </button>
+          <button
+            disabled={mode3d ? !is3dTransformed : !isTransformed}
+            onClick={() => mode3d ? (setRotation({ x: 0, y: 0 }), setZoom3d(1)) : setView({ scale: 1, x: 0, y: 0 })}
+            className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
+            title={mode3d ? 'Reset rotation' : 'Reset view'}
+          >
+            <Home className="h-4 w-4" />
+          </button>
+          <button
+            disabled={mode3d}
+            onClick={toggle}
+            className={`rounded p-1 transition-colors ${
+              mode3d
+                ? 'opacity-30 pointer-events-none text-muted-foreground'
+                : unlocked
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title={unlocked ? 'Lock pan/zoom' : 'Unlock pan/zoom'}
+          >
+            {unlocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+          </button>
+        </div>
+      </CollapsibleHeader>
+      {!panelCollapsed && <div
         ref={containerRef}
-        className={`p-3 overflow-hidden ${
+        className={`p-3 overflow-hidden flex-1 h-0 ${
           mode3d ? 'touch-none cursor-grab active:cursor-grabbing' :
           unlocked ? 'touch-none cursor-grab active:cursor-grabbing' : ''
         }`}
@@ -340,17 +345,18 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
           <img
             src={resolvedSrc}
             alt={alt}
-            className={`max-w-full max-h-[60vh] block mx-auto select-none transition-opacity duration-200 drop-shadow-lg ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
+            className={`max-w-full block mx-auto select-none transition-opacity duration-200 drop-shadow-lg ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
             draggable={false}
             onLoad={() => setImgLoaded(true)}
             onError={() => setImgLoaded(true)}
             style={{
+              maxHeight: maxImgHeight,
               transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
               transformOrigin: '0 0',
             }}
           />
         )}
-      </div>
+      </div>}
     </div>
   )
 }

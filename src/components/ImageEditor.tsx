@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import Cropper from 'react-easy-crop'
 import { Button } from '@/components/ui/button'
+import { FloatingInput } from '@/components/ui/floating-field'
 import { NumberEditor } from '@/components/layout/ControlPanel'
-import { X, Save, SaveAll } from 'lucide-react'
+import { X, Save, SaveAll, MoveHorizontal, MoveVertical } from 'lucide-react'
 
 type Area = { x: number; y: number; width: number; height: number }
 
@@ -87,8 +88,8 @@ export default function ImageEditor({ src, aspectRatio, filename, onSave, onSave
   }
   const [cropW, setCropW] = useState(0)
   const [cropH, setCropH] = useState(0)
+  const [imgNatural, setImgNatural] = useState({ w: 0, h: 0 })
   const containerRef = useRef<HTMLDivElement>(null)
-  const [containerSize, setContainerSize] = useState({ w: 400, h: 300 })
 
   // Default crop to image size, constrained by aspect ratio if provided
   useEffect(() => {
@@ -96,6 +97,7 @@ export default function ImageEditor({ src, aspectRatio, filename, onSave, onSave
     createImage(src).then(img => {
       const w = img.naturalWidth
       const h = img.naturalHeight
+      setImgNatural({ w, h })
       if (aspectRatio) {
         // Fit the aspect ratio within the image dimensions
         if (w / h > aspectRatio) {
@@ -112,26 +114,11 @@ export default function ImageEditor({ src, aspectRatio, filename, onSave, onSave
     }).catch(() => {})
   }, [src])
 
-  // Track container size for scaling cropSize
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const update = () => setContainerSize({ w: el.clientWidth, h: el.clientHeight })
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  // Scale crop dimensions to fit within the container as CSS pixels
-  const cropSize = cropW > 0 && cropH > 0
-    ? (() => {
-        const maxW = containerSize.w
-        const maxH = containerSize.h
-        const scale = Math.min(maxW / cropW, maxH / cropH)
-        return { width: Math.round(cropW * scale), height: Math.round(cropH * scale) }
-      })()
-    : undefined
+  // Use aspect ratio for crop shape, fill container
+  const cropAspect = cropW > 0 && cropH > 0 ? cropW / cropH : undefined
+  const rotated = imgNatural.w > 0 ? rotateSize(imgNatural.w, imgNatural.h, rotation) : { width: 9999, height: 9999 }
+  const maxCropW = Math.round(rotated.width)
+  const maxCropH = Math.round(rotated.height)
 
   const onCropComplete = useCallback((_: Area, croppedPixels: Area) => {
     setCroppedAreaPixels(croppedPixels)
@@ -169,18 +156,6 @@ export default function ImageEditor({ src, aspectRatio, filename, onSave, onSave
 
   return (
     <div className="space-y-3">
-      {filename != null && (
-        <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Filename</label>
-          <input
-            type="text"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-            className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
-          />
-        </div>
-      )}
-
       <div ref={containerRef} className="relative w-full rounded-md border overflow-hidden" style={{ height: 300, backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '12px 12px' }}>
         <Cropper
           image={src}
@@ -189,7 +164,7 @@ export default function ImageEditor({ src, aspectRatio, filename, onSave, onSave
           minZoom={0.1}
           maxZoom={5}
           rotation={rotation}
-          cropSize={cropSize}
+          aspect={cropAspect}
           onCropChange={setCrop}
           onCropComplete={onCropComplete}
           onZoomChange={setZoom}
@@ -199,9 +174,39 @@ export default function ImageEditor({ src, aspectRatio, filename, onSave, onSave
         />
       </div>
 
+      {filename != null && (
+        <FloatingInput
+          label="Name"
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+        />
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Zoom</label>
+          <div className="flex items-center gap-1">
+            <label className="text-xs text-muted-foreground">Zoom</label>
+            {imgNatural.w > 0 && cropW > 0 && (
+              <div className="ml-auto flex gap-0.5">
+                <button className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors" title="Fit width"
+                  onClick={() => {
+                    const baseScale = Math.max(cropW / imgNatural.w, cropH / imgNatural.h)
+                    setZoom((cropW / imgNatural.w) / baseScale)
+                    setCrop({ x: 0, y: 0 })
+                  }}>
+                  <MoveHorizontal className="h-3.5 w-3.5" />
+                </button>
+                <button className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors" title="Fit height"
+                  onClick={() => {
+                    const baseScale = Math.max(cropW / imgNatural.w, cropH / imgNatural.h)
+                    setZoom((cropH / imgNatural.h) / baseScale)
+                    setCrop({ x: 0, y: 0 })
+                  }}>
+                  <MoveVertical className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
           <NumberEditor value={String(zoom)} onChange={(v) => setZoom(Number(v))} min={0.1} max={5} step={0.1} />
         </div>
         <div className="space-y-1">
@@ -213,11 +218,11 @@ export default function ImageEditor({ src, aspectRatio, filename, onSave, onSave
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Crop W</label>
-          <NumberEditor value={String(cropW)} onChange={(v) => setCropW(Math.max(1, Number(v)))} min={1} max={9999} step={1} />
+          <NumberEditor value={String(cropW)} onChange={(v) => setCropW(Math.max(1, Number(v)))} min={1} max={maxCropW} step={1} />
         </div>
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Crop H</label>
-          <NumberEditor value={String(cropH)} onChange={(v) => setCropH(Math.max(1, Number(v)))} min={1} max={9999} step={1} />
+          <NumberEditor value={String(cropH)} onChange={(v) => setCropH(Math.max(1, Number(v)))} min={1} max={maxCropH} step={1} />
         </div>
       </div>
 

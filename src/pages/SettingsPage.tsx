@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import PageLayout from '@/components/PageLayout'
 import { getProvider, setProvider, createStorageFor, BACKENDS, type BackendKey } from '../storage'
@@ -282,11 +283,9 @@ export default function SettingsPage() {
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {fromGames.map(game => (
                     <label key={game.id} className="flex items-center gap-2 cursor-pointer rounded px-2 py-1 hover:bg-muted/50">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selectedGames.has(game.id)}
-                        onChange={() => toggleGame(game.id)}
-                        className="h-4 w-4"
+                        onCheckedChange={() => toggleGame(game.id)}
                       />
                       <span className="text-sm">{game.name}</span>
                     </label>

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { List, LayoutGrid, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import CardThumbnail from './CardThumbnail'
@@ -77,7 +78,7 @@ export default function SelectionList({ title, items, selection, onSelectionChan
         onMouseMove={(e) => { if (item.thumbnail) setHoverThumb({ src: item.thumbnail, x: e.clientX, y: e.clientY }) }}
         onMouseLeave={() => setHoverThumb(null)}
       >
-        <input type="checkbox" checked={selection.has(item.key)} onChange={() => toggleItem(item.key)} />
+        <Checkbox checked={selection.has(item.key)} onCheckedChange={() => toggleItem(item.key)} />
         <span className="truncate flex-1">{item.name}</span>
         {item.badge}
       </label>
@@ -101,7 +102,7 @@ export default function SelectionList({ title, items, selection, onSelectionChan
       <div key={groupTitle ?? 'all'}>
         {groupTitle && (
           <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground pt-2 pb-1 border-b mb-1 select-none">
-            <input type="checkbox" checked={groupAllSelected} onChange={toggleGroup} className="cursor-pointer" />
+            <Checkbox checked={groupAllSelected} onCheckedChange={toggleGroup} className="cursor-pointer" />
             <span className="cursor-pointer flex-1" onClick={toggleCollapse}>
               {groupTitle} <span className="text-[0.65rem] font-normal text-muted-foreground ml-1">{groupItems.filter(i => selection.has(i.key)).length}/{groupItems.length}</span>
             </span>
@@ -147,7 +148,7 @@ export default function SelectionList({ title, items, selection, onSelectionChan
         <CardContent className="space-y-2">
           <div className="flex items-center gap-2 border-b pb-2">
             <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none shrink-0">
-              <input type="checkbox" checked={allFiltered} onChange={(e) => selectAll(e.target.checked)} />
+              <Checkbox checked={allFiltered} onCheckedChange={(checked) => selectAll(!!checked)} />
               All
             </label>
             <div className="relative flex-1">

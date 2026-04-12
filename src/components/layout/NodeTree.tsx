@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react'
 import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile, Copy, FolderTree } from 'lucide-react'
 import { flattenNodes } from './layoutHelpers'
 import PortalDropdown from '@/components/ui/PortalDropdown'
+import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 import type { CardLayoutSection } from '../../types'
 
 type NodeTreeProps = {
@@ -22,6 +23,7 @@ type DropIndicator = {
 
 export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, onAddSection, onAddItem, onDelete, canDelete }: NodeTreeProps) {
   const [filter, setFilter] = useState<'all' | 'sections' | 'items'>('all')
+  const { collapsed: panelCollapsed, toggle: togglePanel } = useCollapsible()
   const allNodes = flattenNodes(root)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null)
@@ -90,7 +92,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-0.5 px-1 h-8 border-b sticky top-0 bg-card z-10">
+      <CollapsibleHeader collapsed={panelCollapsed} onToggle={togglePanel} toolbar={<>
           <button
             onClick={() => setFilter(f => f === 'sections' ? 'all' : 'sections')}
             className={`rounded p-1 transition-colors ${filter === 'sections' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
@@ -105,7 +107,8 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
           >
             <Type className="h-4 w-4" />
           </button>
-          <div className="flex-1" />
+      </>}>
+        <div className="ml-auto flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
           {canCollapse && (
             <button
               onClick={() => updateCollapsed(prev => {
@@ -163,8 +166,9 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
               <Trash2 className="h-4 w-4" />
             </button>
           )}
-      </div>
-      <div className="space-y-0.5">
+        </div>
+      </CollapsibleHeader>
+      {!panelCollapsed && <div className="space-y-0.5">
       {nodes.map((node, idx) => {
         const isSelected = node.id === selectedNodeId
         const isDragging = node.id === dragId
@@ -263,7 +267,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
           </div>
         )
       })}
-      </div>
+      </div>}
     </div>
   )
 }

@@ -2,8 +2,10 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Download, ChevronLeft, ChevronRight, Home, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FloatingInput, FloatingSelect } from '@/components/ui/floating-field'
 import { createStorage } from '../storage'
 import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
 import { NumberEditor } from '@/components/layout/ControlPanel'
@@ -588,75 +590,88 @@ export default function PrintPage() {
 
           {/* Print mode */}
           <div className="space-y-1">
-            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Mode</Label>
-            <select className="w-full rounded border bg-background px-2 py-1 text-xs"
-              value={config.printMode} onChange={e => patch({ printMode: e.target.value as PrintConfig['printMode'] })}>
-              <option value="front">Front only</option>
-              <option value="back">Back only</option>
-              <option value="duplex">Duplex</option>
-              <option value="fold">Fold</option>
-            </select>
+            <FloatingSelect
+              label="Mode"
+              value={config.printMode}
+              onValueChange={v => patch({ printMode: v as PrintConfig['printMode'] })}
+              options={[
+                { value: 'front', label: 'Front only' },
+                { value: 'back', label: 'Back only' },
+                { value: 'duplex', label: 'Duplex' },
+                { value: 'fold', label: 'Fold' },
+              ]}
+              triggerClassName="h-7 text-xs"
+            />
             {config.printMode === 'fold' && (
-              <select className="w-full rounded border bg-background px-2 py-1 text-xs"
-                value={config.foldEdge} onChange={e => patch({ foldEdge: e.target.value as PrintConfig['foldEdge'] })}>
-                <option value="right">Fold right</option>
-                <option value="left">Fold left</option>
-                <option value="bottom">Fold bottom</option>
-                <option value="top">Fold top</option>
-              </select>
+              <FloatingSelect
+                label="Fold edge"
+                value={config.foldEdge}
+                onValueChange={v => patch({ foldEdge: v as PrintConfig['foldEdge'] })}
+                options={[
+                  { value: 'right', label: 'Fold right' },
+                  { value: 'left', label: 'Fold left' },
+                  { value: 'bottom', label: 'Fold bottom' },
+                  { value: 'top', label: 'Fold top' },
+                ]}
+                triggerClassName="h-7 text-xs"
+              />
             )}
           </div>
 
           {/* Paper */}
           <div className="space-y-1">
-            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Paper</Label>
-            <select className="w-full rounded border bg-background px-2 py-1 text-xs"
-              value={config.paper} onChange={e => patch({ paper: e.target.value as PaperPreset })}>
-              <option value="a3">A3</option>
-              <option value="a4">A4</option>
-              <option value="letter">Letter</option>
-              <option value="custom">Custom</option>
-            </select>
+            <FloatingSelect
+              label="Paper"
+              value={config.paper}
+              onValueChange={v => patch({ paper: v as PaperPreset })}
+              options={[
+                { value: 'a3', label: 'A3' },
+                { value: 'a4', label: 'A4' },
+                { value: 'letter', label: 'Letter' },
+                { value: 'custom', label: 'Custom' },
+              ]}
+              triggerClassName="h-7 text-xs"
+            />
             {config.paper === 'custom' && (
               <div className="grid grid-cols-2 gap-1">
-                <Input type="number" className="h-7 text-xs" placeholder="W" value={config.customWidth} onChange={e => patch({ customWidth: Number(e.target.value) })} />
-                <Input type="number" className="h-7 text-xs" placeholder="H" value={config.customHeight} onChange={e => patch({ customHeight: Number(e.target.value) })} />
+                <FloatingInput label="W" type="number" className="h-7 text-xs" value={config.customWidth} onChange={e => patch({ customWidth: Number(e.target.value) })} />
+                <FloatingInput label="H" type="number" className="h-7 text-xs" value={config.customHeight} onChange={e => patch({ customHeight: Number(e.target.value) })} />
               </div>
             )}
             <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-              <input type="checkbox" checked={config.landscape} onChange={e => patch({ landscape: e.target.checked })} />
+              <Checkbox checked={config.landscape} onCheckedChange={(checked) => patch({ landscape: !!checked })} />
               Landscape
             </label>
           </div>
 
           {/* Margins */}
-          <div className="space-y-1">
-            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Margins (mm)</Label>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-              {(['marginTop', 'marginRight', 'marginBottom', 'marginLeft'] as const).map(key => (
-                <div key={key} className="flex items-center gap-1">
-                  <span className="text-[10px] text-muted-foreground w-5 shrink-0">{({ marginTop: 'T', marginRight: 'R', marginBottom: 'B', marginLeft: 'L' })[key]}</span>
-                  <Input type="number" min={0} className="h-7 text-xs flex-1"
-                    value={config[key]} onChange={e => patch({ [key]: Number(e.target.value) })} />
-                </div>
-              ))}
-            </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-3">
+            {(['marginTop', 'marginRight', 'marginBottom', 'marginLeft'] as const).map(key => (
+              <FloatingInput key={key}
+                label={({ marginTop: 'Top', marginRight: 'Right', marginBottom: 'Bottom', marginLeft: 'Left' })[key]}
+                type="number" min={0} className="h-7 text-xs"
+                value={config[key]} onChange={e => patch({ [key]: Number(e.target.value) })} />
+            ))}
           </div>
 
           {/* Grid */}
-          <div className="space-y-1">
-            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Grid</Label>
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-muted-foreground shrink-0">Gap</span>
-              <Input type="number" min={0} step={0.5} className="h-7 text-xs w-14"
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <FloatingInput label="Gap" type="number" min={0} step={0.5} className="h-7 text-xs w-16"
                 value={config.gap} onChange={e => patch({ gap: Number(e.target.value) })} />
-              <select className="rounded border bg-background px-2 py-1 text-xs flex-1"
-                value={config.columnsMode} onChange={e => patch({ columnsMode: e.target.value as 'auto' | 'manual' })}>
-                <option value="auto">Auto ({cols})</option>
-                <option value="manual">Manual</option>
-              </select>
+              <FloatingSelect
+                label="Columns"
+                value={config.columnsMode}
+                onValueChange={v => patch({ columnsMode: v as 'auto' | 'manual' })}
+                options={[
+                  { value: 'auto', label: `Auto (${cols})` },
+                  { value: 'manual', label: 'Manual' },
+                ]}
+                triggerClassName="h-7 text-xs"
+                className="flex-1"
+              />
               {config.columnsMode === 'manual' && (
-                <Input type="number" min={1} max={20} className="h-7 text-xs w-12"
+                <FloatingInput label="Cols" type="number" min={1} max={20} className="h-7 text-xs w-14"
                   value={config.manualColumns} onChange={e => patch({ manualColumns: Number(e.target.value) })} />
               )}
             </div>
@@ -664,26 +679,19 @@ export default function PrintPage() {
           </div>
 
           {/* Options */}
-          <div className="space-y-1">
-            <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Options</Label>
+          <div className="space-y-2">
             <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-              <input type="checkbox" checked={config.cutMarks} onChange={e => patch({ cutMarks: e.target.checked })} />
+              <Checkbox checked={config.cutMarks} onCheckedChange={(checked) => patch({ cutMarks: !!checked })} />
               Cut marks
             </label>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-1 pl-5">
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground shrink-0">Len</span>
-                <Input type="number" min={0.5} step={0.5} className="h-7 text-xs flex-1" disabled={!config.cutMarks}
-                  value={config.cutMarkLength} onChange={e => patch({ cutMarkLength: Number(e.target.value) })} />
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground shrink-0">Off</span>
-                <Input type="number" min={0} step={0.5} className="h-7 text-xs flex-1" disabled={!config.cutMarks}
-                  value={config.cutMarkOffset} onChange={e => patch({ cutMarkOffset: Number(e.target.value) })} />
-              </div>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-3 pl-5">
+              <FloatingInput label="Length" type="number" min={0.5} step={0.5} className="h-7 text-xs" disabled={!config.cutMarks}
+                value={config.cutMarkLength} onChange={e => patch({ cutMarkLength: Number(e.target.value) })} />
+              <FloatingInput label="Offset" type="number" min={0} step={0.5} className="h-7 text-xs" disabled={!config.cutMarks}
+                value={config.cutMarkOffset} onChange={e => patch({ cutMarkOffset: Number(e.target.value) })} />
             </div>
             <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
-              <input type="checkbox" checked={config.includeBleed} onChange={e => patch({ includeBleed: e.target.checked })} />
+              <Checkbox checked={config.includeBleed} onCheckedChange={(checked) => patch({ includeBleed: !!checked })} />
               Include bleed ({layout.bleed} mm)
             </label>
           </div>

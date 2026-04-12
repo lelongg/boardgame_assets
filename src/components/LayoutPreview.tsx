@@ -99,7 +99,7 @@ export default function LayoutPreview({ layout, gameId, cards = [], back, gameFo
       selectedHitAreaId={selectedNodeId}
       onHitAreaClick={onNodeClick}
       extraButtons={<>
-        {cards.length > 0 && <CardPicker cards={cards} value={previewCardId} onChange={setPreviewCardId} />}
+        {cards.length > 0 && <span className="mr-1"><CardPicker cards={cards} value={previewCardId} onChange={setPreviewCardId} /></span>}
         <button
           onClick={() => setShowSections(s => !s)}
           className={`rounded p-1 transition-colors ${showSections ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}

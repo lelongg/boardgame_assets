@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Download, Upload, Printer, List, LayoutGrid } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import CardThumbnail from './CardThumbnail'
 import { cardsToCSV, csvToCards } from '../cardsCsv'
@@ -187,7 +188,7 @@ export default function FilesPanel({
         </CardHeader>
         <CardContent className="space-y-2">
           <label className="flex items-center gap-2 text-sm text-muted-foreground border-b pb-2 cursor-pointer select-none">
-            <input type="checkbox" checked={allSelected} onChange={(e) => selectAll(e.target.checked)} />
+            <Checkbox checked={allSelected} onCheckedChange={(checked) => selectAll(!!checked)} />
             Select all
           </label>
           {(() => {
@@ -215,7 +216,7 @@ export default function FilesPanel({
                   onMouseMove={(e) => { if (t) setHoverThumb({ src: t, x: e.clientX, y: e.clientY }) }}
                   onMouseLeave={() => setHoverThumb(null)}
                 >
-                  <input type="checkbox" checked={isSelected(item)} onChange={() => toggleItem(item)} />
+                  <Checkbox checked={isSelected(item)} onCheckedChange={() => toggleItem(item)} />
                   <span className="truncate flex-1">{item.name}</span>
                   {badge(item)}
                 </label>
@@ -242,7 +243,7 @@ export default function FilesPanel({
               <div key={title ?? 'all'}>
                 {title && (
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground pt-2 pb-1 border-b mb-1 select-none">
-                    <input type="checkbox" checked={groupAllSelected} onChange={toggleGroup} className="cursor-pointer" />
+                    <Checkbox checked={groupAllSelected} onCheckedChange={toggleGroup} className="cursor-pointer" />
                     <span className="cursor-pointer flex-1" onClick={toggleCollapse}>{title} <span className="text-[0.65rem] font-normal text-muted-foreground ml-1">{groupItems.filter(isSelected).length}/{groupItems.length}</span></span>
                     <button onClick={toggleCollapse} className="text-muted-foreground hover:text-foreground transition-colors">
                       {collapsed ? '▸' : '▾'}
@@ -483,7 +484,7 @@ export default function FilesPanel({
               {hasImport && <>
                 {missingCards.length > 0 && (
                   <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-red-600">
-                    <input type="checkbox" checked={deleteMissing} onChange={(e) => setDeleteMissing(e.target.checked)} />
+                    <Checkbox checked={deleteMissing} onCheckedChange={(checked) => setDeleteMissing(!!checked)} />
                     Delete {missingCards.length} missing
                   </label>
                 )}

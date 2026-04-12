@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ConfirmButton from './ConfirmButton'
 import ListItem from './ListItem'
 import FilterableList from '@/components/FilterableList'
+import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 
 type FontEntry = { name: string; file: string; source: 'upload' | 'google' }
 
@@ -188,29 +189,45 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
 const defaultPreviewText = "The quick brown fox\njumps over the lazy dog\nABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789 !@#$%&*"
 
 export function FontPreviewEditor({ previewText, onChangePreviewText }: { previewText: string; onChangePreviewText: (text: string) => void }) {
+  const { collapsed, toggle } = useCollapsible()
   return (
-    <textarea
-      value={previewText}
-      onChange={(e) => onChangePreviewText(e.target.value)}
-      className="w-full h-full min-h-[200px] rounded-lg border bg-background px-3 py-2 text-sm resize-none"
-      placeholder="Type preview text..."
-    />
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <CollapsibleHeader collapsed={collapsed} onToggle={toggle}>
+        <span className="text-sm font-semibold">Preview Text</span>
+      </CollapsibleHeader>
+      {!collapsed && (
+        <textarea
+          value={previewText}
+          onChange={(e) => onChangePreviewText(e.target.value)}
+          className="w-full min-h-[200px] bg-background px-3 py-2 text-sm resize-none outline-none"
+          placeholder="Type preview text..."
+        />
+      )}
+    </div>
   )
 }
 
 export function FontPreview({ fonts, selectedFont, previewText }: { fonts: Record<string, FontEntry>; selectedFont: string | null; previewText: string }) {
   const entry = selectedFont ? fonts[selectedFont] : null
+  const { collapsed, toggle } = useCollapsible()
 
   return (
-    <div className="rounded-lg border bg-card p-4 overflow-hidden">
-      {entry ? (
-        <div className="space-y-2 break-words" style={{ fontFamily: `'${entry.name}', sans-serif` }}>
-          {previewText.split('\n').map((line, i) => (
-            <p key={i} className="text-2xl break-all">{line || '\u00A0'}</p>
-          ))}
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <CollapsibleHeader collapsed={collapsed} onToggle={toggle}>
+        <span className="text-sm font-semibold">Preview</span>
+      </CollapsibleHeader>
+      {!collapsed && (
+        <div className="p-4">
+          {entry ? (
+            <div className="space-y-2 break-words" style={{ fontFamily: `'${entry.name}', sans-serif` }}>
+              {previewText.split('\n').map((line, i) => (
+                <p key={i} className="text-2xl break-all">{line || '\u00A0'}</p>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Select a font to preview</p>
+          )}
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">Select a font to preview</p>
       )}
     </div>
   )

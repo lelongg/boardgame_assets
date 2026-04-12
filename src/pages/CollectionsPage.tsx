@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Eye, Pencil, ChevronLeft, ChevronRight, X, Copy, Plus, Layers } from 'lucide-react'
+import { ArrowLeft, Pencil, Copy, Plus, Check, Layers } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
 import NodeTree from '@/components/layout/NodeTree'
@@ -15,18 +16,26 @@ import { applyPropertyChange } from '@/components/layout/applyPropertyChange'
 import { ValueItemEditor } from '@/components/layout/ControlPanel'
 import ImportPanel from '@/components/ImportPanel'
 import ZipMergePanel from '@/components/ZipMergePanel'
-import LoadingImg from '@/components/LoadingImg'
 import CardThumbnail from '@/components/CardThumbnail'
-import Gallery from '@/components/Gallery'
+import LoadingImg from '@/components/LoadingImg'
 import FilterableList from '@/components/FilterableList'
-import ZoomablePreview from '@/components/ZoomablePreview'
 import PageLayout from '@/components/PageLayout'
 import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from '@/components/FontManager'
 import useStorage from '../hooks/useStorage'
+import FilesPanel from '@/components/FilesPanel'
 import useAssetUrl from '../hooks/useAssetUrl'
 
 const LazyImageEditor = lazy(() => import('@/components/ImageEditor'))
-import FilesPanel from '@/components/FilesPanel'
+
+function ResolvedImageEditor(props: { src: string; filename?: string; onSave: (dataUrl: string, filename?: string) => void; onSaveAsNew?: (dataUrl: string, filename?: string) => Promise<void>; onCancel: () => void }) {
+  const resolved = useAssetUrl(props.src)
+  if (!resolved) return <div className="p-4 text-center text-sm text-muted-foreground">Loading image...</div>
+  return (
+    <Suspense fallback={<div className="p-4 text-center text-sm text-muted-foreground">Loading editor...</div>}>
+      <LazyImageEditor {...props} src={resolved} />
+    </Suspense>
+  )
+}
 
 function GameFilesPanel({ gameId, storage, game, layouts, collections, gameFonts, onStatusChange }: {
   gameId: string; storage: any; game: any; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void
@@ -97,15 +106,6 @@ function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onS
   )
 }
 
-function GalleryImageEditor({ src, filename, onSave, onSaveAsNew, onCancel }: { src: string; filename?: string; onSave: (dataUrl: string, filename?: string) => void; onSaveAsNew: (dataUrl: string, filename?: string) => Promise<void>; onCancel: () => void }) {
-  const resolved = useAssetUrl(src)
-  if (!resolved) return <div className="p-4 text-center text-sm text-muted-foreground">Loading image...</div>
-  return (
-    <Suspense fallback={<div className="p-4 text-center text-sm text-muted-foreground">Loading editor...</div>}>
-      <LazyImageEditor src={resolved} filename={filename} onSave={onSave} onSaveAsNew={onSaveAsNew} onCancel={onCancel} />
-    </Suspense>
-  )
-}
 
 export default function CollectionsPage() {
   const { gameId } = useParams<{ gameId: string }>()
@@ -119,7 +119,6 @@ export default function CollectionsPage() {
   })
   const [collectionCards, setCollectionCards] = useState<any[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
-  const [showBigPreview, setShowBigPreview] = useState(false)
   const [cardPreviews, setCardPreviews] = useState<Record<string, string>>({})
   const carouselRefs = useRef<Map<string, HTMLElement>>(new Map())
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(() => {
@@ -134,11 +133,16 @@ export default function CollectionsPage() {
   const [gameImages, setGameImages] = useState<{ file: string; url: string; name: string }[]>([])
   const [selectedImage, setSelectedImage_] = useState<string | null>(() => { try { return localStorage.getItem(`game:${gameId}:selectedImage`) } catch { return null } })
   const setSelectedImage = (v: string | null) => { setSelectedImage_(v); try { if (v) localStorage.setItem(`game:${gameId}:selectedImage`, v); else localStorage.removeItem(`game:${gameId}:selectedImage`) } catch {} }
-  const [showImagePreview, setShowImagePreview_] = useState(() => { try { return localStorage.getItem(`game:${gameId}:imagePreview`) === '1' } catch { return false } })
-  const setShowImagePreview = (v: boolean) => { setShowImagePreview_(v); try { if (v) localStorage.setItem(`game:${gameId}:imagePreview`, '1'); else localStorage.removeItem(`game:${gameId}:imagePreview`) } catch {} }
-  const [editingImage, setEditingImage_] = useState(() => { try { return localStorage.getItem(`game:${gameId}:editingImage`) === '1' } catch { return false } })
-  const editFromGrid = useRef(false)
-  const setEditingImage = (v: boolean) => { setEditingImage_(v); try { if (v) localStorage.setItem(`game:${gameId}:editingImage`, '1'); else localStorage.removeItem(`game:${gameId}:editingImage`) } catch {} }
+  const [showImageUpload, setShowImageUpload] = useState(false)
+  const [showCreateCollection, setShowCreateCollection] = useState(false)
+  const [newCollectionName, setNewCollectionName] = useState('')
+  const [newCollectionLayout, setNewCollectionLayout] = useState('')
+  const [showCreateLayout, setShowCreateLayout] = useState(false)
+  const [newLayoutName, setNewLayoutName] = useState('')
+  const [showCreateCollCard, setShowCreateCollCard] = useState(false)
+  const [newCollCardName, setNewCollCardName] = useState('')
+
+  const [editingImage, setEditingImage] = useState(false)
 
   // Fuzzy filters
 
@@ -225,7 +229,7 @@ export default function CollectionsPage() {
   // Load cards when a collection is selected
   useEffect(() => {
     if (!expandedCollection || !storage || !gameId) { setCollectionCards([]); setSelectedCardId(null); return; }
-    setSelectedCardId(null); setShowBigPreview(false)
+    setSelectedCardId(null)
     storage.listCards(gameId, expandedCollection).then((cards: any[]) => {
       setCollectionCards(cards)
       if (cards.length > 0) setSelectedCardId(cards[0].id)
@@ -284,14 +288,15 @@ export default function CollectionsPage() {
     }
   }
 
-  const handleCreateCollection = async () => {
+  const handleCreateCollection = async (customName?: string, layoutId?: string) => {
     if (!storage || !gameId || layouts.length === 0) return
-    const name = `Collection ${collections.length + 1}`
-    const optimistic = { id: `temp-${Date.now()}`, name, layoutId: layouts[0].id }
+    const name = customName?.trim() || `Collection ${collections.length + 1}`
+    const lid = layoutId || layouts[0].id
+    const optimistic = { id: `temp-${Date.now()}`, name, layoutId: lid }
     setCollections(prev => [...prev, optimistic])
     setExpandedCollection(optimistic.id)
     try {
-      const created = await storage.createCollection(gameId, name, layouts[0].id)
+      const created = await storage.createCollection(gameId, name, lid)
       setCollections(prev => prev.map(c => c.id === optimistic.id ? created : c))
       setExpandedCollection(created.id)
       if (gameId) localStorage.setItem(`game:${gameId}:selectedCollection`, created.id)
@@ -301,9 +306,9 @@ export default function CollectionsPage() {
     }
   }
 
-  const handleCreateLayout = async () => {
+  const handleCreateLayout = async (customName?: string) => {
     if (!storage || !gameId) return
-    const name = `Layout ${layouts.length + 1}`
+    const name = customName?.trim() || `Layout ${layouts.length + 1}`
     const optimistic = { version: 2 as const, id: `temp-${Date.now()}`, name, width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
     setLayouts(prev => [...prev, optimistic])
     setSelectedLayoutId(optimistic.id)
@@ -482,10 +487,38 @@ export default function CollectionsPage() {
               getName={(col: any) => col.name}
               empty={<p className="text-sm text-muted-foreground">No collections yet.</p>}
               toolbar={
-                <Button size="sm" variant="ghost" onClick={handleCreateCollection} disabled={layouts.length === 0} title="New collection">
-                  <Plus className="h-4 w-4" />
+                <Button size="sm" variant="ghost" onClick={() => { setShowCreateCollection(v => { if (!v) { setNewCollectionName(`Collection ${collections.length + 1}`); setNewCollectionLayout('') } else { setNewCollectionName(''); setNewCollectionLayout('') } return !v }) }} disabled={layouts.length === 0} title={showCreateCollection ? 'Cancel' : 'New collection'}>
+                  <Plus className={`h-4 w-4 transition-transform ${showCreateCollection ? 'rotate-45' : ''}`} />
                 </Button>
               }
+              drawer={showCreateCollection ? (
+                <form className="px-2 py-2 border-b space-y-2" onSubmit={async (e) => {
+                  e.preventDefault()
+                  if (!newCollectionName.trim()) return
+                  await handleCreateCollection(newCollectionName, newCollectionLayout || undefined)
+                  setNewCollectionName('')
+                  setNewCollectionLayout('')
+                  setShowCreateCollection(false)
+                }}>
+                  <Input
+                    autoFocus
+                    value={newCollectionName}
+                    onChange={(e) => setNewCollectionName(e.target.value)}
+                    placeholder="Collection name"
+                    className="h-8 text-sm"
+                  />
+                  <select
+                    value={newCollectionLayout || layouts[0]?.id || ''}
+                    onChange={(e) => setNewCollectionLayout(e.target.value)}
+                    className="w-full h-8 rounded-md border bg-background pl-2 pr-6 text-sm"
+                  >
+                    {layouts.map((l: any) => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                  <Button size="sm" variant="outline" type="submit" className="w-full border-green-600 text-green-600 hover:bg-green-600 hover:text-white"><Check className="h-4 w-4" /></Button>
+                </form>
+              ) : undefined}
               renderItem={(col: any) => (
                     <ListItem
                       selected={expandedCollection === col.id}
@@ -548,127 +581,96 @@ export default function CollectionsPage() {
                   )}
                 />
             <div className="space-y-4 min-w-0">
-              {showBigPreview && selectedCardId && expandedCollection ? (
-                <div className="space-y-3">
-                  {cardPreviews[selectedCardId] && (
-                    <ZoomablePreview
-                      src={cardPreviews[selectedCardId]}
-                      alt="Card preview"
-                      backImage={collections.find(c => c.id === expandedCollection)?.back}
-                      backFit={collections.find(c => c.id === expandedCollection)?.backFit}
-                      extraButtons={<>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setShowBigPreview(false)} title="Close">
-                          <X className="h-4 w-4" />
-                        </Button>
-                        <span className="text-xs font-medium truncate mr-auto pl-1">{collectionCards.find(c => c.id === selectedCardId)?.name}</span>
-                        <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                          disabled={collectionCards.findIndex(c => c.id === selectedCardId) === 0}
-                          onClick={() => { const idx = collectionCards.findIndex(c => c.id === selectedCardId); if (idx > 0) setSelectedCardId(collectionCards[idx - 1].id) }}
-                          title="Previous"><ChevronLeft className="h-4 w-4" /></button>
-                        <span className="text-xs text-muted-foreground">{collectionCards.findIndex(c => c.id === selectedCardId) + 1}/{collectionCards.length}</span>
-                        <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                          disabled={collectionCards.findIndex(c => c.id === selectedCardId) === collectionCards.length - 1}
-                          onClick={() => { const idx = collectionCards.findIndex(c => c.id === selectedCardId); if (idx < collectionCards.length - 1) setSelectedCardId(collectionCards[idx + 1].id) }}
-                          title="Next"><ChevronRight className="h-4 w-4" /></button>
-                        <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
-                          onClick={() => { if (gameId && expandedCollection) { if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); localStorage.setItem(`editor:${gameId}:tab`, 'cards') }; navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
-                          <Pencil className="h-4 w-4" /></button>
-                        <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy"
-                          onClick={async () => {
-                            const card = collectionCards.find(c => c.id === selectedCardId); if (!card) return
-                            const optimistic = { ...card, id: `temp-${Date.now()}`, name: `New Card ${collectionCards.length + 1}` }
-                            setCollectionCards(prev => [...prev, optimistic])
-                            try { const copy = await storage.copyCard(gameId, expandedCollection, selectedCardId); setCollectionCards(prev => prev.map(c => c.id === optimistic.id ? copy : c)) }
-                            catch { setCollectionCards(prev => prev.filter(c => c.id !== optimistic.id)); setStatus('Error copying card.') }
-                          }}>
-                          <Copy className="h-4 w-4" /></button>
-                        <ConfirmButton iconOnly onConfirm={async () => {
-                          const prev = collectionCards; const prevId = selectedCardId
-                          const updated = collectionCards.filter(c => c.id !== selectedCardId)
-                          setCollectionCards(updated)
-                          if (updated.length > 0) setSelectedCardId(updated[0].id)
-                          else { setSelectedCardId(null); setShowBigPreview(false) }
-                          try { await storage.deleteCard(gameId, expandedCollection, prevId) }
-                          catch { setCollectionCards(prev); setSelectedCardId(prevId); setStatus('Error deleting card.') }
-                        }} />
-                      </>}
-                    />
-                  )}
-                  <div className="flex gap-2 overflow-x-auto p-1 min-w-0 max-w-full">
-                    {collectionCards.map((card) => (
-                      <button
-                        key={card.id}
-                        ref={(el) => { if (el) carouselRefs.current.set(card.id, el); else carouselRefs.current.delete(card.id) }}
-                        className={`flex-shrink-0 rounded-md border overflow-hidden w-16 transition-all ${
-                          selectedCardId === card.id ? 'ring-2 ring-inset ring-primary' : 'opacity-60 hover:opacity-100'
-                        }`}
-                        onClick={() => setSelectedCardId(card.id)}
-                      >
-                        <LoadingImg
-                          src={cardPreviews[card.id] || ''}
-                          alt={card.name}
-                          className="w-full"
-                        />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : expandedCollection && collectionCards.length > 0 ? (
-                <Gallery
+              {expandedCollection ? (
+                <FilterableList
+                  title="Cards"
                   items={collectionCards}
                   getKey={(card: any) => card.id}
                   getName={(card: any) => card.name}
-                  colsKey="galleryCols"
-                  defaultCols={3}
-                  toolbar={<>
-                    <button
-                      className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                      title="View"
-                      onClick={() => {
-                        if (!selectedCardId && collectionCards.length > 0) setSelectedCardId(collectionCards[0].id)
-                        setShowBigPreview(true)
-                      }}
-                    >
-                      <Eye className="h-4 w-4" />
+                  empty={<p className="text-sm text-muted-foreground text-center py-4">No cards in this collection.</p>}
+                  viewMode={{ key: `game:${gameId}:collCardViewMode`, default: 'gallery' }}
+                  grid={{ colsKey: 'galleryCols', defaultCols: 3 }}
+                  getPreviewSrc={(card: any) => cardPreviews[card.id] || ''}
+                  selectedKey={selectedCardId}
+                  onSelect={setSelectedCardId}
+                  actions={selectedCardId ? (<>
+                    <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
+                      onClick={() => { if (gameId && expandedCollection) { if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); localStorage.setItem(`editor:${gameId}:tab`, 'cards') }; navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
+                      <Pencil className="h-4 w-4" />
                     </button>
-                    {selectedCardId && (
-                      <>
-                        <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
-                          onClick={() => { if (gameId && expandedCollection) { if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); localStorage.setItem(`editor:${gameId}:tab`, 'cards') }; navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy"
-                          onClick={async () => {
-                            const card = collectionCards.find(c => c.id === selectedCardId)
-                            if (!card) return
-                            const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${collectionCards.length + 1}` }
-                            setCollectionCards(prev => [...prev, opt])
-                            try { const copy = await storage.copyCard(gameId, expandedCollection, selectedCardId); setCollectionCards(prev => prev.map(c => c.id === opt.id ? copy : c)) }
-                            catch { setCollectionCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
-                          }}>
-                          <Copy className="h-4 w-4" />
-                        </button>
-                        <ConfirmButton iconOnly onConfirm={async () => {
-                          const prev = collectionCards; const prevId = selectedCardId
-                          setCollectionCards(collectionCards.filter(c => c.id !== selectedCardId)); setSelectedCardId(null)
-                          try { await storage.deleteCard(gameId, expandedCollection, prevId) }
-                          catch { setCollectionCards(prev); setSelectedCardId(prevId); setStatus('Error deleting card.') }
-                        }} />
-                      </>
-                    )}
-                  </>}
-                  renderItem={(card: any) => (
+                    <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy"
+                      onClick={async () => {
+                        const card = collectionCards.find(c => c.id === selectedCardId)
+                        if (!card) return
+                        const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${collectionCards.length + 1}` }
+                        setCollectionCards(prev => [...prev, opt])
+                        try { const copy = await storage.copyCard(gameId, expandedCollection, selectedCardId); setCollectionCards(prev => prev.map(c => c.id === opt.id ? copy : c)) }
+                        catch { setCollectionCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
+                      }}>
+                      <Copy className="h-4 w-4" />
+                    </button>
+                    <ConfirmButton iconOnly onConfirm={async () => {
+                      const prev = collectionCards; const prevId = selectedCardId
+                      setCollectionCards(collectionCards.filter(c => c.id !== selectedCardId)); setSelectedCardId(null)
+                      try { await storage.deleteCard(gameId, expandedCollection, prevId) }
+                      catch { setCollectionCards(prev); setSelectedCardId(prevId); setStatus('Error deleting card.') }
+                    }} />
+                  </>) : undefined}
+                  toolbar={
+                    <Button size="sm" variant="ghost" onClick={() => { setShowCreateCollCard(v => { if (!v) setNewCollCardName(`Card ${collectionCards.length + 1}`); else setNewCollCardName(''); return !v }) }} title={showCreateCollCard ? 'Cancel' : 'New card'}>
+                      <Plus className={`h-4 w-4 transition-transform ${showCreateCollCard ? 'rotate-45' : ''}`} />
+                    </Button>
+                  }
+                  drawer={showCreateCollCard ? (
+                    <form className="px-2 py-2 border-b space-y-2" onSubmit={async (e) => {
+                      e.preventDefault()
+                      if (!newCollCardName.trim() || !expandedCollection) return
+                      const name = newCollCardName.trim()
+                      const newCard = { id: crypto.randomUUID(), name, fields: {} }
+                      setCollectionCards(prev => [...prev, newCard as any])
+                      try {
+                        await storage.saveCard(gameId, expandedCollection, newCard.id, newCard)
+                      } catch {
+                        setCollectionCards(prev => prev.filter(c => c.id !== newCard.id))
+                        setStatus('Error creating card.')
+                      }
+                      setNewCollCardName('')
+                      setShowCreateCollCard(false)
+                    }}>
+                      <Input
+                        autoFocus
+                        value={newCollCardName}
+                        onChange={(e) => setNewCollCardName(e.target.value)}
+                        placeholder="Card name"
+                        className="h-8 text-sm"
+                      />
+                      <Button size="sm" variant="outline" type="submit" className="w-full border-green-600 text-green-600 hover:bg-green-600 hover:text-white"><Check className="h-4 w-4" /></Button>
+                    </form>
+                  ) : undefined}
+                  renderItem={(card: any, vm) => vm === 'gallery' ? (
                     <CardThumbnail
                       src={cardPreviews[card.id] || ''}
                       name={card.name}
                       selected={selectedCardId === card.id}
                       onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}
                     />
+                  ) : (
+                    <ListItem
+                      selected={selectedCardId === card.id}
+                      onClick={() => setSelectedCardId(selectedCardId === card.id ? null : card.id)}
+                    >
+                      <div className={vm === 'detailed' ? 'flex items-center gap-3' : ''}>
+                        {vm === 'detailed' && cardPreviews[card.id] && (
+                          <img src={cardPreviews[card.id]} alt="" className="h-16 w-auto rounded border object-contain shrink-0 bg-white" />
+                        )}
+                        <span className="text-sm font-medium">{card.name}</span>
+                      </div>
+                    </ListItem>
                   )}
                 />
               ) : (
                 <div className="flex items-center justify-center rounded-lg border bg-card p-8">
-                  <p className="text-sm text-muted-foreground">{expandedCollection ? 'No cards in this collection.' : 'Select a collection to preview cards.'}</p>
+                  <p className="text-sm text-muted-foreground">Select a collection to preview cards.</p>
                 </div>
               )}
             </div>
@@ -676,7 +678,7 @@ export default function CollectionsPage() {
           </TabsContent>
 
           <TabsContent value="layouts">
-            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
               <FilterableList
                 title="Layouts"
                 items={layouts}
@@ -684,10 +686,28 @@ export default function CollectionsPage() {
                 getName={(tpl: any) => tpl.name}
                 empty={<p className="text-sm text-muted-foreground">No layouts yet.</p>}
                 toolbar={
-                  <Button size="sm" variant="ghost" onClick={handleCreateLayout} title="New layout">
-                    <Plus className="h-4 w-4" />
+                  <Button size="sm" variant="ghost" onClick={() => { setShowCreateLayout(v => { if (!v) setNewLayoutName(`Layout ${layouts.length + 1}`); else setNewLayoutName(''); return !v }) }} title={showCreateLayout ? 'Cancel' : 'New layout'}>
+                    <Plus className={`h-4 w-4 transition-transform ${showCreateLayout ? 'rotate-45' : ''}`} />
                   </Button>
                 }
+                drawer={showCreateLayout ? (
+                  <form className="px-2 py-2 border-b space-y-2" onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (!newLayoutName.trim()) return
+                    await handleCreateLayout(newLayoutName)
+                    setNewLayoutName('')
+                    setShowCreateLayout(false)
+                  }}>
+                    <Input
+                      autoFocus
+                      value={newLayoutName}
+                      onChange={(e) => setNewLayoutName(e.target.value)}
+                      placeholder="Layout name"
+                      className="h-8 text-sm"
+                    />
+                    <Button size="sm" variant="outline" type="submit" className="w-full border-green-600 text-green-600 hover:bg-green-600 hover:text-white"><Check className="h-4 w-4" /></Button>
+                  </form>
+                ) : undefined}
                 renderItem={(tpl: any) => (
                   <ListItem
                     selected={selectedLayoutId === tpl.id}
@@ -789,28 +809,18 @@ export default function CollectionsPage() {
           </TabsContent>
 
           <TabsContent value="fonts">
-            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr_1fr] gap-4 items-start">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base">Fonts</CardTitle>
-                  <Button size="sm" variant="ghost" onClick={() => setShowFontAdd(v => !v)} title="Add font">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <FontManager
-                    gameId={gameId!}
-                    storage={storage}
-                    fonts={gameFonts}
-                    onFontsChange={setGameFonts}
-                    onStatus={setStatus}
-                    showAdd={showFontAdd}
-                    onToggleAdd={() => setShowFontAdd(v => !v)}
-                    selectedFont={selectedFont}
-                    onSelectFont={setSelectedFont}
-                  />
-                </CardContent>
-              </Card>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+              <FontManager
+                gameId={gameId!}
+                storage={storage}
+                fonts={gameFonts}
+                onFontsChange={setGameFonts}
+                onStatus={setStatus}
+                showAdd={showFontAdd}
+                onToggleAdd={() => setShowFontAdd(v => !v)}
+                selectedFont={selectedFont}
+                onSelectFont={setSelectedFont}
+              />
 
               <FontPreviewEditor previewText={fontPreviewText} onChangePreviewText={setFontPreviewText} />
 
@@ -819,167 +829,108 @@ export default function CollectionsPage() {
           </TabsContent>
 
           <TabsContent value="images">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Images</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ValueItemEditor
-                  property="defaultValue"
-                  itemType="image"
-                  value=""
-                  layout={selectedLayout ?? layouts[0]}
-                  gameImages={gameImages}
-                  onUploadFile={async (file) => {
-                    const url = await storage.uploadImage(gameId, file)
-                    const images = await storage.listImages(gameId)
-                    setGameImages(images)
-                    return url
-                  }}
-                  onChange={() => {}}
-                />
-                {gameImages.length > 0 && (showImagePreview && selectedImage ? (
-                  <div className="space-y-3">
-                    {editingImage ? (
-                      <GalleryImageEditor
-                        src={gameImages.find(i => i.file === selectedImage)?.url ?? ''}
-                        filename={gameImages.find(i => i.file === selectedImage)?.name ?? selectedImage}
-                        onSave={async (dataUrl, newName) => {
-                          try {
-                            await storage.deleteImage(gameId, selectedImage)
-                            const resp = await fetch(dataUrl)
-                            const blob = await resp.blob()
-                            const ext = dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
-                            const displayName = newName || gameImages.find(i => i.file === selectedImage)?.name || 'image'
-                            const file = new File([blob], `${displayName}.${ext}`, { type: blob.type })
-                            const url = await storage.uploadImage(gameId, file)
-                            const images = await storage.listImages(gameId)
-                            setGameImages(images)
-                            const newFile = images.find((i: { url: string; file: string }) => i.url === url)?.file
-                            setSelectedImage(newFile ?? images[0]?.file ?? null)
-                          } catch { setStatus('Error saving image.') }
-                        }}
-                        onSaveAsNew={async (dataUrl, newName) => {
-                          try {
-                            const resp = await fetch(dataUrl)
-                            const blob = await resp.blob()
-                            const ext = dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
-                            const displayName = newName || gameImages.find(i => i.file === selectedImage)?.name || 'image'
-                            const file = new File([blob], `${displayName}.${ext}`, { type: blob.type })
-                            const url = await storage.uploadImage(gameId, file)
-                            const images = await storage.listImages(gameId)
-                            setGameImages(images)
-                            const newFile = images.find((i: { url: string; file: string }) => i.url === url)?.file
-                            if (newFile) setSelectedImage(newFile)
-                          } catch { setStatus('Error saving image.') }
-                        }}
-                        onCancel={() => { setEditingImage(false); if (editFromGrid.current) setShowImagePreview(false) }}
-                      />
-                    ) : (
-                      <ZoomablePreview
-                        src={gameImages.find(i => i.file === selectedImage)?.url ?? ''}
-                        alt={selectedImage}
-                        extraButtons={<>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setShowImagePreview(false)} title="Close">
-                            <X className="h-4 w-4" />
-                          </Button>
-                          <span className="text-xs font-medium truncate mr-auto pl-1">{gameImages.find(i => i.file === selectedImage)?.name ?? selectedImage}</span>
-                          <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                            disabled={gameImages.findIndex(i => i.file === selectedImage) === 0}
-                            onClick={() => { const idx = gameImages.findIndex(i => i.file === selectedImage); if (idx > 0) setSelectedImage(gameImages[idx - 1].file) }}
-                            title="Previous"><ChevronLeft className="h-4 w-4" /></button>
-                          <span className="text-xs text-muted-foreground">{gameImages.findIndex(i => i.file === selectedImage) + 1}/{gameImages.length}</span>
-                          <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                            disabled={gameImages.findIndex(i => i.file === selectedImage) === gameImages.length - 1}
-                            onClick={() => { const idx = gameImages.findIndex(i => i.file === selectedImage); if (idx < gameImages.length - 1) setSelectedImage(gameImages[idx + 1].file) }}
-                            title="Next"><ChevronRight className="h-4 w-4" /></button>
-                          <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
-                            onClick={() => { editFromGrid.current = false; setEditingImage(true) }}>
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy URL"
-                            onClick={() => { const img = gameImages.find(i => i.file === selectedImage); if (img) { navigator.clipboard.writeText(img.url); setStatus('URL copied.') } }}>
-                            <Copy className="h-4 w-4" />
-                          </button>
-                          <ConfirmButton iconOnly onConfirm={async () => {
-                            try {
-                              await storage.deleteImage(gameId, selectedImage)
-                              const updated = gameImages.filter(i => i.file !== selectedImage)
-                              setGameImages(updated)
-                              if (updated.length > 0) setSelectedImage(updated[0].file)
-                              else { setSelectedImage(null); setShowImagePreview(false) }
-                            } catch { setStatus('Error deleting image.') }
-                          }} />
-                        </>}
-                      />
-                    )}
-                    <div className="flex gap-2 overflow-x-auto p-1 min-w-0 max-w-full">
-                      {gameImages.map((img) => (
-                        <div key={img.file} className="flex-shrink-0 w-16">
-                          <CardThumbnail
-                            src={img.url}
-                            name={img.name}
-                            aspectRatio="1"
-                            selected={selectedImage === img.file}
-                            onClick={() => setSelectedImage(img.file)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : gameImages.length > 0 && (
-                  <Gallery
-                    items={gameImages}
-                    getKey={img => img.file}
-                    getName={img => img.name}
-                    colsKey="imageCols"
-                    toolbar={<>
-                      <button
-                        className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                        title="View"
-                        onClick={() => {
-                          if (!selectedImage && gameImages.length > 0) setSelectedImage(gameImages[0].file)
-                          setShowImagePreview(true)
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      {selectedImage && (
-                        <>
-                          <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
-                            onClick={() => { editFromGrid.current = true; setShowImagePreview(true); setEditingImage(true) }}>
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy URL"
-                            onClick={() => { const img = gameImages.find(i => i.file === selectedImage); if (img) { navigator.clipboard.writeText(img.url); setStatus('URL copied.') } }}>
-                            <Copy className="h-4 w-4" />
-                          </button>
-                          <ConfirmButton iconOnly onConfirm={async () => {
-                            try {
-                              await storage.deleteImage(gameId, selectedImage)
-                              setGameImages(prev => prev.filter(i => i.file !== selectedImage))
-                              setSelectedImage(null)
-                            } catch { setStatus('Error deleting image.') }
-                          }} />
-                        </>
-                      )}
-                    </>}
-                    renderItem={(img) => (
-                      <CardThumbnail
-                        src={img.url}
-                        name={img.name}
-                        aspectRatio="1"
-                        selected={selectedImage === img.file}
-                        onClick={() => {
-                          if (selectedImage === img.file) setShowImagePreview(true)
-                          else setSelectedImage(img.file)
-                        }}
-                      />
-                    )}
+            {editingImage && selectedImage ? (() => {
+              const img = gameImages.find(i => i.file === selectedImage)
+              if (!img) return null
+              return (
+                  <ResolvedImageEditor
+                    src={img.url}
+                    filename={img.name}
+                    onSave={async (dataUrl, newName) => {
+                      try {
+                        await storage.deleteImage(gameId, selectedImage)
+                        const resp = await fetch(dataUrl)
+                        const blob = await resp.blob()
+                        const ext = dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
+                        const file = new File([blob], `${newName || img.name}.${ext}`, { type: blob.type })
+                        const url = await storage.uploadImage(gameId, file)
+                        const images = await storage.listImages(gameId)
+                        setGameImages(images)
+                        const newFile = images.find((i: { url: string; file: string }) => i.url === url)?.file
+                        setSelectedImage(newFile ?? images[0]?.file ?? null)
+                        setEditingImage(false)
+                      } catch { setStatus('Error saving image.') }
+                    }}
+                    onSaveAsNew={async (dataUrl, newName) => {
+                      try {
+                        const resp = await fetch(dataUrl)
+                        const blob = await resp.blob()
+                        const ext = dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
+                        const file = new File([blob], `${newName || img.name}.${ext}`, { type: blob.type })
+                        const url = await storage.uploadImage(gameId, file)
+                        const images = await storage.listImages(gameId)
+                        setGameImages(images)
+                        const newFile = images.find((i: { url: string; file: string }) => i.url === url)?.file
+                        if (newFile) setSelectedImage(newFile)
+                        setEditingImage(false)
+                      } catch { setStatus('Error saving image.') }
+                    }}
+                    onCancel={() => setEditingImage(false)}
                   />
-                ))}
-              </CardContent>
-            </Card>
+              )
+            })() : (
+              <FilterableList
+                title="Images"
+                items={gameImages}
+                getKey={img => img.file}
+                getName={img => img.name}
+                viewMode={{ key: `game:${gameId}:imageViewMode`, default: 'gallery' }}
+                grid={{ colsKey: 'imageCols' }}
+                getPreviewSrc={img => img.url}
+                selectedKey={selectedImage}
+                onSelect={setSelectedImage}
+                actions={selectedImage ? (<>
+                  <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit image"
+                    onClick={() => setEditingImage(true)}>
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy URL"
+                    onClick={() => { const img = gameImages.find(i => i.file === selectedImage); if (img) { navigator.clipboard.writeText(img.url); setStatus('URL copied.') } }}>
+                    <Copy className="h-4 w-4" />
+                  </button>
+                  <ConfirmButton iconOnly onConfirm={async () => {
+                    try { await storage.deleteImage(gameId, selectedImage); setGameImages(prev => prev.filter(i => i.file !== selectedImage)); setSelectedImage(null) }
+                    catch { setStatus('Error deleting image.') }
+                  }} />
+                </>) : undefined}
+                toolbar={
+                  <Button size="sm" variant="ghost" onClick={() => setShowImageUpload(v => !v)} title={showImageUpload ? 'Cancel' : 'Upload image'}>
+                    <Plus className={`h-4 w-4 transition-transform ${showImageUpload ? 'rotate-45' : ''}`} />
+                  </Button>
+                }
+                drawer={showImageUpload ? (
+                  <div className="px-3 py-2 border-b">
+                    <ValueItemEditor
+                      property="defaultValue" itemType="image" value=""
+                      layout={selectedLayout ?? layouts[0]} gameImages={gameImages}
+                      onUploadFile={async (file) => { const url = await storage.uploadImage(gameId, file); const images = await storage.listImages(gameId); setGameImages(images); setShowImageUpload(false); return url }}
+                      onChange={() => {}}
+                    />
+                  </div>
+                ) : undefined}
+                renderItem={(img, vm) => vm === 'gallery' ? (
+                  <CardThumbnail
+                    src={img.url} name={img.name} aspectRatio="1"
+                    selected={selectedImage === img.file}
+                    onClick={() => setSelectedImage(selectedImage === img.file ? null : img.file)}
+                  />
+                ) : (
+                  <ListItem
+                    selected={selectedImage === img.file}
+                    onClick={() => setSelectedImage(selectedImage === img.file ? null : img.file)}
+                  >
+                    <div className={vm === 'detailed' ? 'flex items-center gap-3' : ''}>
+                      {vm === 'detailed' && (
+                        <div className="h-10 w-10 shrink-0 rounded border overflow-hidden" style={{ backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '8px 8px' }}>
+                          <LoadingImg src={img.url} alt={img.name} className="w-full h-full object-contain" wrapperClassName="w-full h-full" />
+                        </div>
+                      )}
+                      <span className="text-sm font-medium truncate">{img.name}</span>
+                    </div>
+                  </ListItem>
+                )}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="import">
