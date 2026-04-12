@@ -6,14 +6,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import NodeTree from '@/components/layout/NodeTree'
-import PropertyPanel from '@/components/layout/PropertyPanel'
-import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/layoutHelpers'
-import { applyPropertyChange } from '@/components/layout/applyPropertyChange'
 import { ValueItemEditor, getEditorType } from '@/components/layout/ControlPanel'
+import LayoutEditorPanel from '@/components/layout/LayoutEditorPanel'
 import { FloatingInput, FloatingSelect } from '@/components/ui/floating-field'
 import ZoomablePreview from '@/components/ZoomablePreview'
-import LayoutPreview from '@/components/LayoutPreview'
 import ConfirmButton from '@/components/ConfirmButton'
 import LoadingImg from '@/components/LoadingImg'
 import FilterableList from '@/components/FilterableList'
@@ -37,9 +33,6 @@ export default function GameEditorPage() {
   const [cardPreview, setCardPreview] = useState<string>('')
   const [editingName, setEditingName] = useState(false)
   const [editingColName, setEditingColName] = useState(false)
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
-  const [propertyByType, setPropertyByType] = useState<Record<string, string>>({})
   const [savedCardJson, setSavedCardJson] = useState('')
   const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
   const [gameImages, setGameImages] = useState<{ file: string; url: string; name: string }[]>([])
@@ -48,7 +41,6 @@ export default function GameEditorPage() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newCardName, setNewCardName] = useState('')
   const cardEditor = useCollapsible()
-  const propertyEditor = useCollapsible()
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
   const [cardSelection, _setCardSelection] = useState<Set<string>>(() => loadSet('cardSel'))
@@ -174,7 +166,7 @@ export default function GameEditorPage() {
       setGameFonts(fonts)
       setGameImages(images)
       setAllLayouts(layouts)
-      if (layout?.root?.id && !selectedNodeId) setSelectedNodeId(layout.root.id)
+      // selectedNodeId is now managed inside LayoutEditorPanel
 
       const cardList = await s.listCards(gameId, collectionId)
       setCards(cardList)
@@ -240,87 +232,6 @@ export default function GameEditorPage() {
     } catch { setStatus('Error saving layout.') }
   }
 
-  const getNodeTypeKey = (id: string): string => {
-    if (!game?.layout?.root) return 'unknown'
-    const kind = getNodeKind(game.layout.root, id)
-    if (kind === 'section') return 'section'
-    const item = findItemById(game.layout.root, id)
-    return (item as any)?.type ?? 'text'
-  }
-
-  const handleNodeSelect = (id: string) => {
-    if (selectedNodeId && selectedProperty) {
-      setPropertyByType(prev => ({ ...prev, [getNodeTypeKey(selectedNodeId)]: selectedProperty }))
-    }
-    setSelectedNodeId(id)
-    const newTypeKey = getNodeTypeKey(id)
-    const defaults: Record<string, string> = { section: 'layout', text: 'defaultValue', frame: 'fillColor', image: 'defaultValue', emoji: 'emoji' }
-    setSelectedProperty(propertyByType[newTypeKey] ?? defaults[newTypeKey] ?? 'name')
-  }
-
-  const handlePropertyChange = (property: string, value: unknown) => {
-    if (!game?.layout || !selectedNodeId) return
-    const t = JSON.parse(JSON.stringify(game.layout))
-    if (!applyPropertyChange(t, selectedNodeId, property, value)) return
-    handleLayoutSave(t)
-  }
-
-  const selectedKind = selectedNodeId && game?.layout?.root ? getNodeKind(game.layout.root, selectedNodeId) : null
-  const isRoot = selectedNodeId === game?.layout?.root?.id
-
-  const handleAddSection = () => {
-    if (!game?.layout) return
-    const t = JSON.parse(JSON.stringify(game.layout))
-    const section = { id: crypto.randomUUID(), name: 'New Section', layout: 'stack' as const, sizePct: 100, gap: 0, children: [] as any[], items: [] as any[] }
-    if (selectedKind === 'section' && selectedNodeId) {
-      const parent = findParentSection(t.root, selectedNodeId, 'section')
-      if (!parent) return
-      const idx = parent.children.findIndex((c: any) => c.id === selectedNodeId)
-      parent.children.splice(idx + 1, 0, section)
-    } else if (selectedKind === 'item' && selectedNodeId) {
-      const parent = findParentSection(t.root, selectedNodeId, 'item')
-      if (!parent) return
-      parent.children.push(section)
-    } else {
-      t.root.children.push(section)
-    }
-    handleLayoutSave(t)
-    setSelectedNodeId(section.id)
-  }
-
-  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji' | 'copy') => {
-    if (!game?.layout) return
-    const t = JSON.parse(JSON.stringify(game.layout))
-    let parentId: string
-    if (selectedKind === 'section' && selectedNodeId) parentId = selectedNodeId
-    else if (selectedKind === 'item' && selectedNodeId) { const p = findParentSection(t.root, selectedNodeId, 'item'); parentId = p?.id ?? t.root.id }
-    else parentId = t.root.id
-    const parent = findSectionById(t.root, parentId)
-    if (!parent) return
-    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthMm: 63.5, heightMm: 88.9 }
-    const items: Record<string, any> = {
-      text: { ...base, type: 'text', name: 'New Text', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
-      frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
-      image: { ...base, type: 'image', name: 'New Image', fit: 'cover', cornerRadius: 0 },
-      emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
-      copy: { ...base, type: 'copy', name: 'Copy' },
-    }
-    const item = items[itemType]
-    if (selectedKind === 'item' && selectedNodeId) { const loc = findNodeLocation(t.root, selectedNodeId, 'item'); if (loc) loc.list.splice(loc.index + 1, 0, item); else parent.items.push(item) }
-    else parent.items.push(item)
-    handleLayoutSave(t)
-    setSelectedNodeId(item.id)
-  }
-
-  const handleDeleteNode = () => {
-    if (!selectedNodeId || !selectedKind || isRoot || !game?.layout) return
-    const t = JSON.parse(JSON.stringify(game.layout))
-    const loc = findNodeLocation(t.root, selectedNodeId, selectedKind)
-    if (!loc) return
-    loc.list.splice(loc.index, 1)
-    handleLayoutSave(t)
-    setSelectedNodeId(null)
-  }
 
   if (!game) {
     return (
@@ -585,94 +496,49 @@ export default function GameEditorPage() {
 
           <TabsContent value="layout">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-              {game.layout?.root && (
-                <div className="overflow-y-auto max-h-[60vh] rounded-lg border bg-card">
-                  {allLayouts.length > 0 && (
-                    <div className="px-2 py-1.5 border-b">
-                      <select
-                        value={collection?.layoutId ?? ''}
-                        onChange={async (e) => {
-                          const newLayoutId = e.target.value
-                          if (!gameId || !collectionId || newLayoutId === collection?.layoutId) return
-                          const prevCollection = collection
-                          const prevGame = game
-                          setCollection((prev: any) => ({ ...prev, layoutId: newLayoutId }))
-                          try {
-                            await storage.updateCollection(gameId, collectionId, { layoutId: newLayoutId })
-                            const newLayout = await storage.getLayout(gameId, newLayoutId)
-                            setGame((prev: any) => ({ ...prev, layout: newLayout }))
-                            if (newLayout?.root?.id) setSelectedNodeId(newLayout.root.id)
-                          } catch {
-                            setCollection(prevCollection)
-                            setGame(prevGame)
-                            setStatus('Error changing layout.')
-                          }
-                        }}
-                        className="w-full rounded-md border bg-background pl-3 pr-8 py-1.5 text-sm"
-                      >
-                        {allLayouts.map((l: any) => (
-                          <option key={l.id} value={l.id}>{l.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <NodeTree
-                    root={game.layout.root}
-                    selectedNodeId={selectedNodeId}
-                    onSelectNode={handleNodeSelect}
-                    onDrop={(dragId, dragKind, dropTargetId, position) => {
-                      const t = JSON.parse(JSON.stringify(game.layout))
-                      if (moveNode(t.root, dragId, dragKind, dropTargetId, position)) {
-                        handleLayoutSave(t)
+              {game.layout?.root && allLayouts.length > 0 && (
+                <div className="px-2 py-1.5">
+                  <select
+                    value={collection?.layoutId ?? ''}
+                    onChange={async (e) => {
+                      const newLayoutId = e.target.value
+                      if (!gameId || !collectionId || newLayoutId === collection?.layoutId) return
+                      const prevCollection = collection
+                      const prevGame = game
+                      setCollection((prev: any) => ({ ...prev, layoutId: newLayoutId }))
+                      try {
+                        await storage.updateCollection(gameId, collectionId, { layoutId: newLayoutId })
+                        const newLayout = await storage.getLayout(gameId, newLayoutId)
+                        setGame((prev: any) => ({ ...prev, layout: newLayout }))
+                      } catch {
+                        setCollection(prevCollection)
+                        setGame(prevGame)
+                        setStatus('Error changing layout.')
                       }
                     }}
-                    onAddSection={handleAddSection}
-                    onAddItem={handleAddItem}
-                    onDelete={handleDeleteNode}
-                    canDelete={!!selectedNodeId && !isRoot}
-                  />
+                    className="w-full rounded-md border bg-background pl-3 pr-8 py-1.5 text-sm"
+                  >
+                    {allLayouts.map((l: any) => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
                 </div>
               )}
-              {selectedNodeId ? (
-                <div className="rounded-lg border bg-card">
-                  <CollapsibleHeader collapsed={propertyEditor.collapsed} onToggle={propertyEditor.toggle}>
-                    <span className="text-sm font-semibold">Properties</span>
-                  </CollapsibleHeader>
-                  {!propertyEditor.collapsed && (
-                    <div className="p-4">
-                      <PropertyPanel
-                        layout={game.layout}
-                        gameFonts={gameFonts}
-                        gameImages={gameImages}
-                        onUploadFile={async (file) => {
-                          const url = await storage.uploadImage(gameId, file)
-                          const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
-                          setGameImages(imgs)
-                          return url
-                        }}
-                        selectedNodeId={selectedNodeId}
-                        selectedProperty={selectedProperty}
-                        onSelectProperty={(prop) => {
-                          setSelectedProperty(prop)
-                          if (selectedNodeId) {
-                            setPropertyByType(prev => ({ ...prev, [getNodeTypeKey(selectedNodeId)]: prop }))
-                          }
-                        }}
-                        onPropertyChange={handlePropertyChange}
-                      />
-                    </div>
-                  )}
-                </div>
-              ) : <div />}
-              {game.layout && (
-                <LayoutPreview
+              {game.layout?.root && (
+                <LayoutEditorPanel
                   layout={game.layout}
+                  onSave={handleLayoutSave}
                   gameId={gameId!}
+                  gameFonts={gameFonts}
+                  gameImages={gameImages}
+                  onUploadFile={async (file) => {
+                    const url = await storage.uploadImage(gameId, file)
+                    const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
+                    setGameImages(imgs)
+                    return url
+                  }}
                   cards={cards}
                   back={collection?.back}
-                  gameFonts={gameFonts}
-                  selectedNodeId={selectedNodeId}
-                  onNodeClick={handleNodeSelect}
                 />
               )}
             </div>

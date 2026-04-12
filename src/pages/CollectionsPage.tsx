@@ -1,19 +1,14 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ArrowLeft, Pencil, Copy, Plus, Check, Layers } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
-import NodeTree from '@/components/layout/NodeTree'
-import PropertyPanel from '@/components/layout/PropertyPanel'
-import LayoutPreview from '@/components/LayoutPreview'
-import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from '@/components/layout/layoutHelpers'
-import { applyPropertyChange } from '@/components/layout/applyPropertyChange'
 import { ValueItemEditor } from '@/components/layout/ControlPanel'
+import LayoutEditorPanel from '@/components/layout/LayoutEditorPanel'
 import ImportPanel from '@/components/ImportPanel'
 import ZipMergePanel from '@/components/ZipMergePanel'
 import CardThumbnail from '@/components/CardThumbnail'
@@ -146,10 +141,6 @@ export default function CollectionsPage() {
 
   // Fuzzy filters
 
-  // Layout editor state
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
-  const [propertyByType, setPropertyByType] = useState<Record<string, string>>({})
   const [layoutPreviewCards, setLayoutPreviewCards] = useState<any[]>([])
 
   const selectedLayout = selectedLayoutId ? layouts.find(t => t.id === selectedLayoutId) : null
@@ -275,7 +266,7 @@ export default function CollectionsPage() {
           setSelectedLayoutId(tpl.id)
           localStorage.setItem(`game:${gameId}:selectedLayout`, tpl.id)
         }
-        if (tpl.root?.id && !selectedNodeId) setSelectedNodeId(tpl.root.id)
+        // selectedNodeId is now managed inside LayoutEditorPanel
       }
       const fontKeys = Object.keys(fonts)
       if (fontKeys.length > 0 && !selectedFont) {
@@ -336,91 +327,6 @@ export default function CollectionsPage() {
     }
   }
 
-  const getNodeTypeKey = (id: string): string => {
-    if (!selectedLayout?.root) return 'unknown'
-    const kind = getNodeKind(selectedLayout.root, id)
-    if (kind === 'section') return 'section'
-    const item = findItemById(selectedLayout.root, id)
-    return (item as any)?.type ?? 'text'
-  }
-
-  const handleNodeSelect = (id: string) => {
-    if (selectedNodeId && selectedProperty) {
-      const typeKey = getNodeTypeKey(selectedNodeId)
-      setPropertyByType(prev => ({ ...prev, [typeKey]: selectedProperty }))
-    }
-    setSelectedNodeId(id)
-    const newTypeKey = getNodeTypeKey(id)
-    const defaults: Record<string, string> = { section: 'layout', text: 'defaultValue', frame: 'fillColor', image: 'defaultValue', emoji: 'emoji' }
-    setSelectedProperty(propertyByType[newTypeKey] ?? defaults[newTypeKey] ?? 'name')
-  }
-
-  const handlePropertyChange = (property: string, value: unknown) => {
-    if (!selectedLayout || !selectedNodeId) return
-    const t = JSON.parse(JSON.stringify(selectedLayout))
-    if (!applyPropertyChange(t, selectedNodeId, property, value)) return
-    handleLayoutSave(t)
-  }
-
-  const selectedKind = selectedNodeId && selectedLayout?.root ? getNodeKind(selectedLayout.root, selectedNodeId) : null
-  const isRoot = selectedNodeId === selectedLayout?.root?.id
-
-  const handleAddSection = () => {
-    if (!selectedLayout) return
-    const t = JSON.parse(JSON.stringify(selectedLayout))
-    const section = { id: crypto.randomUUID(), name: 'New Section', layout: 'stack' as const, sizePct: 100, gap: 0, children: [] as any[], items: [] as any[] }
-    if (selectedKind === 'section' && selectedNodeId) {
-      const parent = findSectionById(t.root, selectedNodeId)
-      if (!parent) return
-      parent.children.push(section)
-    } else if (selectedKind === 'item' && selectedNodeId) {
-      const parent = findParentSection(t.root, selectedNodeId, 'item')
-      if (!parent) return
-      parent.children.push(section)
-    } else {
-      t.root.children.push(section)
-    }
-    handleLayoutSave(t)
-    setSelectedNodeId(section.id)
-  }
-
-  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji' | 'copy') => {
-    if (!selectedLayout) return
-    const t = JSON.parse(JSON.stringify(selectedLayout))
-    let parentId: string
-    if (selectedKind === 'section' && selectedNodeId) parentId = selectedNodeId
-    else if (selectedKind === 'item' && selectedNodeId) {
-      const parent = findParentSection(t.root, selectedNodeId, 'item')
-      parentId = parent?.id ?? t.root.id
-    } else parentId = t.root.id
-    const parent = findSectionById(t.root, parentId)
-    if (!parent) return
-    const base = { id: crypto.randomUUID(), anchor: { x: 0.5, y: 0.5 }, attach: { targetType: 'section', targetId: parentId, anchor: { x: 0.5, y: 0.5 } }, widthMm: 63.5, heightMm: 88.9 }
-    const items: Record<string, any> = {
-      text: { ...base, type: 'text', name: 'New Text', fontSize: 20, align: 'left', anchor: { x: 0, y: 0 }, attach: { ...base.attach, anchor: { x: 0, y: 0 } } },
-      frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
-      image: { ...base, type: 'image', name: 'New Image', fit: 'cover', cornerRadius: 0 },
-      emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
-    }
-    const item = items[itemType]
-    if (selectedKind === 'item' && selectedNodeId) {
-      const loc = findNodeLocation(t.root, selectedNodeId, 'item')
-      if (loc) loc.list.splice(loc.index + 1, 0, item)
-      else parent.items.push(item)
-    } else parent.items.push(item)
-    handleLayoutSave(t)
-    setSelectedNodeId(item.id)
-  }
-
-  const handleDeleteNode = () => {
-    if (!selectedNodeId || !selectedKind || isRoot || !selectedLayout) return
-    const t = JSON.parse(JSON.stringify(selectedLayout))
-    const loc = findNodeLocation(t.root, selectedNodeId, selectedKind)
-    if (!loc) return
-    loc.list.splice(loc.index, 1)
-    handleLayoutSave(t)
-    setSelectedNodeId(null)
-  }
 
   if (!game) {
     return (
@@ -714,7 +620,6 @@ export default function CollectionsPage() {
                     onClick={() => {
                       const next = selectedLayoutId === tpl.id ? null : tpl.id
                       setSelectedLayoutId(next)
-                      setSelectedNodeId(next ? tpl.root?.id ?? null : null)
                       if (gameId) { if (next) localStorage.setItem(`game:${gameId}:selectedLayout`, next); else localStorage.removeItem(`game:${gameId}:selectedLayout`) }
                     }}
                     actions={<>
@@ -744,62 +649,20 @@ export default function CollectionsPage() {
               />
 
               {selectedLayout?.root ? (
-                <>
-                  <div className="space-y-4">
-                    <div className="overflow-y-auto max-h-[60vh] rounded-lg border bg-card overflow-hidden">
-                      <NodeTree
-                        root={selectedLayout.root}
-                        selectedNodeId={selectedNodeId}
-                        onSelectNode={handleNodeSelect}
-                        onDrop={(dragId, dragKind, dropTargetId, position) => {
-                          const t = JSON.parse(JSON.stringify(selectedLayout))
-                          if (moveNode(t.root, dragId, dragKind, dropTargetId, position)) {
-                            handleLayoutSave(t)
-                          }
-                        }}
-                        onAddSection={handleAddSection}
-                        onAddItem={handleAddItem}
-                        onDelete={handleDeleteNode}
-                        canDelete={!!selectedNodeId && !isRoot}
-                      />
-                    </div>
-                    {selectedNodeId && (
-                      <Card>
-                        <CardContent className="pt-4">
-                          <PropertyPanel
-                            layout={selectedLayout}
-                            gameFonts={gameFonts}
-                            gameImages={gameImages}
-                            onUploadFile={async (file) => {
-                              const url = await storage.uploadImage(gameId, file)
-                              const images = await storage.listImages(gameId)
-                              setGameImages(images)
-                              return url
-                            }}
-                            selectedNodeId={selectedNodeId}
-                            selectedProperty={selectedProperty}
-                            onSelectProperty={(prop) => {
-                              setSelectedProperty(prop)
-                              if (selectedNodeId) {
-                                const typeKey = getNodeTypeKey(selectedNodeId)
-                                setPropertyByType(prev => ({ ...prev, [typeKey]: prop }))
-                              }
-                            }}
-                            onPropertyChange={handlePropertyChange}
-                          />
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-                  <LayoutPreview
-                    layout={selectedLayout}
-                    gameId={gameId!}
-                    cards={layoutPreviewCards}
-                    gameFonts={gameFonts}
-                    selectedNodeId={selectedNodeId}
-                    onNodeClick={handleNodeSelect}
-                  />
-                </>
+                <LayoutEditorPanel
+                  layout={selectedLayout}
+                  onSave={handleLayoutSave}
+                  gameId={gameId!}
+                  gameFonts={gameFonts}
+                  gameImages={gameImages}
+                  onUploadFile={async (file) => {
+                    const url = await storage.uploadImage(gameId, file)
+                    const images = await storage.listImages(gameId)
+                    setGameImages(images)
+                    return url
+                  }}
+                  cards={layoutPreviewCards}
+                />
               ) : (
                 <div className="md:col-span-2 flex items-center justify-center rounded-lg border bg-card p-8">
                   <p className="text-sm text-muted-foreground">Select a layout to edit</p>

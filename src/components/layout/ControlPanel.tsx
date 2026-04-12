@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
-import { Smile, Upload, X, Eye, Pencil, Image as ImageIcon, ClipboardPaste } from 'lucide-react'
+import { Smile, Upload, X, Eye, Pencil, Image as ImageIcon, ClipboardPaste, ChevronDown } from 'lucide-react'
 import CardThumbnail from '@/components/CardThumbnail'
 import FilterableList from '@/components/FilterableList'
 import { Input } from '@/components/ui/input'
@@ -533,6 +533,7 @@ export function ValueItemEditor({ property, itemType, itemId, value, onChange, l
 
 function BindingEditor({ property, itemType, layout, gameImages, onUploadFile, binding, values: externalValues, bindingDefault, onSetDefault, onChange, onValuesChange }: { property: string; itemType?: string; layout?: CardLayout; gameImages?: { file: string; url: string; name: string }[]; onUploadFile?: (file: File) => Promise<string>; binding: PropertyBinding | undefined; values: string[]; bindingDefault?: string; onSetDefault: (v: string) => void; onChange: (b: PropertyBinding | null) => void; onValuesChange: (v: string[] | null) => void }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const [valuesCollapsed, setValuesCollapsed] = useState(true)
   const field = binding?.field ?? ''
   const values = externalValues
 
@@ -561,32 +562,45 @@ function BindingEditor({ property, itemType, layout, gameImages, onUploadFile, b
       </div>
       {field && (
         <div className="space-y-1">
-          <div className="text-xs text-muted-foreground">Allowed values</div>
-          {values.map((v, i) => {
-            const isDefault = v !== '' && bindingDefault === v
-            return (
-            <ListItem
-              key={i}
-              selected={selectedIdx === i}
-              onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
-              actions={<div className="flex-1 space-y-2">
-                <ValueItemEditor property={property} itemType={itemType} layout={layout} gameImages={gameImages} onUploadFile={onUploadFile} value={v} onChange={(val) => updateAt(i, val)} />
-                <div className="flex gap-1">
-                  <Button size="sm" variant={isDefault ? "default" : "outline"} className="flex-1" onClick={() => onSetDefault(v)}>
-                    {isDefault ? 'Default' : 'Set as default'}
-                  </Button>
-                  <ConfirmButton onConfirm={() => removeAt(i)} />
-                </div>
-              </div>}
-            >
-              <span className="text-sm flex items-center justify-between gap-2 w-full">
-                <span>{v !== '' ? (itemType === 'image' ? gameImages?.find(img => img.url === v)?.name ?? v.split('/').pop() ?? v : v) : <span className="text-muted-foreground italic">empty</span>}</span>
-                {isDefault && <span className="text-xs text-muted-foreground italic">default</span>}
-              </span>
-            </ListItem>
-            )
-          })}
-          <Button size="sm" variant="outline" className="w-full" onClick={() => { updateValues([...values, bindingDefault ?? '']); setSelectedIdx(values.length) }}>+ Add value</Button>
+          <button
+            type="button"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
+            onClick={() => setValuesCollapsed(c => !c)}
+          >
+            <ChevronDown className={`h-3 w-3 transition-transform ${valuesCollapsed ? '-rotate-90' : ''}`} />
+            Allowed values ({values.length})
+          </button>
+          {!valuesCollapsed && (
+            <>
+              <div className="max-h-[40vh] overflow-y-auto space-y-1">
+                {values.map((v, i) => {
+                  const isDefault = v !== '' && bindingDefault === v
+                  return (
+                  <ListItem
+                    key={i}
+                    selected={selectedIdx === i}
+                    onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}
+                    actions={<div className="flex-1 space-y-2">
+                      <ValueItemEditor property={property} itemType={itemType} layout={layout} gameImages={gameImages} onUploadFile={onUploadFile} value={v} onChange={(val) => updateAt(i, val)} />
+                      <div className="flex gap-1">
+                        <Button size="sm" variant={isDefault ? "default" : "outline"} className="flex-1" onClick={() => onSetDefault(v)}>
+                          {isDefault ? 'Default' : 'Set as default'}
+                        </Button>
+                        <ConfirmButton onConfirm={() => removeAt(i)} />
+                      </div>
+                    </div>}
+                  >
+                    <span className="text-sm flex items-center justify-between gap-2 w-full">
+                      <span>{v !== '' ? (itemType === 'image' ? gameImages?.find(img => img.url === v)?.name ?? v.split('/').pop() ?? v : v) : <span className="text-muted-foreground italic">empty</span>}</span>
+                      {isDefault && <span className="text-xs text-muted-foreground italic">default</span>}
+                    </span>
+                  </ListItem>
+                  )
+                })}
+              </div>
+              <Button size="sm" variant="outline" className="w-full" onClick={() => { updateValues([...values, bindingDefault ?? '']); setSelectedIdx(values.length) }}>+ Add value</Button>
+            </>
+          )}
         </div>
       )}
     </div>

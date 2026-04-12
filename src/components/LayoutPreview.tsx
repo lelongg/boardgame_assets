@@ -6,7 +6,7 @@ import type { CardData, CardLayout } from '../types'
 
 const PX_PER_MM = 300 / 25.4
 
-type PreviewCard = CardData & { collectionName?: string }
+export type PreviewCard = CardData & { collectionName?: string }
 
 type LayoutPreviewProps = {
   layout: CardLayout
