@@ -46,8 +46,27 @@ export default function FilesPanel({
   const navigate = useNavigate()
   const [selection, setSelection] = useState<Set<string>>(() => new Set(cards.map(c => c.id)))
   const [exporting, setExporting] = useState(false)
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
 
   const setStatus = (msg: string) => onStatusChange?.(msg)
+
+  useEffect(() => {
+    if (!layout || cards.length === 0) { setThumbnails({}); return }
+    let cancelled = false
+    ;(async () => {
+      const { renderCardSvg } = await import('../render')
+      const t: Record<string, string> = {}
+      for (const card of cards) {
+        if (cancelled) return
+        try {
+          const svg = renderCardSvg(card, layout, { fonts: gameFonts })
+          t[card.id] = `data:image/svg+xml,${encodeURIComponent(svg)}`
+        } catch { /* skip */ }
+      }
+      if (!cancelled) setThumbnails(t)
+    })()
+    return () => { cancelled = true }
+  }, [cards, layout, gameFonts])
 
   useEffect(() => {
     setSelection(prev => {
@@ -235,6 +254,7 @@ export default function FilesPanel({
       items={cards}
       getKey={(c) => c.id}
       getName={(c) => c.name}
+      getPreviewSrc={(c) => thumbnails[c.id] || ''}
       selectedKeys={selection}
       onSelectedKeysChange={setSelection}
       renderItem={(card, _vm, selected, idx) => (

@@ -64,10 +64,11 @@ function GameFilesPanel({ gameId, storage, game, layouts, collections, gameFonts
   )
 }
 
-function GameImportPanel({ gameId, storage, collections, onStatusChange, onCardsChange }: {
-  gameId: string; storage: any; collections: any[]; onStatusChange: (msg: string) => void; onCardsChange: () => void
+function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onStatusChange, onCardsChange }: {
+  gameId: string; storage: any; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void; onCardsChange: () => void
 }) {
   const [allCards, setAllCards] = useState<any[]>([])
+  const layout = layouts[0] ?? null
 
   useEffect(() => {
     if (!storage || !gameId || !collections.length) { setAllCards([]); return }
@@ -88,6 +89,8 @@ function GameImportPanel({ gameId, storage, collections, onStatusChange, onCards
     <ImportPanel
       gameId={gameId}
       cards={allCards}
+      layout={layout}
+      gameFonts={gameFonts}
       storage={storage}
       collections={collections}
       onStatusChange={onStatusChange}
@@ -818,7 +821,7 @@ export default function CollectionsPage() {
                 onStatusChange={setStatus}
                 onComplete={() => loadData(storage)}
               />
-              <GameImportPanel gameId={gameId!} storage={storage} collections={collections} onStatusChange={setStatus} onCardsChange={() => loadData(storage)} />
+              <GameImportPanel gameId={gameId!} storage={storage} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} onCardsChange={() => loadData(storage)} />
             </div>
           </TabsContent>
 

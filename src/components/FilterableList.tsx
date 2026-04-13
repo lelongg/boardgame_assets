@@ -15,6 +15,7 @@ type FilterableListProps<T> = {
   getKey: (item: T) => string
   getName: (item: T) => string
   getPreviewSrc?: (item: T) => string
+  getGroup?: (item: T) => string | undefined
   selectedKey?: string | null
   onSelect?: (key: string | null) => void
   selectedKeys?: Set<string>
@@ -32,8 +33,10 @@ type FilterableListProps<T> = {
 
 const COL_WIDTH = 120
 
-export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, selectedKey, onSelect, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
+export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, getGroup, selectedKey, onSelect, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
   const multiSelect = !!(selectedKeys && onSelectedKeysChange)
+  const [hoverThumb, setHoverThumb] = useState<{ src: string; x: number; y: number } | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const [filtered, filterInput] = useFuzzyFilter(items, getName)
   const { collapsed, toggle } = useCollapsible()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -148,7 +151,12 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   const previewSrc = selectedItem && getPreviewSrc ? getPreviewSrc(selectedItem) : ''
   const showBigPreview = bigPreview && isGrid && getPreviewSrc && selectedItem
 
-  return (
+  return (<>
+    {hoverThumb && (
+      <div className="pointer-events-none fixed z-50" style={{ left: hoverThumb.x + 16, top: hoverThumb.y - 80, width: 120 }}>
+        <CardThumbnail src={hoverThumb.src} name="" />
+      </div>
+    )}
     <div ref={containerRef} className="rounded-lg border bg-card flex flex-col" style={{ [showBigPreview ? 'height' : 'maxHeight']: collapsed ? undefined : maxHeight }}>
       <CollapsibleHeader collapsed={collapsed} onToggle={toggle}>
         <span className="text-sm font-semibold">{title}</span>
@@ -261,17 +269,63 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
                   return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }} onClick={() => handleItemClick(item)}>{renderItem(item, mode, isItemSelected(item), idx)}</div>
                 })}
               </div>
-            ) : (
-              <div className="p-1">
-                {filtered.map((item, idx) => {
-                  const k = getKey(item)
-                  return <div key={k} ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }} onClick={() => handleItemClick(item)}>{renderItem(item, mode, isItemSelected(item), idx)}</div>
-                })}
-              </div>
-            )}
+            ) : (() => {
+              const renderListItem = (item: T, idx: number) => {
+                const k = getKey(item)
+                const previewSrc = getPreviewSrc?.(item)
+                return <div key={k}
+                  ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }}
+                  onClick={() => handleItemClick(item)}
+                  onMouseEnter={(e) => { if (previewSrc?.length) setHoverThumb({ src: previewSrc, x: e.clientX, y: e.clientY }) }}
+                  onMouseMove={(e) => { if (previewSrc?.length) setHoverThumb(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null) }}
+                  onMouseLeave={() => setHoverThumb(null)}
+                >{renderItem(item, mode, isItemSelected(item), idx)}</div>
+              }
+
+              const groupNames = getGroup ? [...new Set(filtered.map(getGroup).filter(Boolean))] as string[] : []
+              const hasGroups = groupNames.length > 1
+
+              if (!hasGroups) return <div className="p-1">{filtered.map(renderListItem)}</div>
+
+              let globalIdx = 0
+              return <div className="p-1">{groupNames.map(groupName => {
+                const groupItems = filtered.filter(i => getGroup!(i) === groupName)
+                if (groupItems.length === 0) return null
+                const isGroupCollapsed = collapsedGroups.has(groupName)
+                const groupAllSelected = multiSelect && groupItems.every(i => selectedKeys!.has(getKey(i)))
+                const toggleGroup = () => {
+                  if (!multiSelect) return
+                  const next = new Set(selectedKeys!)
+                  if (groupAllSelected) groupItems.forEach(i => next.delete(getKey(i)))
+                  else groupItems.forEach(i => next.add(getKey(i)))
+                  onSelectedKeysChange!(next)
+                }
+                const toggleCollapse = () => setCollapsedGroups(prev => {
+                  const next = new Set(prev)
+                  next.has(groupName) ? next.delete(groupName) : next.add(groupName)
+                  return next
+                })
+                const startIdx = globalIdx
+                globalIdx += groupItems.length
+                return <div key={groupName}>
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground pt-2 pb-1 border-b mb-1 select-none px-1">
+                    {multiSelect && <Checkbox checked={groupAllSelected} onCheckedChange={toggleGroup} className="cursor-pointer" />}
+                    <span className="cursor-pointer flex-1" onClick={toggleCollapse}>
+                      {groupName} <span className="text-[0.65rem] font-normal text-muted-foreground ml-1">
+                        {multiSelect ? `${groupItems.filter(i => selectedKeys!.has(getKey(i))).length}/` : ''}{groupItems.length}
+                      </span>
+                    </span>
+                    <button onClick={toggleCollapse} className="text-muted-foreground hover:text-foreground transition-colors">
+                      {isGroupCollapsed ? '▸' : '▾'}
+                    </button>
+                  </div>
+                  {!isGroupCollapsed && groupItems.map((item, i) => renderListItem(item, startIdx + i))}
+                </div>
+              })}</div>
+            })()}
           </div>
         )}
       </>}
     </div>
-  )
+  </>)
 }

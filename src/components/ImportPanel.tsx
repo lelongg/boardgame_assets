@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import FilterableList from './FilterableList'
 import { csvToCards } from '../cardsCsv'
-import type { CardData } from '../types'
+import type { CardData, CardLayout } from '../types'
 
 export type SelectableCard = CardData & { collectionId?: string; collectionName?: string }
 
@@ -13,12 +13,15 @@ type MergedItem = {
   name: string
   kind: 'existing' | 'new'
   status?: 'replace' | 'missing'
+  collectionName?: string
 }
 
 type ImportPanelProps = {
   gameId: string
   collectionId?: string
   cards: SelectableCard[]
+  layout?: CardLayout
+  gameFonts?: Record<string, { name: string; file: string }>
   storage: any
   onStatusChange?: (msg: string) => void
   onCardsChange?: () => void
@@ -26,7 +29,7 @@ type ImportPanelProps = {
 }
 
 export default function ImportPanel({
-  gameId, collectionId, cards, storage,
+  gameId, collectionId, cards, layout, gameFonts, storage,
   onStatusChange, onCardsChange, collections = [],
 }: ImportPanelProps) {
   const storageKey = `import:${gameId}:${collectionId}`
@@ -38,6 +41,25 @@ export default function ImportPanel({
     try { const s = localStorage.getItem(`${storageKey}:staged`); return s ? JSON.parse(s) : [] } catch { return [] }
   })
   const [badgeFilter, setBadgeFilter] = useState<'all' | 'added' | 'updated' | 'deleted'>('all')
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!layout || cards.length === 0) { setThumbnails({}); return }
+    let cancelled = false
+    ;(async () => {
+      const { renderCardSvg } = await import('../render')
+      const t: Record<string, string> = {}
+      for (const card of cards) {
+        if (cancelled) return
+        try {
+          const svg = renderCardSvg(card, layout, { fonts: gameFonts })
+          t[card.id] = `data:image/svg+xml,${encodeURIComponent(svg)}`
+        } catch { /* skip */ }
+      }
+      if (!cancelled) setThumbnails(t)
+    })()
+    return () => { cancelled = true }
+  }, [cards, layout, gameFonts])
 
   useEffect(() => { localStorage.setItem(`${storageKey}:staged`, JSON.stringify(importStaged)) }, [importStaged, storageKey])
   useEffect(() => { localStorage.setItem(`${storageKey}:sel`, JSON.stringify([...selection])) }, [selection, storageKey])
@@ -60,11 +82,11 @@ export default function ImportPanel({
     const items: MergedItem[] = cards.map(c => {
       const isReplaced = hasImport && stagedNames?.has(c.name)
       const isMissing = hasImport && !stagedNames?.has(c.name)
-      return { id: c.id, name: c.name, kind: 'existing' as const, status: isReplaced ? 'replace' as const : isMissing ? 'missing' as const : undefined }
+      return { id: c.id, name: c.name, kind: 'existing' as const, status: isReplaced ? 'replace' as const : isMissing ? 'missing' as const : undefined, collectionName: c.collectionName }
     })
     if (hasImport) {
       importStaged.forEach((s, i) => {
-        if (!existingByName.has(s.name)) items.push({ id: `import-${i}`, name: s.name, kind: 'new' })
+        if (!existingByName.has(s.name)) items.push({ id: `import-${i}`, name: s.name, kind: 'new', collectionName: (s as any).collectionName })
       })
     }
     return items
@@ -154,6 +176,8 @@ export default function ImportPanel({
       items={filteredItems}
       getKey={(i) => i.id}
       getName={(i) => i.name}
+      getPreviewSrc={(i) => thumbnails[i.id] || ''}
+      getGroup={(i) => i.collectionName}
       selectedKeys={selection}
       onSelectedKeysChange={setSelection}
       renderItem={(item, _vm, selected, idx) => (

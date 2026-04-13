@@ -3,7 +3,7 @@ import NodeTree from './NodeTree'
 import PropertyPanel from './PropertyPanel'
 import LayoutPreview, { type PreviewCard } from '../LayoutPreview'
 import CollapsibleHeader, { useCollapsible } from '../ui/CollapsibleHeader'
-import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById } from './layoutHelpers'
+import { getNodeKind, moveNode, findSectionById, findNodeLocation, findParentSection, findItemById, deepCloneWithNewIds } from './layoutHelpers'
 import { applyPropertyChange } from './applyPropertyChange'
 import type { CardLayout } from '../../types'
 
@@ -109,6 +109,18 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
     setSelectedNodeId(item.id)
   }
 
+  const handleDuplicateNode = () => {
+    if (!selectedNodeId || !selectedKind || isRoot) return
+    const t = JSON.parse(JSON.stringify(layout))
+    const loc = findNodeLocation(t.root, selectedNodeId, selectedKind)
+    if (!loc) return
+    const clone = deepCloneWithNewIds(loc.list[loc.index])
+    clone.name = `${clone.name} copy`
+    loc.list.splice(loc.index + 1, 0, clone)
+    handleLayoutSave(t)
+    setSelectedNodeId(clone.id)
+  }
+
   const handleDeleteNode = () => {
     if (!selectedNodeId || !selectedKind || isRoot) return
     const t = JSON.parse(JSON.stringify(layout))
@@ -135,6 +147,7 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
             }}
             onAddSection={handleAddSection}
             onAddItem={handleAddItem}
+            onDuplicate={handleDuplicateNode}
             onDelete={handleDeleteNode}
             canDelete={!!selectedNodeId && !isRoot}
           />

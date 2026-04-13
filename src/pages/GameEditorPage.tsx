@@ -589,9 +589,20 @@ export default function GameEditorPage() {
 
   if (!game) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <p className="text-muted-foreground animate-pulse">{status}</p>
-      </div>
+      <PageLayout
+        header={<>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`/game/${gameId}`)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <span className="text-muted-foreground text-sm">{status}</span>
+        </>}
+        errorDetail={errorDetail}
+        onDismissError={clearError}
+      >
+        <div className="flex items-center justify-center p-16">
+          <p className="text-muted-foreground animate-pulse">{status}</p>
+        </div>
+      </PageLayout>
     )
   }
 
@@ -973,6 +984,8 @@ export default function GameEditorPage() {
                 gameId={gameId!}
                 collectionId={collectionId}
                 cards={cards}
+                layout={game?.layout}
+                gameFonts={gameFonts}
                 storage={storage}
                 collections={collection ? [collection] : []}
                 onStatusChange={setStatus}

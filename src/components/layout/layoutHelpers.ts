@@ -140,6 +140,20 @@ export const getItemAspectRatio = (layout: CardLayout, itemId: string): number |
   return h > 0 ? w / h : undefined
 }
 
+/** Deep clone a section or item, assigning new UUIDs to all nodes recursively. */
+export const deepCloneWithNewIds = <T extends { id: string }>(node: T): T => {
+  const clone = JSON.parse(JSON.stringify(node)) as T
+  const reassign = (obj: any) => {
+    if (obj && typeof obj === 'object') {
+      if ('id' in obj && typeof obj.id === 'string') obj.id = crypto.randomUUID()
+      if (Array.isArray(obj.children)) obj.children.forEach(reassign)
+      if (Array.isArray(obj.items)) obj.items.forEach(reassign)
+    }
+  }
+  reassign(clone)
+  return clone
+}
+
 /**
  * Move a node to a new position. Returns true if successful.
  * - dropTargetId: the section or item being dropped onto

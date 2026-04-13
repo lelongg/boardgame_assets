@@ -239,6 +239,7 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
       items={hasZip ? filteredItems : []}
       getKey={(i) => i.id}
       getName={(i) => i.name}
+      getGroup={(i) => i.group}
       selectedKeys={selection}
       onSelectedKeysChange={setSelection}
       renderItem={(item, _vm, selected, idx) => (

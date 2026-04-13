@@ -12,6 +12,7 @@ type NodeTreeProps = {
   onDrop: (dragId: string, dragKind: 'section' | 'item', dropTargetId: string, position: 'before' | 'after' | 'inside') => void
   onAddSection?: () => void
   onAddItem?: (type: 'text' | 'frame' | 'image' | 'emoji' | 'copy') => void
+  onDuplicate?: () => void
   onDelete?: () => void
   canDelete?: boolean
 }
@@ -21,7 +22,7 @@ type DropIndicator = {
   position: 'before' | 'after' | 'inside'
 }
 
-export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, onAddSection, onAddItem, onDelete, canDelete }: NodeTreeProps) {
+export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, onAddSection, onAddItem, onDuplicate, onDelete, canDelete }: NodeTreeProps) {
   const [filter, setFilter] = useState<'all' | 'sections' | 'items'>('all')
   const { collapsed: panelCollapsed, toggle: togglePanel } = useCollapsible()
   const allNodes = flattenNodes(root)
@@ -156,6 +157,15 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
                 <button onClick={() => { onAddItem('copy'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Copy className="h-3.5 w-3.5" /> Copy</button>
               </>)}
             </PortalDropdown>
+          )}
+          {onDuplicate && canDelete && (
+            <button
+              onClick={onDuplicate}
+              className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+              title="Duplicate"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
           )}
           {onDelete && canDelete && (
             <button
