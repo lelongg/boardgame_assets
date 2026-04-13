@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { createStorage } from '../storage'
 import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
+import useStorage from '../hooks/useStorage'
+import { useFonts, useCollections } from '../hooks/useGameData'
 import type { CardData, CardLayout } from '../types'
 
 type DeckEntry = { card: CardData; layout: CardLayout; collectionName: string }
@@ -21,40 +22,45 @@ const TTS_MAX_CARDS = 69
 
 export default function ExportTTSPage() {
   const { gameId } = useParams<{ gameId: string }>()
+  const { storage } = useStorage()
+  const { data: gameFonts = {} } = useFonts(gameId)
+  const { data: collections = [] } = useCollections(gameId)
   const [entries, setEntries] = useState<DeckEntry[]>([])
   const [status, setStatus] = useState('Loading...')
   const [atlasUrl, setAtlasUrl] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
-  const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
+  // Load card entries once collections are available
   useEffect(() => {
-    const init = async () => {
+    if (!storage || !gameId || !collections.length) return
+    let cancelled = false
+    const load = async () => {
       try {
-        const s = await createStorage()
-        if (!gameId) return
-        const fonts = await s.listFonts(gameId)
-        setGameFonts(fonts)
-        const collections = await s.listCollections(gameId)
         const all: DeckEntry[] = []
         for (const col of collections) {
           const [tpl, cards] = await Promise.all([
-            s.getLayout(gameId, col.layoutId),
-            s.listCards(gameId, col.id),
+            storage.getLayout(gameId, col.layoutId),
+            storage.listCards(gameId, col.id),
           ])
           for (const card of cards) {
             all.push({ card, layout: tpl, collectionName: col.name })
           }
         }
-        setEntries(all)
-        setStatus(`${all.length} cards loaded`)
+        if (!cancelled) {
+          setEntries(all)
+          setStatus(`${all.length} cards loaded`)
+        }
       } catch (err) {
-        setStatus('Error loading data.')
-        console.error(err)
+        if (!cancelled) {
+          setStatus('Error loading data.')
+          console.error(err)
+        }
       }
     }
-    init()
-  }, [gameId])
+    load()
+    return () => { cancelled = true }
+  }, [storage, gameId, collections])
 
   const generateAtlas = async () => {
     if (!entries.length) return

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
@@ -16,8 +17,17 @@ import FilterableList from '@/components/FilterableList'
 import PageLayout from '@/components/PageLayout'
 import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from '@/components/FontManager'
 import useStorage from '../hooks/useStorage'
+import {
+  useGame, useCollections, useLayouts, useFonts, useImages, useCards,
+  useCreateCollection, useUpdateCollection, useDeleteCollection,
+  useCreateLayout, useSaveLayout, useCopyLayout, useDeleteLayout,
+  useSaveCard, useCopyCard, useDeleteCard,
+  useUpdateGame, useUploadImage, useDeleteImage,
+  useInvalidateGame, queryKeys,
+} from '../hooks/useGameData'
 import FilesPanel from '@/components/FilesPanel'
 import useAssetUrl from '../hooks/useAssetUrl'
+import useFontStyles from '../hooks/useFontStyles'
 const LazyImageEditor = lazy(() => import('@/components/ImageEditor'))
 
 function ResolvedImageEditor(props: { src: string; filename?: string; onSave: (dataUrl: string, filename?: string) => void; onSaveAsNew?: (dataUrl: string, filename?: string) => Promise<void>; onCancel: () => void }) {
@@ -30,9 +40,11 @@ function ResolvedImageEditor(props: { src: string; filename?: string; onSave: (d
   )
 }
 
-function GameFilesPanel({ gameId, storage, game, layouts, collections, gameFonts, onStatusChange }: {
-  gameId: string; storage: any; game: any; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void
+function GameFilesPanel({ gameId, game, layouts, collections, gameFonts, onStatusChange }: {
+  gameId: string; game: any; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void
 }) {
+  const { storage } = useStorage()
+  const queryClient = useQueryClient()
   const [allCards, setAllCards] = useState<any[]>([])
   const layout = layouts[0] ?? null
 
@@ -42,7 +54,9 @@ function GameFilesPanel({ gameId, storage, game, layouts, collections, gameFonts
     const load = async () => {
       const cards: any[] = []
       for (const col of collections) {
-        const colCards = await storage.listCards(gameId, col.id)
+        const colCards = queryClient.getQueryData<any[]>(queryKeys.cards(gameId, col.id))
+          ?? await queryClient.fetchQuery({ queryKey: queryKeys.cards(gameId, col.id), queryFn: () => storage.listCards(gameId, col.id) })
+          ?? []
         cards.push(...colCards.map((c: any) => ({ ...c, collectionId: col.id, collectionName: col.name, collectionBack: col.back, collectionBackFit: col.backFit })))
       }
       if (!cancelled) setAllCards(cards)
@@ -58,15 +72,16 @@ function GameFilesPanel({ gameId, storage, game, layouts, collections, gameFonts
       cards={allCards}
       layout={layout}
       gameFonts={gameFonts}
-      storage={storage}
       onStatusChange={onStatusChange}
     />
   )
 }
 
-function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onStatusChange, onCardsChange }: {
-  gameId: string; storage: any; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void; onCardsChange: () => void
+function GameImportPanel({ gameId, layouts, collections, gameFonts, onStatusChange, onCardsChange }: {
+  gameId: string; layouts: any[]; collections: any[]; gameFonts: Record<string, { name: string; file: string }>; onStatusChange: (msg: string) => void; onCardsChange: () => void
 }) {
+  const { storage } = useStorage()
+  const queryClient = useQueryClient()
   const [allCards, setAllCards] = useState<any[]>([])
   const layout = layouts[0] ?? null
 
@@ -76,7 +91,9 @@ function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onS
     const load = async () => {
       const cards: any[] = []
       for (const col of collections) {
-        const colCards = await storage.listCards(gameId, col.id)
+        const colCards = queryClient.getQueryData<any[]>(queryKeys.cards(gameId, col.id))
+          ?? await queryClient.fetchQuery({ queryKey: queryKeys.cards(gameId, col.id), queryFn: () => storage.listCards(gameId, col.id) })
+          ?? []
         cards.push(...colCards.map((c: any) => ({ ...c, collectionId: col.id, collectionName: col.name })))
       }
       if (!cancelled) setAllCards(cards)
@@ -91,7 +108,6 @@ function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onS
       cards={allCards}
       layout={layout}
       gameFonts={gameFonts}
-      storage={storage}
       collections={collections}
       onStatusChange={onStatusChange}
       onCardsChange={onCardsChange}
@@ -103,14 +119,21 @@ function GameImportPanel({ gameId, storage, layouts, collections, gameFonts, onS
 export default function CollectionsPage() {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
-  const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
-  const [game, setGame] = useState<any>(null)
-  const [collections, setCollections] = useState<any[]>([])
-  const [layouts, setLayouts] = useState<any[]>([])
+  const { storage, status, setStatus, errorDetail, clearError } = useStorage()
+  const queryClient = useQueryClient()
+
+  // ── Query hooks (data loading) ──────────────────────────────────
+  const { data: game } = useGame(gameId)
+  const { data: collections = [] } = useCollections(gameId)
+  const { data: layouts = [] } = useLayouts(gameId)
+  const { data: gameFonts = {} } = useFonts(gameId)
+  const { data: gameImages = [] } = useImages(gameId)
+
   const [expandedCollection, setExpandedCollection] = useState<string | null>(() => {
     try { return localStorage.getItem(`game:${gameId}:selectedCollection`) } catch { return null }
   })
-  const [collectionCards, setCollectionCards] = useState<any[]>([])
+  const { data: collectionCards = [] } = useCards(gameId, expandedCollection ?? undefined)
+
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [cardPreviews, setCardPreviews] = useState<Record<string, string>>({})
   const carouselRefs = useRef<Map<string, HTMLElement>>(new Map())
@@ -123,8 +146,6 @@ export default function CollectionsPage() {
   const [showFontAdd, setShowFontAdd] = useState(false)
   const [selectedFont, setSelectedFont] = useState<string | null>(null)
   const [fontPreviewText, setFontPreviewText] = useState(defaultPreviewText)
-  const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string; source: 'upload' | 'google' }>>({})
-  const [gameImages, setGameImages] = useState<{ file: string; url: string; name: string }[]>([])
   const [selectedImage, setSelectedImage_] = useState<string | null>(() => { try { return localStorage.getItem(`game:${gameId}:selectedImage`) } catch { return null } })
   const setSelectedImage = (v: string | null) => { setSelectedImage_(v); try { if (v) localStorage.setItem(`game:${gameId}:selectedImage`, v); else localStorage.removeItem(`game:${gameId}:selectedImage`) } catch {} }
   const [showImageUpload, setShowImageUpload] = useState(false)
@@ -138,62 +159,93 @@ export default function CollectionsPage() {
 
   const [editingImage, setEditingImage] = useState(false)
 
-  // Fuzzy filters
+  // ── Mutation hooks ──────────────────────────────────────────────
+  const createCollectionMut = useCreateCollection(gameId)
+  const updateCollectionMut = useUpdateCollection(gameId)
+  const deleteCollectionMut = useDeleteCollection(gameId)
+  const createLayoutMut = useCreateLayout(gameId)
+  const saveLayoutMut = useSaveLayout(gameId)
+  const copyLayoutMut = useCopyLayout(gameId)
+  const deleteLayoutMut = useDeleteLayout(gameId)
+  const saveCardMut = useSaveCard(gameId, expandedCollection ?? undefined)
+  const copyCardMut = useCopyCard(gameId, expandedCollection ?? undefined)
+  const deleteCardMut = useDeleteCard(gameId, expandedCollection ?? undefined)
+  const updateGameMut = useUpdateGame(gameId)
+  const uploadImageMut = useUploadImage(gameId)
+  const deleteImageMut = useDeleteImage(gameId)
+  const invalidateGame = useInvalidateGame(gameId)
 
   const [layoutPreviewCards, setLayoutPreviewCards] = useState<any[]>([])
 
   const selectedLayout = selectedLayoutId ? layouts.find(t => t.id === selectedLayoutId) : null
 
+  // Auto-select first collection when data loads
   useEffect(() => {
-    if (!storage || !gameId) return
-    loadData(storage)
-  }, [storage, gameId])
-
-  // Load fonts into the page for preview (fetch through interceptor for IndexedDB support)
-  useEffect(() => {
-    if (!gameFonts || !gameId) return
-    let cancelled = false
-    const styleId = `game-fonts-${gameId}`
-    let style = document.getElementById(styleId) as HTMLStyleElement | null
-    if (!style) { style = document.createElement('style'); style.id = styleId; document.head.appendChild(style) }
-    const load = async () => {
-      const rules: string[] = []
-      for (const f of Object.values(gameFonts)) {
-        if (!f.file || cancelled) continue
-        try {
-          const resp = await fetch(`/api/games/${gameId}/fonts/${f.file}`)
-          if (!resp.ok) continue
-          const blob = await resp.blob()
-          const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(blob) })
-          rules.push(`@font-face { font-family: '${f.name}'; src: url('${b64}'); }`)
-        } catch { /* skip */ }
+    if (collections.length > 0) {
+      const saved = localStorage.getItem(`game:${gameId}:selectedCollection`)
+      if (!saved || !collections.some((c: any) => c.id === saved)) {
+        setExpandedCollection(collections[0].id)
+        localStorage.setItem(`game:${gameId}:selectedCollection`, collections[0].id)
       }
-      if (!cancelled && style) style.textContent = rules.join('\n')
     }
-    load()
-    return () => { cancelled = true; if (style) style.textContent = '' }
-  }, [gameFonts, gameId])
+  }, [collections, gameId])
 
-  // Load cards for layout preview selector
+  // Auto-select first layout when data loads
+  useEffect(() => {
+    if (layouts.length > 0) {
+      const saved = localStorage.getItem(`game:${gameId}:selectedLayout`)
+      if (!saved || !layouts.some((t: any) => t.id === saved)) {
+        setSelectedLayoutId(layouts[0].id)
+        localStorage.setItem(`game:${gameId}:selectedLayout`, layouts[0].id)
+      }
+    }
+  }, [layouts, gameId])
+
+  // Auto-select first font
+  useEffect(() => {
+    const fontKeys = Object.keys(gameFonts)
+    if (fontKeys.length > 0 && !selectedFont) {
+      setSelectedFont(fontKeys[0])
+    }
+  }, [gameFonts])
+
+  // Auto-select first card when collection cards load
+  useEffect(() => {
+    if (!expandedCollection) { setSelectedCardId(null); return }
+    if (collectionCards.length > 0 && !collectionCards.some(c => c.id === selectedCardId)) {
+      setSelectedCardId(collectionCards[0].id)
+    } else if (collectionCards.length === 0) {
+      setSelectedCardId(null)
+    }
+  }, [collectionCards, expandedCollection])
+
+  // Load fonts into the page for preview
+  useFontStyles(gameId, gameFonts)
+
+  // Load cards for layout preview selector (uses query cache when available)
   useEffect(() => {
     if (!storage || !gameId || !selectedLayoutId || !collections.length) { setLayoutPreviewCards([]); return }
+    let cancelled = false
     const load = async () => {
-      const cols = collections.filter(c => c.layoutId === selectedLayoutId)
+      const cols = collections.filter((c: any) => c.layoutId === selectedLayoutId)
       const all: any[] = []
       for (const col of cols) {
-        const cards = await storage.listCards(gameId, col.id)
+        const cards = queryClient.getQueryData<any[]>(queryKeys.cards(gameId, col.id))
+          ?? await queryClient.fetchQuery({ queryKey: queryKeys.cards(gameId, col.id), queryFn: () => storage.listCards(gameId, col.id) })
+          ?? []
         all.push(...cards.map((c: any) => ({ ...c, collectionName: col.name })))
       }
-      setLayoutPreviewCards(all)
+      if (!cancelled) setLayoutPreviewCards(all)
     }
     load()
+    return () => { cancelled = true }
   }, [storage, gameId, selectedLayoutId, collections])
 
   // Render card previews client-side
   useEffect(() => {
     if (!collectionCards.length || !expandedCollection || !layouts.length) { setCardPreviews({}); return }
-    const col = collections.find(c => c.id === expandedCollection)
-    const tpl = col ? layouts.find(t => t.id === col.layoutId) : null
+    const col = collections.find((c: any) => c.id === expandedCollection)
+    const tpl = col ? layouts.find((t: any) => t.id === col.layoutId) : null
     if (!tpl) { setCardPreviews({}); return }
     let cancelled = false
     const renderAll = async () => {
@@ -216,16 +268,6 @@ export default function CollectionsPage() {
     return () => { cancelled = true }
   }, [collectionCards, collections, layouts, expandedCollection])
 
-  // Load cards when a collection is selected
-  useEffect(() => {
-    if (!expandedCollection || !storage || !gameId) { setCollectionCards([]); setSelectedCardId(null); return; }
-    setSelectedCardId(null)
-    storage.listCards(gameId, expandedCollection).then((cards: any[]) => {
-      setCollectionCards(cards)
-      if (cards.length > 0) setSelectedCardId(cards[0].id)
-    }).catch(() => setCollectionCards([]))
-  }, [expandedCollection, storage, gameId])
-
   // Scroll carousel thumbnail into view
   useEffect(() => {
     if (!selectedCardId) return
@@ -233,82 +275,27 @@ export default function CollectionsPage() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
   }, [selectedCardId])
 
-  const loadData = async (s: any) => {
-    try {
-      if (!gameId) return
-      const [gameData, colList, tplList, fonts, images] = await Promise.all([
-        s.getGame(gameId),
-        s.listCollections(gameId),
-        s.listLayouts(gameId),
-        s.listFonts(gameId),
-        s.listImages?.(gameId).catch(() => []) ?? [],
-      ])
-      setGame(gameData)
-      setCollections(colList)
-      setLayouts(tplList)
-      setGameFonts(fonts)
-      setGameImages(images)
-      setCardPreviews({})
-
-      // Auto-select first item if no persisted selection
-      if (colList.length > 0) {
-        const saved = localStorage.getItem(`game:${gameId}:selectedCollection`)
-        if (!saved || !colList.some((c: any) => c.id === saved)) {
-          setExpandedCollection(colList[0].id)
-          localStorage.setItem(`game:${gameId}:selectedCollection`, colList[0].id)
-        }
-      }
-      if (tplList.length > 0) {
-        const saved = localStorage.getItem(`game:${gameId}:selectedLayout`)
-        const tpl = saved && tplList.find((t: any) => t.id === saved) ? tplList.find((t: any) => t.id === saved) : tplList[0]
-        if (!saved || !tplList.some((t: any) => t.id === saved)) {
-          setSelectedLayoutId(tpl.id)
-          localStorage.setItem(`game:${gameId}:selectedLayout`, tpl.id)
-        }
-        // selectedNodeId is now managed inside LayoutEditorPanel
-      }
-      const fontKeys = Object.keys(fonts)
-      if (fontKeys.length > 0 && !selectedFont) {
-        setSelectedFont(fontKeys[0])
-      }
-
-      setStatus('Ready.')
-    } catch (error) {
-      setError('Error loading game', error)
-    }
-  }
-
   const handleCreateCollection = async (customName?: string, layoutId?: string) => {
-    if (!storage || !gameId || layouts.length === 0) return
+    if (!gameId || layouts.length === 0) return
     const name = customName?.trim() || `Collection ${collections.length + 1}`
     const lid = layoutId || layouts[0].id
-    const optimistic = { id: `temp-${Date.now()}`, name, layoutId: lid }
-    setCollections(prev => [...prev, optimistic])
-    setExpandedCollection(optimistic.id)
     try {
-      const created = await storage.createCollection(gameId, name, lid)
-      setCollections(prev => prev.map(c => c.id === optimistic.id ? created : c))
+      const created = await createCollectionMut.mutateAsync({ name, layoutId: lid })
       setExpandedCollection(created.id)
       if (gameId) localStorage.setItem(`game:${gameId}:selectedCollection`, created.id)
     } catch {
-      setCollections(prev => prev.filter(c => c.id !== optimistic.id))
       setStatus('Error creating collection.')
     }
   }
 
   const handleCreateLayout = async (customName?: string) => {
-    if (!storage || !gameId) return
+    if (!gameId) return
     const name = customName?.trim() || `Layout ${layouts.length + 1}`
-    const optimistic = { version: 2 as const, id: `temp-${Date.now()}`, name, width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
-    setLayouts(prev => [...prev, optimistic])
-    setSelectedLayoutId(optimistic.id)
     try {
-      const created = await storage.createLayout(gameId, name)
-      setLayouts(prev => prev.map(t => t.id === optimistic.id ? created : t))
+      const created = await createLayoutMut.mutateAsync(name)
       setSelectedLayoutId(created.id)
       if (gameId) localStorage.setItem(`game:${gameId}:selectedLayout`, created.id)
     } catch {
-      setLayouts(prev => prev.filter(t => t.id !== optimistic.id))
       setStatus('Error creating layout.')
     }
   }
@@ -316,10 +303,9 @@ export default function CollectionsPage() {
   // --- Layout editor handlers ---
 
   const handleLayoutSave = async (updatedLayout: any) => {
-    if (!gameId || !selectedLayoutId || !storage) return
+    if (!gameId || !selectedLayoutId) return
     try {
-      await storage.saveLayout(gameId, selectedLayoutId, updatedLayout)
-      setLayouts(prev => prev.map(t => t.id === selectedLayoutId ? updatedLayout : t))
+      await saveLayoutMut.mutateAsync({ layoutId: selectedLayoutId, layout: updatedLayout })
       setStatus('Layout saved.')
     } catch {
       setStatus('Error saving layout.')
@@ -351,8 +337,7 @@ export default function CollectionsPage() {
               setEditingName(false)
               if (!name || name === game.name) return
               try {
-                await storage.updateGame(gameId, { name })
-                setGame({ ...game, name })
+                await updateGameMut.mutateAsync({ name })
               } catch {
                 setStatus('Error renaming game.')
               }
@@ -416,7 +401,7 @@ export default function CollectionsPage() {
                       for (const card of cards) {
                         await storage.saveCard(gameId, newCol.id, null, { ...card, id: undefined, name: card.name })
                       }
-                      await loadData(storage)
+                      invalidateGame()
                       setExpandedCollection(newCol.id)
                       setStatus('Collection cloned.')
                     } catch { setStatus('Error cloning collection.') }
@@ -430,14 +415,13 @@ export default function CollectionsPage() {
                     <Layers className="h-4 w-4" />
                   </button>
                   <ConfirmButton iconOnly onConfirm={async () => {
-                    const prev = collections
-                    const idx = collections.findIndex((c) => c.id === col.id)
-                    const updated = collections.filter((c) => c.id !== col.id)
-                    setCollections(updated)
-                    const nextIdx = Math.min(idx, updated.length - 1)
-                    setExpandedCollection(updated[nextIdx]?.id ?? null)
-                    try { await storage.deleteCollection(gameId, col.id) }
-                    catch { setCollections(prev); setExpandedCollection(col.id); setStatus('Error deleting collection.') }
+                    try {
+                      const idx = collections.findIndex((c: any) => c.id === col.id)
+                      await deleteCollectionMut.mutateAsync(col.id)
+                      const remaining = collections.filter((c: any) => c.id !== col.id)
+                      const nextIdx = Math.min(idx, remaining.length - 1)
+                      setExpandedCollection(remaining[nextIdx]?.id ?? null)
+                    } catch { setStatus('Error deleting collection.') }
                   }} />
                 </>
               })() : undefined}
@@ -478,10 +462,8 @@ export default function CollectionsPage() {
                         onClick={(e) => e.stopPropagation()}
                         onChange={async (e) => {
                           const newLayoutId = e.target.value
-                          const prev = collections
-                          setCollections(collections.map((c: any) => c.id === col.id ? { ...c, layoutId: newLayoutId } : c))
-                          try { await storage.updateCollection(gameId, col.id, { layoutId: newLayoutId }) }
-                          catch { setCollections(prev); setStatus('Error changing layout.') }
+                          try { await updateCollectionMut.mutateAsync({ collectionId: col.id, updates: { layoutId: newLayoutId } }) }
+                          catch { setStatus('Error changing layout.') }
                         }}
                       >
                         {layouts.map((t: any) => (
@@ -511,25 +493,23 @@ export default function CollectionsPage() {
                     </button>
                     <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy"
                       onClick={async () => {
-                        const card = collectionCards.find(c => c.id === selectedCardId)
-                        if (!card) return
-                        const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${collectionCards.length + 1}` }
-                        setCollectionCards(prev => [...prev, opt])
-                        setSelectedCardId(opt.id)
-                        try { const copy = await storage.copyCard(gameId, expandedCollection, selectedCardId); setCollectionCards(prev => prev.map(c => c.id === opt.id ? copy : c)); setSelectedCardId(copy.id) }
-                        catch { setCollectionCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
+                        if (!selectedCardId) return
+                        try {
+                          const copy = await copyCardMut.mutateAsync(selectedCardId)
+                          setSelectedCardId(copy.id)
+                        } catch { setStatus('Error copying card.') }
                       }}>
                       <Copy className="h-4 w-4" />
                     </button>
                     <ConfirmButton iconOnly onConfirm={async () => {
-                      const prev = collectionCards; const prevId = selectedCardId
-                      const idx = collectionCards.findIndex(c => c.id === selectedCardId)
-                      const updated = collectionCards.filter(c => c.id !== selectedCardId)
-                      setCollectionCards(updated)
-                      const nextIdx = Math.min(idx, updated.length - 1)
-                      setSelectedCardId(updated[nextIdx]?.id ?? null)
-                      try { await storage.deleteCard(gameId, expandedCollection, prevId) }
-                      catch { setCollectionCards(prev); setSelectedCardId(prevId); setStatus('Error deleting card.') }
+                      if (!selectedCardId) return
+                      try {
+                        const idx = collectionCards.findIndex(c => c.id === selectedCardId)
+                        await deleteCardMut.mutateAsync(selectedCardId)
+                        const remaining = collectionCards.filter(c => c.id !== selectedCardId)
+                        const nextIdx = Math.min(idx, remaining.length - 1)
+                        setSelectedCardId(remaining[nextIdx]?.id ?? null)
+                      } catch { setStatus('Error deleting card.') }
                     }} />
                   </>) : undefined}
                   toolbar={
@@ -543,12 +523,10 @@ export default function CollectionsPage() {
                       if (!newCollCardName.trim() || !expandedCollection) return
                       const name = newCollCardName.trim()
                       const newCard = { id: crypto.randomUUID(), name, fields: {} }
-                      setCollectionCards(prev => [...prev, newCard as any])
-                      setSelectedCardId(newCard.id)
                       try {
-                        await storage.saveCard(gameId, expandedCollection, newCard.id, newCard)
+                        await saveCardMut.mutateAsync({ cardId: newCard.id, card: newCard })
+                        setSelectedCardId(newCard.id)
                       } catch {
-                        setCollectionCards(prev => prev.filter(c => c.id !== newCard.id))
                         setStatus('Error creating card.')
                       }
                       setNewCollCardName('')
@@ -613,26 +591,21 @@ export default function CollectionsPage() {
                   if (!tpl) return undefined
                   return <>
                     <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy layout" onClick={async () => {
-                      const opt = { ...tpl, id: `temp-${Date.now()}`, name: `Layout ${layouts.length + 1}` }
-                      setLayouts(prev => [...prev, opt])
-                      setSelectedLayoutId(opt.id)
                       try {
-                        const copy = await storage.copyLayout(gameId, tpl.id)
-                        setLayouts(prev => prev.map(t => t.id === opt.id ? copy : t))
+                        const copy = await copyLayoutMut.mutateAsync(tpl.id)
                         setSelectedLayoutId(copy.id)
-                      } catch { setLayouts(prev => prev.filter(t => t.id !== opt.id)); setStatus('Error copying layout.') }
+                      } catch { setStatus('Error copying layout.') }
                     }}>
                       <Copy className="h-4 w-4" />
                     </button>
                     <ConfirmButton iconOnly onConfirm={async () => {
-                      const prev = layouts
-                      const idx = layouts.findIndex((t) => t.id === tpl.id)
-                      const updated = layouts.filter((t) => t.id !== tpl.id)
-                      setLayouts(updated)
-                      const nextIdx = Math.min(idx, updated.length - 1)
-                      setSelectedLayoutId(updated[nextIdx]?.id ?? null)
-                      try { await storage.deleteLayout(gameId, tpl.id) }
-                      catch (err: any) { setLayouts(prev); setSelectedLayoutId(tpl.id); setStatus(err.message || 'Error deleting layout.') }
+                      try {
+                        const idx = layouts.findIndex((t: any) => t.id === tpl.id)
+                        await deleteLayoutMut.mutateAsync(tpl.id)
+                        const remaining = layouts.filter((t: any) => t.id !== tpl.id)
+                        const nextIdx = Math.min(idx, remaining.length - 1)
+                        setSelectedLayoutId(remaining[nextIdx]?.id ?? null)
+                      } catch (err: any) { setStatus(err.message || 'Error deleting layout.') }
                     }} />
                   </>
                 })() : undefined}
@@ -670,9 +643,7 @@ export default function CollectionsPage() {
                   gameFonts={gameFonts}
                   gameImages={gameImages}
                   onUploadFile={async (file) => {
-                    const url = await storage.uploadImage(gameId, file)
-                    const images = await storage.listImages(gameId)
-                    setGameImages(images)
+                    const url = await uploadImageMut.mutateAsync(file)
                     return url
                   }}
                   cards={layoutPreviewCards}
@@ -689,9 +660,8 @@ export default function CollectionsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
               <FontManager
                 gameId={gameId!}
-                storage={storage}
                 fonts={gameFonts}
-                onFontsChange={setGameFonts}
+                onFontsChange={() => queryClient.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) })}
                 onStatus={setStatus}
                 showAdd={showFontAdd}
                 onToggleAdd={() => setShowFontAdd(v => !v)}
@@ -715,16 +685,12 @@ export default function CollectionsPage() {
                     filename={img.name}
                     onSave={async (dataUrl, newName) => {
                       try {
-                        await storage.deleteImage(gameId, selectedImage)
+                        await deleteImageMut.mutateAsync(selectedImage)
                         const resp = await fetch(dataUrl)
                         const blob = await resp.blob()
                         const ext = dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
                         const file = new File([blob], `${newName || img.name}.${ext}`, { type: blob.type })
-                        const url = await storage.uploadImage(gameId, file)
-                        const images = await storage.listImages(gameId)
-                        setGameImages(images)
-                        const newFile = images.find((i: { url: string; file: string }) => i.url === url)?.file
-                        setSelectedImage(newFile ?? images[0]?.file ?? null)
+                        await uploadImageMut.mutateAsync(file)
                         setEditingImage(false)
                       } catch { setStatus('Error saving image.') }
                     }}
@@ -734,11 +700,7 @@ export default function CollectionsPage() {
                         const blob = await resp.blob()
                         const ext = dataUrl.startsWith('data:image/webp') ? 'webp' : 'png'
                         const file = new File([blob], `${newName || img.name}.${ext}`, { type: blob.type })
-                        const url = await storage.uploadImage(gameId, file)
-                        const images = await storage.listImages(gameId)
-                        setGameImages(images)
-                        const newFile = images.find((i: { url: string; file: string }) => i.url === url)?.file
-                        if (newFile) setSelectedImage(newFile)
+                        await uploadImageMut.mutateAsync(file)
                         setEditingImage(false)
                       } catch { setStatus('Error saving image.') }
                     }}
@@ -766,11 +728,14 @@ export default function CollectionsPage() {
                     <Copy className="h-4 w-4" />
                   </button>
                   <ConfirmButton iconOnly onConfirm={async () => {
-                    const idx = gameImages.findIndex(i => i.file === selectedImage)
-                    const updated = gameImages.filter(i => i.file !== selectedImage)
-                    const nextIdx = Math.min(idx, updated.length - 1)
-                    try { await storage.deleteImage(gameId, selectedImage); setGameImages(updated); setSelectedImage(updated[nextIdx]?.file ?? null) }
-                    catch { setStatus('Error deleting image.') }
+                    if (!selectedImage) return
+                    const idx = gameImages.findIndex((i: any) => i.file === selectedImage)
+                    try {
+                      await deleteImageMut.mutateAsync(selectedImage)
+                      const remaining = gameImages.filter((i: any) => i.file !== selectedImage)
+                      const nextIdx = Math.min(idx, remaining.length - 1)
+                      setSelectedImage(remaining[nextIdx]?.file ?? null)
+                    } catch { setStatus('Error deleting image.') }
                   }} />
                 </>) : undefined}
                 toolbar={
@@ -783,7 +748,7 @@ export default function CollectionsPage() {
                     <ValueItemEditor
                       property="defaultValue" itemType="image" value=""
                       layout={selectedLayout ?? layouts[0]} gameImages={gameImages}
-                      onUploadFile={async (file) => { const url = await storage.uploadImage(gameId, file); const images = await storage.listImages(gameId); setGameImages(images); setShowImageUpload(false); return url }}
+                      onUploadFile={async (file) => { const url = await uploadImageMut.mutateAsync(file); setShowImageUpload(false); return url }}
                       onChange={() => {}}
                     />
                   </div>
@@ -813,20 +778,19 @@ export default function CollectionsPage() {
             <div className="space-y-4">
               <ZipMergePanel
                 gameId={gameId!}
-                storage={storage}
                 layouts={layouts}
                 collections={collections}
                 gameFonts={gameFonts}
                 gameImages={gameImages}
                 onStatusChange={setStatus}
-                onComplete={() => loadData(storage)}
+                onComplete={invalidateGame}
               />
-              <GameImportPanel gameId={gameId!} storage={storage} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} onCardsChange={() => loadData(storage)} />
+              <GameImportPanel gameId={gameId!} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} onCardsChange={invalidateGame} />
             </div>
           </TabsContent>
 
           <TabsContent value="export">
-            <GameFilesPanel gameId={gameId!} storage={storage} game={game} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} />
+            <GameFilesPanel gameId={gameId!} game={game} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} />
           </TabsContent>
         </Tabs>
     </PageLayout>

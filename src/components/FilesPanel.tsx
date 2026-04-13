@@ -30,7 +30,7 @@ type FilesPanelProps = {
   cards: FileCard[]
   layout?: CardLayout
   gameFonts?: Record<string, { name: string; file: string }>
-  storage: any
+  storage?: any
   back?: string
   backFit?: "cover" | "contain" | "fill"
   onStatusChange?: (msg: string) => void

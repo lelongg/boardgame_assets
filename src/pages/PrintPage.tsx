@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { FloatingInput, FloatingSelect } from '@/components/ui/floating-field'
-import { createStorage } from '../storage'
+import useStorage from '../hooks/useStorage'
+import { useGame, useFonts, useCollections, useCollection } from '../hooks/useGameData'
 import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
 import { NumberEditor } from '@/components/layout/ControlPanel'
 import type { CardData, CardLayout } from '../types'
@@ -108,9 +109,13 @@ export default function PrintPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId?: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { storage } = useStorage()
+  const { data: gameData } = useGame(gameId)
+  const { data: gameFonts = {} } = useFonts(gameId)
+  const { data: allCollections } = useCollections(gameId)
+  const { data: singleCollection } = useCollection(gameId, collectionId)
+
   const [entries, setEntries] = useState<CardEntry[]>([])
-  const [gameName, setGameName] = useState('')
-  const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
   const [svgs, setSvgs] = useState<string[]>([])
   const [status, setStatus] = useState('Loading...')
   const [exporting, setExporting] = useState(false)
@@ -166,29 +171,23 @@ export default function PrintPage() {
 
   const patch = (partial: Partial<PrintConfig>) => setConfig(prev => ({ ...prev, ...partial }))
 
-  // Load card data
+  const gameName = gameData?.name || ''
+
+  // Load card entries once collections are available
   useEffect(() => {
-    const init = async () => {
+    const collections = collectionId ? (singleCollection ? [singleCollection] : []) : (allCollections ?? [])
+    if (!storage || !gameId || !collections.length) return
+    let cancelled = false
+    const load = async () => {
       try {
-        const s = await createStorage()
-        if (!gameId) return
-
-        const [gameData, fonts] = await Promise.all([s.getGame(gameId), s.listFonts(gameId)])
-        setGameName(gameData.name || '')
-        setGameFonts(fonts)
-
-        const collections = collectionId
-          ? [await s.getCollection(gameId, collectionId)]
-          : await s.listCollections(gameId)
-
         const cardIds = searchParams.get('cards')?.split(',').filter(Boolean)
         const cardIdSet = cardIds?.length ? new Set(cardIds) : null
 
         const all: CardEntry[] = []
         for (const col of collections) {
           const [tpl, cards] = await Promise.all([
-            s.getLayout(gameId, col.layoutId),
-            s.listCards(gameId, col.id),
+            storage.getLayout(gameId, col.layoutId),
+            storage.listCards(gameId, col.id),
           ])
           for (const card of cards) {
             if (cardIdSet && !cardIdSet.has(card.id)) continue
@@ -196,15 +195,20 @@ export default function PrintPage() {
           }
         }
 
-        setEntries(all)
-        setStatus(`${all.length} card${all.length !== 1 ? 's' : ''} ready`)
+        if (!cancelled) {
+          setEntries(all)
+          setStatus(`${all.length} card${all.length !== 1 ? 's' : ''} ready`)
+        }
       } catch (err) {
-        setStatus('Error loading data.')
-        console.error(err)
+        if (!cancelled) {
+          setStatus('Error loading data.')
+          console.error(err)
+        }
       }
     }
-    init()
-  }, [gameId, collectionId])
+    load()
+    return () => { cancelled = true }
+  }, [storage, gameId, collectionId, allCollections, singleCollection])
 
   // Render SVGs
   useEffect(() => {

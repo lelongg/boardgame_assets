@@ -7,14 +7,15 @@ import ConfirmButton from './ConfirmButton'
 import ListItem from './ListItem'
 import FilterableList from '@/components/FilterableList'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
+import { useAddGoogleFont, useUploadFont, useDeleteFont } from '../hooks/useGameData'
 
 type FontEntry = { name: string; file: string; source: 'upload' | 'google' }
 
 type FontManagerProps = {
   gameId: string
-  storage: any
+  storage?: any
   fonts: Record<string, FontEntry>
-  onFontsChange: (fonts: Record<string, FontEntry>) => void
+  onFontsChange: (fonts?: Record<string, FontEntry>) => void
   onStatus: (status: string) => void
   showAdd?: boolean
   onToggleAdd?: () => void
@@ -22,13 +23,17 @@ type FontManagerProps = {
   onSelectFont: (key: string | null) => void
 }
 
-export default function FontManager({ gameId, storage, fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont }: FontManagerProps) {
+export default function FontManager({ gameId, fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont }: FontManagerProps) {
+  const addGoogleFontMut = useAddGoogleFont(gameId)
+  const uploadFontMut = useUploadFont(gameId)
+  const deleteFontMut = useDeleteFont(gameId)
+
   const [showAddFormInternal, setShowAddFormInternal] = useState(false)
   const showAddForm = showAdd ?? showAddFormInternal
   const setShowAddForm = onToggleAdd ? () => onToggleAdd() : setShowAddFormInternal
   const [source, setSource] = useState<'google' | 'upload'>('google')
   const [googleFontName, setGoogleFontName] = useState('')
-  const [loading, setLoading] = useState(false)
+  const loading = addGoogleFontMut.isPending || uploadFontMut.isPending || deleteFontMut.isPending
 
   // Load font CSS for previews
   useEffect(() => {
@@ -49,49 +54,38 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
 
   const handleAddGoogle = async () => {
     if (!googleFontName.trim()) return
-    setLoading(true)
     onStatus('Adding font...')
     try {
-      const data = await storage.addGoogleFont(gameId, googleFontName.trim())
-      onFontsChange(data.fonts)
+      await addGoogleFontMut.mutateAsync(googleFontName.trim())
+      onFontsChange()
       setGoogleFontName('')
       setShowAddForm(false)
       onStatus('Font added.')
     } catch (err: any) {
       onStatus(`Error: ${err.message}`)
-    } finally {
-      setLoading(false)
     }
   }
 
   const handleUpload = async (file: File) => {
-    setLoading(true)
     onStatus('Uploading font...')
     try {
-      const data = await storage.uploadFont(gameId, file)
-      onFontsChange(data.fonts)
+      await uploadFontMut.mutateAsync(file)
+      onFontsChange()
       setShowAddForm(false)
       onStatus('Font uploaded.')
     } catch (err: any) {
       onStatus(`Error: ${err.message}`)
-    } finally {
-      setLoading(false)
     }
   }
 
   const handleDelete = async (slotKey: string) => {
     const font = fonts[slotKey]
     if (!font) return
-    setLoading(true)
     onStatus('Deleting font...')
     try {
       if (font.file) {
-        const data = await storage.deleteFont(gameId, font.file)
-        onFontsChange(data.fonts)
-      } else {
-        const updated = { ...fonts }
-        delete updated[slotKey]
-        onFontsChange(updated)
+        await deleteFontMut.mutateAsync(font.file)
+        onFontsChange()
       }
       const entries = Object.keys(fonts).filter(k => k !== slotKey)
       const idx = Object.keys(fonts).indexOf(slotKey)
@@ -100,8 +94,6 @@ export default function FontManager({ gameId, storage, fonts, onFontsChange, onS
       onStatus('Font deleted.')
     } catch (err: any) {
       onStatus(`Error: ${err.message}`)
-    } finally {
-      setLoading(false)
     }
   }
 

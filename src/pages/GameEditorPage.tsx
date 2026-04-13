@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X } from 'lucide-react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -31,16 +32,58 @@ import ListItem from '@/components/ListItem'
 import CardThumbnail from '@/components/CardThumbnail'
 import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
+import {
+  useGame, useCollection, useLayout, useFonts, useImages, useLayouts, useCards,
+  useUpdateGame, useUpdateCollection, useSaveLayout,
+  useCopyCard, useDeleteCard, useUploadImage,
+  useInvalidateGame, queryKeys,
+} from '../hooks/useGameData'
 import FilesPanel from '@/components/FilesPanel'
+import useFontStyles from '../hooks/useFontStyles'
 import ImportPanel from '@/components/ImportPanel'
 import ZipMergePanel from '@/components/ZipMergePanel'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
+import RichTextField from '@/components/RichTextField'
 
 const EDITOR_ICONS: Record<string, typeof Palette> = {
   color: Palette,
   emoji: Smile,
   'image-upload': Image,
   boolean: ToggleLeft,
+}
+
+/** Strip HTML tags for plain-text preview, preserving text content. */
+const stripHtml = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ')
+
+function RichTextCell({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const editorRef = useRef<any>(null)
+
+  if (editing) {
+    return (
+      <div className="rounded ring-1 ring-primary bg-background" onClick={e => e.stopPropagation()}>
+        <RichTextField
+          value={value}
+          onChange={v => { editorRef.current = v }}
+        />
+        <div className="flex justify-end gap-1 px-1 pb-1">
+          <button className="text-xs text-muted-foreground hover:text-foreground px-1" onClick={() => { setEditing(false); editorRef.current = null }}>Cancel</button>
+          <button className="text-xs text-primary hover:text-primary/80 font-medium px-1" onClick={() => { if (editorRef.current != null && editorRef.current !== value) onSave(editorRef.current); setEditing(false); editorRef.current = null }}>Save</button>
+        </div>
+      </div>
+    )
+  }
+
+  const plain = stripHtml(value)
+  return (
+    <div
+      className="flex items-center rounded ring-1 ring-transparent cursor-text"
+      onClick={() => setEditing(true)}
+    >
+      <div className="flex-1 px-1 py-0.5 min-h-[1.5rem] truncate [&_strong]:font-bold [&_em]:italic [&_p]:inline" dangerouslySetInnerHTML={{ __html: value || '' }} />
+      {!plain && <span className="flex-1 px-1 py-0.5 text-muted-foreground/50 italic">-</span>}
+    </div>
+  )
 }
 
 function EditableCell({ value, onSave, bold, editorType, editorProps, allowedValues }: {
@@ -51,6 +94,11 @@ function EditableCell({ value, onSave, bold, editorType, editorProps, allowedVal
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   useEffect(() => { if (!editing) setDraft(value) }, [value, editing])
+
+  // Rich text gets its own cell component
+  if (editorType === 'richtext') {
+    return <RichTextCell value={value} onSave={onSave} />
+  }
 
   const AdornIcon = editorType ? EDITOR_ICONS[editorType] : null
 
@@ -120,9 +168,8 @@ function EditableCell({ value, onSave, bold, editorType, editorProps, allowedVal
   )
 }
 
-function DataSheet({ cards, storage, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange }: {
+function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange }: {
   cards: any[]
-  storage: any
   gameId: string
   collectionId: string
   layout?: any
@@ -130,6 +177,7 @@ function DataSheet({ cards, storage, gameId, collectionId, layout, gameImages, o
   onCardsChange: (cards: any[]) => void
   onStatusChange: (msg: string) => void
 }) {
+  const { storage } = useStorage()
   const stateKey = `dataSheet:${gameId}:${collectionId}`
   const loadState = <T,>(key: string, fallback: T): T => {
     try { const v = localStorage.getItem(`${stateKey}:${key}`); return v ? JSON.parse(v) : fallback } catch { return fallback }
@@ -178,7 +226,10 @@ function DataSheet({ cards, storage, gameId, collectionId, layout, gameImages, o
     ...fieldNames.map(f => {
       const property = f.includes(':') ? f.split(':')[0] : f
       const edType = getEditorType(property)
-      const hasSpecialEditor = edType !== 'text' && edType !== 'number' && edType !== 'select' && edType !== 'richtext'
+      // Detect richtext: check if any card has HTML in this field
+      const effectiveType = edType === 'text' && cards.some(c => /<(?:p|strong|em)[ >]/.test(c.fields?.[f] ?? ''))
+        ? 'richtext' : edType
+      const hasSpecialEditor = effectiveType !== 'text' && effectiveType !== 'number' && effectiveType !== 'select'
       const allowed = layout?.bindingMeta?.[f]?.values as string[] | undefined
       return {
         id: f,
@@ -190,7 +241,7 @@ function DataSheet({ cards, storage, gameId, collectionId, layout, gameImages, o
             value={row.original.fields?.[f] ?? ''}
             onSave={v => { const c = row.original; saveCard(c.id, { ...c, fields: { ...c.fields, [f]: v } }) }}
             allowedValues={allowed}
-            editorType={!allowed?.length && hasSpecialEditor ? edType : undefined}
+            editorType={!allowed?.length && hasSpecialEditor ? effectiveType : undefined}
             editorProps={!allowed?.length && hasSpecialEditor ? { property, layout, gameImages } : undefined}
           />
         ),
@@ -373,19 +424,56 @@ export default function GameEditorPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get('tab') || 'cards'
-  const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
-  const [game, setGame] = useState<any>(null)
-  const [collection, setCollection] = useState<any>(null)
+  const { storage, status, setStatus, errorDetail, clearError } = useStorage()
+  const queryClient = useQueryClient()
+
+  // ── Query hooks (data loading) ──────────────────────────────────
+  const { data: gameData } = useGame(gameId)
+  const { data: collection } = useCollection(gameId, collectionId)
+  const { data: gameFonts = {} } = useFonts(gameId)
+  const { data: gameImages = [] } = useImages(gameId)
+  const { data: allLayouts = [] } = useLayouts(gameId)
+  const { data: queryLayout } = useLayout(gameId, collection?.layoutId)
+  const { data: queryCards } = useCards(gameId, collectionId)
+
+  // ── Mutation hooks ──────────────────────────────────────────────
+  const updateGameMut = useUpdateGame(gameId)
+  const updateCollectionMut = useUpdateCollection(gameId)
+  const saveLayoutMut = useSaveLayout(gameId)
+  const copyCardMut = useCopyCard(gameId, collectionId)
+  const deleteCardMut = useDeleteCard(gameId, collectionId)
+  const uploadImageMut = useUploadImage(gameId)
+  const invalidateGame = useInvalidateGame(gameId)
+
+  // Game with layout merged (for rendering)
+  const game = useMemo(() => {
+    if (!gameData || !queryLayout) return null
+    return { ...gameData, layout: queryLayout }
+  }, [gameData, queryLayout])
+
+  // Cards: local state seeded from query, kept local for editing
   const [cards, setCards] = useState<any[]>([])
+  const cardsInitialized = useRef(false)
+  useEffect(() => {
+    if (queryCards && !cardsInitialized.current) {
+      setCards(queryCards)
+      cardsInitialized.current = true
+      // Auto-select
+      if (queryCards.length > 0) {
+        const saved = localStorage.getItem(`editor:${gameId}:${collectionId}:selectedCard`)
+        const cardToSelect = saved && queryCards.some((c: any) => c.id === saved) ? saved : queryCards[0].id
+        setSelectedCardId(cardToSelect)
+        setSavedCardJson(JSON.stringify(queryCards.find((c: any) => c.id === cardToSelect) ?? ''))
+      }
+    }
+  }, [queryCards])
+
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const selectedCard = useMemo(() => cards.find(c => c.id === selectedCardId) ?? null, [cards, selectedCardId])
   const [cardPreview, setCardPreview] = useState<string>('')
   const [editingName, setEditingName] = useState(false)
   const [editingColName, setEditingColName] = useState(false)
   const [savedCardJson, setSavedCardJson] = useState('')
-  const [gameFonts, setGameFonts] = useState<Record<string, { name: string; file: string }>>({})
-  const [gameImages, setGameImages] = useState<{ file: string; url: string; name: string }[]>([])
-  const [allLayouts, setAllLayouts] = useState<any[]>([])
   const [cardThumbnails, setCardThumbnails] = useState<Record<string, string>>({})
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newCardName, setNewCardName] = useState('')
@@ -399,34 +487,7 @@ export default function GameEditorPage() {
 
   useEffect(() => { localStorage.setItem(lsKey('cardSel'), JSON.stringify([...cardSelection])) }, [cardSelection])
 
-  useEffect(() => {
-    if (!storage || !gameId) return
-    loadGame(storage)
-  }, [storage, gameId])
-
-  useEffect(() => {
-    if (!Object.keys(gameFonts).length || !gameId) return
-    let cancelled = false
-    const styleId = 'game-fonts-style'
-    let style = document.getElementById(styleId) as HTMLStyleElement | null
-    if (!style) { style = document.createElement('style'); style.id = styleId; document.head.appendChild(style) }
-    const load = async () => {
-      const rules: string[] = []
-      for (const f of Object.values(gameFonts) as any[]) {
-        if (!f.file || cancelled) continue
-        try {
-          const resp = await fetch(`/api/games/${gameId}/fonts/${f.file}`)
-          if (!resp.ok) continue
-          const blob = await resp.blob()
-          const b64 = await new Promise<string>(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(blob) })
-          rules.push(`@font-face { font-family: '${f.name}'; src: url('${b64}'); }`)
-        } catch { /* skip */ }
-      }
-      if (!cancelled && style) style.textContent = rules.join('\n')
-    }
-    load()
-    return () => { cancelled = true; if (style) style.textContent = '' }
-  }, [gameFonts, gameId])
+  useFontStyles(gameId, gameFonts, 'game-fonts-style')
 
   useEffect(() => {
     if (!selectedCard || !game?.layout || !gameId) return
@@ -491,45 +552,6 @@ export default function GameEditorPage() {
     if (gameId && collectionId) localStorage.setItem(`editor:${gameId}:${collectionId}:selectedCard`, cardId)
   }
 
-  const loadGame = async (s: any) => {
-    try {
-      if (!gameId || !collectionId) return
-      setStatus('Loading...')
-      const [gameData, col] = await Promise.all([
-        s.getGame(gameId),
-        s.getCollection(gameId, collectionId),
-      ])
-      setCollection(col)
-
-      const [layout, fonts, images, layouts] = await Promise.all([
-        s.getLayout(gameId, col.layoutId),
-        s.listFonts(gameId),
-        s.listImages?.(gameId).catch(() => []) ?? [],
-        s.listLayouts(gameId),
-      ])
-      gameData.layout = layout
-      setGame(gameData)
-      setGameFonts(fonts)
-      setGameImages(images)
-      setAllLayouts(layouts)
-      // selectedNodeId is now managed inside LayoutEditorPanel
-
-      const cardList = await s.listCards(gameId, collectionId)
-      setCards(cardList)
-
-      if (cardList.length > 0) {
-        const saved = localStorage.getItem(`editor:${gameId}:${collectionId}:selectedCard`)
-        const cardToSelect = saved && cardList.some((c: any) => c.id === saved) ? saved : cardList[0].id
-        setSelectedCardId(cardToSelect)
-        setSavedCardJson(JSON.stringify(cardList.find((c: any) => c.id === cardToSelect) ?? ''))
-      }
-
-      setStatus('Ready.')
-    } catch (error) {
-      setError('Error loading game', error)
-    }
-  }
-
   const handleCreateCard = async (name?: string) => {
     if (!gameId || !collectionId) return
     const cardName = name?.trim() || `New Card ${cards.length + 1}`
@@ -547,23 +569,19 @@ export default function GameEditorPage() {
 
   const handleDeleteCard = async () => {
     if (!gameId || !collectionId || !selectedCardId) return
-    const prevCards = cards
-    const prevId = selectedCardId
     const idx = cards.findIndex(c => c.id === selectedCardId)
     const updatedCards = cards.filter(c => c.id !== selectedCardId)
-    setCards(updatedCards)
-    if (updatedCards.length > 0) {
-      const nextIdx = Math.min(idx, updatedCards.length - 1)
-      setSelectedCardId(updatedCards[nextIdx].id)
-    } else {
-      setSelectedCardId(null)
-      setCardPreview('')
-    }
     try {
-      await storage.deleteCard(gameId, collectionId, prevId)
+      await deleteCardMut.mutateAsync(selectedCardId)
+      setCards(updatedCards)
+      if (updatedCards.length > 0) {
+        const nextIdx = Math.min(idx, updatedCards.length - 1)
+        setSelectedCardId(updatedCards[nextIdx].id)
+      } else {
+        setSelectedCardId(null)
+        setCardPreview('')
+      }
     } catch {
-      setCards(prevCards)
-      setSelectedCardId(prevId)
       setStatus('Error deleting card.')
     }
   }
@@ -576,12 +594,13 @@ export default function GameEditorPage() {
   // Layout handlers – optimistic update + debounced persist
   const handleLayoutSave = (updatedLayout: any) => {
     if (!gameId || !game || !collection) return
-    setGame((g: any) => g ? { ...g, layout: updatedLayout } : g)
+    // Optimistic: update the query cache immediately for instant UI feedback
+    queryClient.setQueryData(queryKeys.layout(gameId, collection.layoutId), updatedLayout)
     latestLayoutRef.current = updatedLayout
     clearTimeout(layoutSaveTimer.current)
     layoutSaveTimer.current = setTimeout(async () => {
       try {
-        await storage.saveLayout(gameId, collection!.layoutId, latestLayoutRef.current)
+        await saveLayoutMut.mutateAsync({ layoutId: collection!.layoutId, layout: latestLayoutRef.current })
       } catch { setStatus('Error saving layout.') }
     }, 300)
   }
@@ -622,8 +641,7 @@ export default function GameEditorPage() {
               setEditingName(false)
               if (!name || name === game.name) return
               try {
-                await storage.updateGame(gameId, { name })
-                setGame({ ...game, name })
+                await updateGameMut.mutateAsync({ name })
               } catch {
                 setStatus('Error renaming game.')
               }
@@ -649,8 +667,7 @@ export default function GameEditorPage() {
               setEditingColName(false)
               if (!name || name === collection.name) return
               try {
-                await storage.updateCollection(gameId, collectionId, { name })
-                setCollection((prev: any) => ({ ...prev, name }))
+                await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { name } })
               } catch { setStatus('Error renaming collection.') }
             }}
             onKeyDown={(e) => {
@@ -691,17 +708,13 @@ export default function GameEditorPage() {
                 onSelect={(key) => { if (key) selectCard(storage, key); else setSelectedCardId(null) }}
                 actions={selectedCard && (<>
                   <button className="rounded p-1 text-muted-foreground hover:text-primary transition-colors" title="Copy" onClick={async () => {
-                    const card = selectedCard
-                    const opt = { ...card, id: `temp-${Date.now()}`, name: `New Card ${cards.length + 1}` }
-                    setCards(prev => [...prev, opt])
-                    setSelectedCardId(opt.id)
-                    setSavedCardJson(JSON.stringify(opt))
+                    if (!selectedCard) return
                     try {
-                      const copy = await storage.copyCard(gameId, collectionId, card.id)
-                      setCards(prev => prev.map(c => c.id === opt.id ? copy : c))
+                      const copy = await copyCardMut.mutateAsync(selectedCard.id)
+                      setCards(prev => [...prev, copy])
                       setSelectedCardId(copy.id)
                       setSavedCardJson(JSON.stringify(copy))
-                    } catch { setCards(prev => prev.filter(c => c.id !== opt.id)); setStatus('Error copying card.') }
+                    } catch { setStatus('Error copying card.') }
                   }}>
                     <Copy className="h-4 w-4" />
                   </button>
@@ -827,10 +840,7 @@ export default function GameEditorPage() {
                                       layout={game.layout}
                                       gameImages={gameImages}
                                       onUploadFile={async (file) => {
-                                        const url = await storage.uploadImage(gameId, file)
-                                        const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
-                                        setGameImages(imgs)
-                                        return url
+                                        return await uploadImageMut.mutateAsync(file)
                                       }}
                                     />
                                   </div>
@@ -859,7 +869,6 @@ export default function GameEditorPage() {
           <TabsContent value="data">
             <DataSheet
               cards={cards}
-              storage={storage}
               gameId={gameId!}
               collectionId={collectionId!}
               layout={game?.layout}
@@ -878,16 +887,9 @@ export default function GameEditorPage() {
                     onChange={async (e) => {
                       const newLayoutId = e.target.value
                       if (!gameId || !collectionId || newLayoutId === collection?.layoutId) return
-                      const prevCollection = collection
-                      const prevGame = game
-                      setCollection((prev: any) => ({ ...prev, layoutId: newLayoutId }))
                       try {
-                        await storage.updateCollection(gameId, collectionId, { layoutId: newLayoutId })
-                        const newLayout = await storage.getLayout(gameId, newLayoutId)
-                        setGame((prev: any) => ({ ...prev, layout: newLayout }))
+                        await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { layoutId: newLayoutId } })
                       } catch {
-                        setCollection(prevCollection)
-                        setGame(prevGame)
                         setStatus('Error changing layout.')
                       }
                     }}
@@ -907,10 +909,7 @@ export default function GameEditorPage() {
                   gameFonts={gameFonts}
                   gameImages={gameImages}
                   onUploadFile={async (file) => {
-                    const url = await storage.uploadImage(gameId, file)
-                    const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
-                    setGameImages(imgs)
-                    return url
+                    return await uploadImageMut.mutateAsync(file)
                   }}
                   cards={cards}
                   back={collection?.back}
@@ -934,14 +933,10 @@ export default function GameEditorPage() {
                     layout={game?.layout}
                     gameImages={gameImages}
                     onUploadFile={async (file) => {
-                      const url = await storage.uploadImage(gameId, file)
-                      const imgs = await storage.listImages?.(gameId).catch(() => []) ?? []
-                      setGameImages(imgs)
-                      return url
+                      return await uploadImageMut.mutateAsync(file)
                     }}
                     onChange={async (v) => {
-                      setCollection((prev: any) => ({ ...prev, back: v || undefined }))
-                      try { await storage.updateCollection(gameId, collectionId, { back: v || undefined }) }
+                      try { await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { back: v || undefined } }) }
                       catch { setStatus('Error saving back.') }
                     }}
                   />
@@ -952,8 +947,7 @@ export default function GameEditorPage() {
                       label="Fit Mode"
                       value={collection?.backFit || 'cover'}
                       onValueChange={async (fit) => {
-                        setCollection((prev: any) => ({ ...prev, backFit: fit }))
-                        try { await storage.updateCollection(gameId, collectionId, { backFit: fit }) }
+                        try { await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { backFit: fit } }) }
                         catch { setStatus('Error saving back fit.') }
                       }}
                       options={[
@@ -972,13 +966,12 @@ export default function GameEditorPage() {
             <div className="space-y-4">
               <ZipMergePanel
                 gameId={gameId!}
-                storage={storage}
                 layouts={game?.layout ? [game.layout] : []}
                 collections={collection ? [collection] : []}
                 gameFonts={gameFonts}
                 gameImages={gameImages}
                 onStatusChange={setStatus}
-                onComplete={() => loadGame(storage)}
+                onComplete={() => { invalidateGame(); cardsInitialized.current = false }}
               />
               <ImportPanel
                 gameId={gameId!}
@@ -986,10 +979,9 @@ export default function GameEditorPage() {
                 cards={cards}
                 layout={game?.layout}
                 gameFonts={gameFonts}
-                storage={storage}
                 collections={collection ? [collection] : []}
                 onStatusChange={setStatus}
-                onCardsChange={() => loadGame(storage)}
+                onCardsChange={() => { invalidateGame(); cardsInitialized.current = false }}
               />
             </div>
           </TabsContent>
@@ -1003,11 +995,10 @@ export default function GameEditorPage() {
               cards={cards}
               layout={game?.layout}
               gameFonts={gameFonts}
-              storage={storage}
               back={collection?.back}
               backFit={collection?.backFit}
               onStatusChange={setStatus}
-              onCardsChange={() => loadGame(storage)}
+              onCardsChange={() => { invalidateGame(); cardsInitialized.current = false }}
             />
           </TabsContent>
         </Tabs>

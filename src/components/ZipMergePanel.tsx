@@ -4,6 +4,8 @@ import JSZip from 'jszip'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import FilterableList from './FilterableList'
+import useStorage from '../hooks/useStorage'
+import { useInvalidateGame } from '../hooks/useGameData'
 
 type DiffItem = { name: string; status: 'added' | 'updated' | 'unchanged'; key: string }
 
@@ -26,7 +28,7 @@ type ZipData = {
 
 type ZipMergePanelProps = {
   gameId: string
-  storage: any
+  storage?: any
   layouts: any[]
   collections: any[]
   gameFonts: Record<string, { name: string; file: string }>
@@ -119,7 +121,9 @@ const statusBadge = (status: string) => {
 
 type MergedItem = { id: string; name: string; status: string; group: string }
 
-export default function ZipMergePanel({ gameId, storage, layouts, collections, gameFonts, gameImages, onStatusChange, onComplete }: ZipMergePanelProps) {
+export default function ZipMergePanel({ gameId, layouts, collections, gameFonts, gameImages, onStatusChange, onComplete }: ZipMergePanelProps) {
+  const { storage } = useStorage()
+  const invalidateGame = useInvalidateGame(gameId)
   const [zipData, setZipData] = useState<ZipData | null>(null)
   const [diff, setDiff] = useState<ZipDiff | null>(null)
   const [selection, setSelection] = useState<Set<string>>(new Set())
@@ -202,6 +206,7 @@ export default function ZipMergePanel({ gameId, storage, layouts, collections, g
       onStatusChange(`Merged ${count} items.`)
       setZipData(null)
       setDiff(null)
+      invalidateGame()
       onComplete()
     } catch (e: any) {
       onStatusChange(`Merge error: ${e.message || e}`)

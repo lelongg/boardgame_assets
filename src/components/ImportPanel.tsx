@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import FilterableList from './FilterableList'
 import { csvToCards } from '../cardsCsv'
+import useStorage from '../hooks/useStorage'
+import { useInvalidateGame } from '../hooks/useGameData'
 import type { CardData, CardLayout } from '../types'
 
 export type SelectableCard = CardData & { collectionId?: string; collectionName?: string }
@@ -22,16 +24,18 @@ type ImportPanelProps = {
   cards: SelectableCard[]
   layout?: CardLayout
   gameFonts?: Record<string, { name: string; file: string }>
-  storage: any
+  storage?: any
   onStatusChange?: (msg: string) => void
   onCardsChange?: () => void
   collections?: { id: string; name: string; layoutId: string }[]
 }
 
 export default function ImportPanel({
-  gameId, collectionId, cards, layout, gameFonts, storage,
+  gameId, collectionId, cards, layout, gameFonts,
   onStatusChange, onCardsChange, collections = [],
 }: ImportPanelProps) {
+  const { storage } = useStorage()
+  const invalidateGame = useInvalidateGame(gameId)
   const storageKey = `import:${gameId}:${collectionId}`
 
   const [selection, setSelection] = useState<Set<string>>(() => {
@@ -148,6 +152,7 @@ export default function ImportPanel({
         if (!colId) continue
         await storage.deleteCard(gameId, colId, card.id)
       }
+      invalidateGame()
       onCardsChange?.()
       setImportStaged([])
       const deleted = selectedMissing.length > 0 ? `, deleted ${selectedMissing.length}` : ''

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, Printer, Upload, Archive, Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -10,6 +11,7 @@ import ListItem from '@/components/ListItem'
 import FilterableList from '@/components/FilterableList'
 import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
+import { useGames, useCreateGame, useDeleteGame, queryKeys } from '../hooks/useGameData'
 import { exportGameZip, importGameZip } from '../gameZip'
 import { getProvider, setProvider, createStorageFor, BACKENDS, type BackendKey } from '../storage'
 import { config } from '../config'
@@ -27,32 +29,24 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function GamesPage() {
-  const [games, setGames] = useState<any[]>([])
   const [expandedGame, _setExpandedGame] = useState<string | null>(() => localStorage.getItem('games:selectedGame'))
   const setExpandedGame = (id: string | null) => { _setExpandedGame(id); if (id) localStorage.setItem('games:selectedGame', id); else localStorage.removeItem('games:selectedGame') }
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('tab') || 'games'
   const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
+  const queryClient = useQueryClient()
 
+  const { data: games = [] } = useGames()
+  const createGame = useCreateGame()
+  const deleteGame = useDeleteGame()
+
+  // Auto-select first game when list loads
   useEffect(() => {
-    if (!storage) return
-    loadGames(storage)
-  }, [storage])
-
-  const loadGames = async (s: any) => {
-    try {
-      setStatus('Loading games...')
-      const gameList = await s.listGames()
-      setGames(gameList)
-      if (gameList.length > 0 && (!expandedGame || !gameList.some((g: any) => g.id === expandedGame))) {
-        setExpandedGame(gameList[0].id)
-      }
-      setStatus(`Loaded ${gameList.length} games.`)
-    } catch (error) {
-      setError('Error loading games', error)
+    if (games.length > 0 && (!expandedGame || !games.some((g: any) => g.id === expandedGame))) {
+      setExpandedGame(games[0].id)
     }
-  }
+  }, [games])
 
   const handleCreateGame = async () => {
     if (!storage) {
@@ -62,7 +56,7 @@ export default function GamesPage() {
     try {
       setStatus('Creating game...')
       const name = `Game ${games.length + 1}`
-      const created = await storage.createGame(name)
+      const created = await createGame.mutateAsync(name)
       navigate(`/game/${created.id}`)
     } catch (error) {
       setError('Error creating game', error)
@@ -74,7 +68,7 @@ export default function GamesPage() {
     setStatus('Exporting...')
     try {
       const blob = await exportGameZip(storage, gameId, setStatus)
-      const game = games.find(g => g.id === gameId)
+      const game = games.find((g: any) => g.id === gameId)
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
       a.download = `${game?.name ?? gameId}.zip`
@@ -97,7 +91,7 @@ export default function GamesPage() {
       setStatus('Importing...')
       try {
         const newGameId = await importGameZip(storage, file, setStatus)
-        await loadGames(storage)
+        queryClient.invalidateQueries({ queryKey: queryKeys.games() })
         setExpandedGame(newGameId)
         setStatus('Import complete.')
       } catch (err) {
@@ -278,17 +272,14 @@ export default function GamesPage() {
                   <Archive className="h-4 w-4" />
                 </button>
                 <ConfirmButton iconOnly onConfirm={async () => {
-                  const prev = games
-                  const idx = games.findIndex(g => g.id === game.id)
-                  const updated = games.filter(g => g.id !== game.id)
-                  setGames(updated)
-                  const nextIdx = Math.min(idx, updated.length - 1)
-                  setExpandedGame(updated[nextIdx]?.id ?? null)
                   try {
-                    await storage.deleteGame(game.id)
+                    const idx = games.findIndex((g: any) => g.id === game.id)
+                    await deleteGame.mutateAsync(game.id)
+                    // After invalidation, pick next selection
+                    const remaining = games.filter((g: any) => g.id !== game.id)
+                    const nextIdx = Math.min(idx, remaining.length - 1)
+                    setExpandedGame(remaining[nextIdx]?.id ?? null)
                   } catch (err) {
-                    setGames(prev)
-                    setExpandedGame(game.id)
                     setError('Error deleting game', err)
                   }
                 }} />
