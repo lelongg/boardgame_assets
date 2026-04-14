@@ -382,7 +382,8 @@ test("Google Drive storage tryRestoreSession with expired token", async () => {
   });
 
   const restored = await storage.tryRestoreSession();
-  assert.ok(restored, "Should attempt to restore session");
+  assert.strictEqual(restored, false, "Should return false for expired token (no silent refresh)");
+  assert.ok(!storage.isAuthorized(), "Should not be authorized with expired token");
 });
 
 test("Google Drive storage slugify helper", async () => {
