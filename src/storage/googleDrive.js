@@ -101,15 +101,11 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const tryRestoreSession = async () => {
     if (!initialized) await init();
-    if (isAuthorized()) return true;
-    if (!isConfigured) return false;
-    try {
-      await Promise.race([
-        requestToken("none"),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000))
-      ]);
-      return true;
-    } catch { return false; }
+    // Only check the localStorage token restored during init().
+    // Do NOT call requestToken("none") — Google Identity Services opens
+    // a popup that flashes and closes, causing a jarring UX.
+    // If the token expired, the user clicks "Connect" again.
+    return isAuthorized();
   };
 
   const signOut = async () => {
