@@ -120,7 +120,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
     if (!pointersRef.current.has(e.pointerId)) return
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
-    if (pointersRef.current.size >= 2 && pinchRef.current) {
+    if (pointersRef.current.size === 2 && pinchRef.current) {
       const pts = [...pointersRef.current.values()]
       const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)
       const ratio = dist / pinchRef.current.startDist
