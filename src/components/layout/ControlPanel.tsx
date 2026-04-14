@@ -536,15 +536,14 @@ function BindingEditor({ property, itemType, layout, gameImages, onUploadFile, b
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
   const [valuesCollapsed, setValuesCollapsed] = useState(true)
   const field = binding?.field ?? ''
-  const values = externalValues.filter((s, i) => externalValues.indexOf(s) === i)
+  const values = externalValues
 
   const updateField = (f: string) => {
     onChange(f ? { field: f } : { field: '' })
   }
   const updateValues = (v: string[]) => {
     if (!field) return
-    const unique = v.filter((s, i) => v.indexOf(s) === i)
-    onValuesChange(unique.length ? unique : null)
+    onValuesChange(v.length ? v : null)
   }
   const updateAt = (i: number, v: string) => { const next = [...values]; next[i] = v; updateValues(next) }
   const removeAt = (i: number) => { updateValues(values.filter((_, j) => j !== i)); setSelectedIdx(null) }

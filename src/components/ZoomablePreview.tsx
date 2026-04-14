@@ -36,6 +36,8 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   const dragging = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
   const rotating = useRef<{ startX: number; startY: number; originRx: number; originRy: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const pinchRef = useRef<{ startDist: number; startScale: number } | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
@@ -71,15 +73,29 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   }, [unlocked, mode3d])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    const el = e.currentTarget as HTMLElement
+    el.setPointerCapture(e.pointerId)
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
     if (mode3d) {
-      rotating.current = { startX: e.clientX, startY: e.clientY, originRx: rotation.x, originRy: rotation.y }
-      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+      if (pointersRef.current.size === 1) {
+        rotating.current = { startX: e.clientX, startY: e.clientY, originRx: rotation.x, originRy: rotation.y }
+      } else if (pointersRef.current.size === 2) {
+        rotating.current = null
+        const pts = [...pointersRef.current.values()]
+        pinchRef.current = { startDist: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y), startScale: zoom3d }
+      }
       return
     }
     if (!unlocked) return
-    dragging.current = { startX: e.clientX, startY: e.clientY, originX: view.x, originY: view.y }
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-  }, [view.x, view.y, unlocked, mode3d, rotation.x, rotation.y])
+    if (pointersRef.current.size === 1) {
+      dragging.current = { startX: e.clientX, startY: e.clientY, originX: view.x, originY: view.y }
+    } else if (pointersRef.current.size === 2) {
+      dragging.current = null
+      const pts = [...pointersRef.current.values()]
+      pinchRef.current = { startDist: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y), startScale: view.scale }
+    }
+  }, [view.x, view.y, view.scale, unlocked, mode3d, rotation.x, rotation.y, zoom3d])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (unlocked || !hitAreas?.length || !onHitAreaClick || !svgWidth || !svgHeight) return
@@ -101,6 +117,22 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   }, [unlocked, hitAreas, selectedHitAreaId, onHitAreaClick, svgWidth, svgHeight])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!pointersRef.current.has(e.pointerId)) return
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+    if (pointersRef.current.size === 2 && pinchRef.current) {
+      const pts = [...pointersRef.current.values()]
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)
+      const ratio = dist / pinchRef.current.startDist
+      const newScale = Math.min(10, Math.max(0.1, pinchRef.current.startScale * ratio))
+      if (mode3d) {
+        setZoom3d(newScale)
+      } else {
+        setView(prev => ({ ...prev, scale: newScale }))
+      }
+      return
+    }
+
     if (rotating.current) {
       const dx = e.clientX - rotating.current.startX
       const dy = e.clientY - rotating.current.startY
@@ -116,11 +148,15 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
       x: dragging.current!.originX + e.clientX - dragging.current!.startX,
       y: dragging.current!.originY + e.clientY - dragging.current!.startY,
     }))
-  }, [])
+  }, [mode3d])
 
-  const handlePointerUp = useCallback(() => {
-    dragging.current = null
-    rotating.current = null
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    pointersRef.current.delete(e.pointerId)
+    if (pointersRef.current.size < 2) pinchRef.current = null
+    if (pointersRef.current.size === 0) {
+      dragging.current = null
+      rotating.current = null
+    }
   }, [])
 
   const toggle = useCallback(() => {
@@ -199,6 +235,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onClick={mode3d ? undefined : handleClick}
       >
         {!imgLoaded && (
