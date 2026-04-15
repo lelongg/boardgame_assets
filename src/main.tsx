@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
 })
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register(import.meta.env.BASE_URL + "sw.js").catch(() => {});
 }
 
 // Fallback for when SW isn't available (dev mode): intercept asset fetches

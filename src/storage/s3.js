@@ -148,6 +148,26 @@ export const createS3Storage = (options = {}) => {
     }
   };
 
+  const getBinary = async (key) => {
+    const resp = await client.send(
+      new GetObjectCommand({ Bucket: bucket, Key: key })
+    );
+    return {
+      bytes: await resp.Body.transformToByteArray(),
+      contentType: resp.ContentType || "application/octet-stream",
+    };
+  };
+
+  /** Download an S3 asset into IndexedDB if not already cached. */
+  const ensureCached = async (s3Key, assetPath, fallbackMime) => {
+    const existing = await getAsset(assetPath);
+    if (existing) return;
+    try {
+      const { bytes, contentType } = await getBinary(s3Key);
+      await putAsset(assetPath, new Blob([bytes], { type: contentType || fallbackMime }), contentType || fallbackMime);
+    } catch { /* download failed — will retry next time */ }
+  };
+
   // ── Key builders ────────────────────────────────────────────────────────
 
   const gameKey = (gameId) => `${prefix}/${gameId}/game.json`;
@@ -409,7 +429,15 @@ export const createS3Storage = (options = {}) => {
     // ── Fonts ──────────────────────────────────────────────────────────────
 
     async listFonts(gameId) {
-      return await getFontManifest(gameId);
+      const fonts = await getFontManifest(gameId);
+      // Prefetch font binaries into IndexedDB in the background
+      for (const entry of Object.values(fonts)) {
+        if (!entry.file) continue;
+        const s3Key = `${prefix}/${gameId}/fonts/${entry.file}`;
+        const assetPath = `/api/games/${gameId}/fonts/${entry.file}`;
+        ensureCached(s3Key, assetPath, "font/woff2");
+      }
+      return fonts;
     },
 
     async addGoogleFont(gameId, name, slotName) {
@@ -536,12 +564,18 @@ export const createS3Storage = (options = {}) => {
       const imageKeys = keys.filter(k => !k.endsWith("/_names.json"));
       let names = {};
       try { names = await getJson(`${imagesPrefix}_names.json`); } catch {}
-      return imageKeys.map(k => {
+      const results = imageKeys.map(k => {
         const file = k.replace(imagesPrefix, "");
         const url = `/api/games/${gameId}/images/${file}`;
         const name = names[file] || file;
         return { file, url, name };
       });
+      // Prefetch image binaries into IndexedDB in the background
+      for (const img of results) {
+        const s3Key = `${imagesPrefix}${img.file}`;
+        ensureCached(s3Key, img.url, "image/png");
+      }
+      return results;
     },
 
     async deleteImage(gameId, file) {

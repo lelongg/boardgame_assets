@@ -4,8 +4,8 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const ASSET_PATTERN = /^\/api\/games\/[^/]+\/(fonts|images)\/[^/]+$/;
 
-const DB_NAME = "boardgame-assets";
-const DB_VERSION = 2;
+const DB_NAME = "boardgame-assets-cache";
+const DB_VERSION = 1;
 const STORE_NAME = "assets";
 
 interface AssetRecord {

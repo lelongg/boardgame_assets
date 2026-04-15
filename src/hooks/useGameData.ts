@@ -209,7 +209,9 @@ export function useSaveLayout(gameId: string | undefined) {
     mutationFn: ({ layoutId, layout }) =>
       storage.saveLayout(gameId!, layoutId, layout),
     onSuccess: (_data, { layoutId }) => {
-      qc.invalidateQueries({ queryKey: queryKeys.layout(gameId!, layoutId) })
+      // Don't invalidate the individual layout query — the optimistic update
+      // in handleLayoutSave already set the correct value. Refetching would
+      // cause a race that reverts edits (especially on slow backends like S3).
       qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId!) })
     },
   })

@@ -212,12 +212,13 @@ export default function CollectionsPage() {
   // Auto-select first card when collection cards load
   useEffect(() => {
     if (!expandedCollection) { setSelectedCardId(null); return }
-    if (collectionCards.length > 0 && !collectionCards.some(c => c.id === selectedCardId)) {
-      setSelectedCardId(collectionCards[0].id)
-    } else if (collectionCards.length === 0) {
+    if (cardsLoading) return // don't react while still fetching
+    if (collectionCards.length > 0) {
+      setSelectedCardId(prev => prev && collectionCards.some(c => c.id === prev) ? prev : collectionCards[0].id)
+    } else {
       setSelectedCardId(null)
     }
-  }, [collectionCards, expandedCollection])
+  }, [collectionCards, expandedCollection, cardsLoading])
 
   // Load fonts into the page for preview
   useFontStyles(gameId, gameFonts)
