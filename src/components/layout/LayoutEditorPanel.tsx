@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import NodeTree from './NodeTree'
 import PropertyPanel from './PropertyPanel'
 import LayoutPreview, { type PreviewCard } from '../LayoutPreview'
@@ -18,7 +18,37 @@ type LayoutEditorPanelProps = {
   back?: string
 }
 
-export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, gameImages, onUploadFile, cards, back }: LayoutEditorPanelProps) {
+export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, gameFonts, gameImages, onUploadFile, cards, back }: LayoutEditorPanelProps) {
+  // Local working copy for instant feedback; debounced save to backend
+  const [workingLayout, setWorkingLayout] = useState(propLayout)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
+  const pendingRef = useRef<CardLayout | null>(null)
+
+  // Sync from props when layout identity changes (different layout selected, or external update)
+  useEffect(() => {
+    if (propLayout.id !== workingLayout.id || !pendingRef.current) {
+      setWorkingLayout(propLayout)
+    }
+  }, [propLayout])
+
+  const flushSave = useCallback(() => {
+    if (pendingRef.current) {
+      onSave(pendingRef.current)
+      pendingRef.current = null
+    }
+  }, [onSave])
+
+  // Flush on unmount
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); flushSave() }, [flushSave])
+
+  const debouncedSave = useCallback((updated: CardLayout) => {
+    pendingRef.current = updated
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(flushSave, 300)
+  }, [flushSave])
+
+  const layout = workingLayout
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(layout.root?.id ?? null)
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null)
   const [propertyByType, setPropertyByType] = useState<Record<string, string>>({})
@@ -26,9 +56,9 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
 
   // Reset selection when layout identity changes
   useEffect(() => {
-    setSelectedNodeId(layout.root?.id ?? null)
+    setSelectedNodeId(propLayout.root?.id ?? null)
     setSelectedProperty(null)
-  }, [layout.id])
+  }, [propLayout.id])
 
   const selectedKind = selectedNodeId && layout.root ? getNodeKind(layout.root, selectedNodeId) : null
   const isRoot = selectedNodeId === layout.root?.id
@@ -51,8 +81,15 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
     setSelectedProperty(propertyByType[newTypeKey] ?? defaults[newTypeKey] ?? 'name')
   }
 
-  const handleLayoutSave = (updated: any) => {
-    onSave(updated)
+  const handleLayoutSave = (updated: CardLayout, immediate = false) => {
+    setWorkingLayout(updated)
+    if (immediate) {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      pendingRef.current = null
+      onSave(updated)
+    } else {
+      debouncedSave(updated)
+    }
   }
 
   const handlePropertyChange = (property: string, value: unknown) => {
@@ -76,7 +113,7 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
     } else {
       t.root.children.push(section)
     }
-    handleLayoutSave(t)
+    handleLayoutSave(t, true)
     setSelectedNodeId(section.id)
   }
 
@@ -104,7 +141,7 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
       if (loc) loc.list.splice(loc.index + 1, 0, item)
       else parent.items.push(item)
     } else parent.items.push(item)
-    handleLayoutSave(t)
+    handleLayoutSave(t, true)
     setSelectedNodeId(item.id)
   }
 
@@ -116,7 +153,7 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
     const clone = deepCloneWithNewIds(loc.list[loc.index])
     clone.name = `${clone.name} copy`
     loc.list.splice(loc.index + 1, 0, clone)
-    handleLayoutSave(t)
+    handleLayoutSave(t, true)
     setSelectedNodeId(clone.id)
   }
 
@@ -126,7 +163,7 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
     const loc = findNodeLocation(t.root, selectedNodeId, selectedKind)
     if (!loc) return
     loc.list.splice(loc.index, 1)
-    handleLayoutSave(t)
+    handleLayoutSave(t, true)
     setSelectedNodeId(null)
   }
 
@@ -141,7 +178,7 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
             onDrop={(dragId, dragKind, dropTargetId, position) => {
               const t = JSON.parse(JSON.stringify(layout))
               if (moveNode(t.root, dragId, dragKind, dropTargetId, position)) {
-                handleLayoutSave(t)
+                handleLayoutSave(t, true)
               }
             }}
             onAddSection={handleAddSection}

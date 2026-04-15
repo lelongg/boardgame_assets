@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { LayoutGrid, Layers, ChevronDown } from 'lucide-react'
 import ZoomablePreview from './ZoomablePreview'
 import PortalDropdown from './ui/PortalDropdown'
@@ -65,15 +65,21 @@ export default function LayoutPreview({ layout, gameId, cards = [], back, gameFo
 
   const previewCard = previewCardId ? cards.find(c => c.id === previewCardId) : null
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(null)
+  const cancelledRef = useRef(false)
+
   useEffect(() => {
     if (!layout) { setPreviewUrl(''); return }
-    let cancelled = false
-    const update = async () => {
+    cancelledRef.current = true // cancel any in-flight render
+    cancelledRef.current = false
+    const cancelled = cancelledRef
+
+    const run = async () => {
       const render = await import('../render')
       let svg = render.renderLayoutSvg(layout, { showSections, showItems: showItemWires, selectedNodeId, card: previewCard ?? undefined, fonts: gameFonts })
       svg = await render.embedFontsInSvg(svg, gameId, gameFonts ?? {})
       svg = await render.embedImagesInSvg(svg)
-      if (cancelled) return
+      if (cancelled.current) return
       const computed = render.computeLayout(layout)
       setHitAreas([
         ...Array.from(computed.sections.entries()).map(([id, r]: [string, any]) => ({ id, ...r })),
@@ -83,9 +89,12 @@ export default function LayoutPreview({ layout, gameId, cards = [], back, gameFo
       const url = URL.createObjectURL(blob)
       setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url })
     }
-    update()
-    return () => { cancelled = true }
-  }, [layout, gameId, showSections, showItemWires, selectedNodeId, previewCard,back])
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(run, 150)
+
+    return () => { cancelled.current = true; if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [layout, gameId, showSections, showItemWires, selectedNodeId, previewCard, back])
 
   if (!previewUrl) return null
 
