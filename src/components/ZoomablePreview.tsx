@@ -143,10 +143,11 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
       return
     }
     if (!dragging.current) return
+    const { originX, originY, startX, startY } = dragging.current
     setView(prev => ({
       ...prev,
-      x: dragging.current!.originX + e.clientX - dragging.current!.startX,
-      y: dragging.current!.originY + e.clientY - dragging.current!.startY,
+      x: originX + e.clientX - startX,
+      y: originY + e.clientY - startY,
     }))
   }, [mode3d])
 

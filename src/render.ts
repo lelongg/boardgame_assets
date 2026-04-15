@@ -83,7 +83,7 @@ const renderStyledLine = (runs: StyledRun[]): string => {
 const renderStyledLineHtml = (runs: StyledRun[]): string => {
   return runs.map(run => {
     const text = escape(run.text);
-    if (!text && runs.length === 1) return '&nbsp;';
+    if (!text && runs.length === 1) return '&#160;';
     let result = text;
     if (run.bold) result = `<b>${result}</b>`;
     if (run.italic) result = `<i>${result}</i>`;
