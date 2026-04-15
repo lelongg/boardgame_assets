@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -210,22 +210,25 @@ export default function CollectionsPage() {
   }, [gameFonts])
 
   // Auto-select first card when collection cards load
+  const cardIds = useMemo(() => collectionCards.map((c: any) => c.id).join(','), [collectionCards])
   useEffect(() => {
     if (!expandedCollection) { setSelectedCardId(null); return }
-    if (cardsLoading) return // don't react while still fetching
-    if (collectionCards.length > 0) {
-      setSelectedCardId(prev => prev && collectionCards.some(c => c.id === prev) ? prev : collectionCards[0].id)
+    if (cardsLoading) return
+    const ids = cardIds.split(',').filter(Boolean)
+    if (ids.length > 0) {
+      setSelectedCardId(prev => prev && ids.includes(prev) ? prev : ids[0])
     } else {
-      setSelectedCardId(null)
+      setSelectedCardId(prev => prev === null ? prev : null)
     }
-  }, [collectionCards, expandedCollection, cardsLoading])
+  }, [cardIds, expandedCollection, cardsLoading])
 
   // Load fonts into the page for preview
   useFontStyles(gameId, gameFonts)
 
   // Load cards for layout preview selector (uses query cache when available)
+  const collectionIds = useMemo(() => collections.map((c: any) => c.id).join(','), [collections])
   useEffect(() => {
-    if (!storage || !gameId || !selectedLayoutId || !collections.length) { setLayoutPreviewCards([]); return }
+    if (!storage || !gameId || !selectedLayoutId || !collections.length) { setLayoutPreviewCards(prev => prev.length ? [] : prev); return }
     let cancelled = false
     const load = async () => {
       const cols = collections.filter((c: any) => c.layoutId === selectedLayoutId)
@@ -240,14 +243,14 @@ export default function CollectionsPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [storage, gameId, selectedLayoutId, collections])
+  }, [storage, gameId, selectedLayoutId, collectionIds])
 
   // Render card previews client-side
   useEffect(() => {
-    if (!collectionCards.length || !expandedCollection || !layouts.length) { setCardPreviews({}); return }
+    if (!collectionCards.length || !expandedCollection || !layouts.length) { setCardPreviews(prev => Object.keys(prev).length ? {} : prev); return }
     const col = collections.find((c: any) => c.id === expandedCollection)
     const tpl = col ? layouts.find((t: any) => t.id === col.layoutId) : null
-    if (!tpl) { setCardPreviews({}); return }
+    if (!tpl) { setCardPreviews(prev => Object.keys(prev).length ? {} : prev); return }
     let cancelled = false
     const renderAll = async () => {
       const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
@@ -267,7 +270,7 @@ export default function CollectionsPage() {
     }
     renderAll()
     return () => { cancelled = true }
-  }, [collectionCards, collections, layouts, expandedCollection])
+  }, [cardIds, collectionIds, layouts.length, expandedCollection])
 
   // Scroll carousel thumbnail into view
   useEffect(() => {
