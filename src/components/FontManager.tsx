@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Plus } from 'lucide-react'
+import { X, Plus, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -21,9 +21,10 @@ type FontManagerProps = {
   onToggleAdd?: () => void
   selectedFont: string | null
   onSelectFont: (key: string | null) => void
+  isLoading?: boolean
 }
 
-export default function FontManager({ gameId, fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont }: FontManagerProps) {
+export default function FontManager({ gameId, fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont, isLoading }: FontManagerProps) {
   const addGoogleFontMut = useAddGoogleFont(gameId)
   const uploadFontMut = useUploadFont(gameId)
   const deleteFontMut = useDeleteFont(gameId)
@@ -116,7 +117,9 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus, sh
         actions={selectedFont ? (
           <ConfirmButton iconOnly onConfirm={() => handleDelete(selectedFont)} disabled={loading} />
         ) : undefined}
-        empty={!showAddForm ? <p className="text-sm text-muted-foreground">No fonts yet.</p> : undefined}
+        empty={isLoading
+          ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          : !showAddForm ? <p className="text-sm text-muted-foreground">No fonts yet.</p> : undefined}
         renderItem={([, font], _vm, selected) => (
           <ListItem selected={selected}>
             <span className="font-medium">{font.name}</span>

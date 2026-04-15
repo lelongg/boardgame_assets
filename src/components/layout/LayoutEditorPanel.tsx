@@ -66,10 +66,9 @@ export default function LayoutEditorPanel({ layout, onSave, gameId, gameFonts, g
     const t = JSON.parse(JSON.stringify(layout))
     const section = { id: crypto.randomUUID(), name: 'New Section', layout: 'stack' as const, sizePct: 100, gap: 0, children: [] as any[], items: [] as any[] }
     if (selectedKind === 'section' && selectedNodeId) {
-      const parent = findParentSection(t.root, selectedNodeId, 'section')
-      if (!parent) return
-      const idx = parent.children.findIndex((c: any) => c.id === selectedNodeId)
-      parent.children.splice(idx + 1, 0, section)
+      const target = findSectionById(t.root, selectedNodeId)
+      if (!target) return
+      target.children.push(section)
     } else if (selectedKind === 'item' && selectedNodeId) {
       const parent = findParentSection(t.root, selectedNodeId, 'item')
       if (!parent) return

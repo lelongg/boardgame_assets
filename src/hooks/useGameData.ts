@@ -3,11 +3,11 @@ import { useStorageInstance } from './useStorage'
 import { getProvider } from '../storage'
 import { invalidateFontCache } from './useFontStyles'
 
-// Remote backends get 30s staleTime + refetchOnWindowFocus.
+// Remote backends get 5min staleTime (mutations invalidate immediately anyway).
 // Local backends get Infinity (only invalidate on mutation).
 const isRemote = () => ['s3', 'googleDrive'].includes(getProvider())
-const staleTime = () => isRemote() ? 30_000 : Infinity
-const gcTime = () => isRemote() ? 5 * 60_000 : Infinity
+const staleTime = () => isRemote() ? 5 * 60_000 : Infinity
+const gcTime = () => isRemote() ? 10 * 60_000 : Infinity
 
 // ── Query keys ──────────────────────────────────────────────────────
 export const queryKeys = {

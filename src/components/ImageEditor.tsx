@@ -161,7 +161,7 @@ export default function ImageEditor({ src, aspectRatio, filename, onSave, onSave
           onCropChange={setCrop}
           onCropComplete={onCropComplete}
           onZoomChange={setZoom}
-          onRotationChange={setRotation}
+          onRotationChange={() => {}}
           showGrid={false}
           style={{ containerStyle: { borderRadius: '0.375rem' } }}
         />

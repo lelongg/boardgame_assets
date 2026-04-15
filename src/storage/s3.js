@@ -530,6 +530,32 @@ export const createS3Storage = (options = {}) => {
       return assetPath;
     },
 
+    async listImages(gameId) {
+      const imagesPrefix = `${prefix}/${gameId}/images/`;
+      const keys = await listKeys(imagesPrefix);
+      const imageKeys = keys.filter(k => !k.endsWith("/_names.json"));
+      let names = {};
+      try { names = await getJson(`${imagesPrefix}_names.json`); } catch {}
+      return imageKeys.map(k => {
+        const file = k.replace(imagesPrefix, "");
+        const url = `/api/games/${gameId}/images/${file}`;
+        const name = names[file] || file;
+        return { file, url, name };
+      });
+    },
+
+    async deleteImage(gameId, file) {
+      const s3Key = `${prefix}/${gameId}/images/${file}`;
+      await deleteObject(s3Key);
+      await deleteAsset(`/api/games/${gameId}/images/${file}`);
+      const namesKey = `${prefix}/${gameId}/images/_names.json`;
+      try {
+        const names = await getJson(namesKey);
+        delete names[file];
+        await putJson(namesKey, names);
+      } catch {}
+    },
+
     async renameImage(gameId, file, newName) {
       const namesKey = `${prefix}/${gameId}/images/_names.json`;
       let names = {};

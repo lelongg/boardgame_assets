@@ -8,3 +8,4 @@ tmp-*.svg
 tmp-*.json
 .devenv
 games/
+.playwright-mcp

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Printer, Upload, Archive, Check, Copy } from 'lucide-react'
+import { Pencil, Plus, Printer, Upload, Archive, Check, Copy, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -37,7 +37,7 @@ export default function GamesPage() {
   const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
   const queryClient = useQueryClient()
 
-  const { data: games = [] } = useGames()
+  const { data: games = [], isLoading: gamesLoading } = useGames()
   const createGame = useCreateGame()
   const deleteGame = useDeleteGame()
 
@@ -246,8 +246,8 @@ export default function GamesPage() {
             getName={(game: any) => game.name}
             selectedKey={expandedGame}
             onSelect={setExpandedGame}
-            empty={!storage
-              ? <p className="text-sm text-muted-foreground animate-pulse">Connecting to storage...</p>
+            empty={!storage || gamesLoading
+              ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               : <p className="text-sm text-muted-foreground">No games yet. Create one!</p>
             }
             toolbar={<>

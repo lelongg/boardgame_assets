@@ -4,7 +4,7 @@ import { ArrowLeft, Download, ChevronLeft, ChevronRight, Home } from 'lucide-rea
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { FloatingInput, FloatingSelect } from '@/components/ui/floating-field'
+import { FloatingSelect, FloatingNumberInput } from '@/components/ui/floating-field'
 import useStorage from '../hooks/useStorage'
 import { useGame, useFonts, useCollections, useCollection } from '../hooks/useGameData'
 import { renderCardSvg, embedFontsInSvg, embedImagesInSvg } from '../render'
@@ -642,8 +642,8 @@ export default function PrintPage() {
             />
             {config.paper === 'custom' && (
               <div className="grid grid-cols-2 gap-1">
-                <FloatingInput label="W" type="number" className="h-7 text-xs" value={config.customWidth} onChange={e => patch({ customWidth: Number(e.target.value) })} />
-                <FloatingInput label="H" type="number" className="h-7 text-xs" value={config.customHeight} onChange={e => patch({ customHeight: Number(e.target.value) })} />
+                <FloatingNumberInput label="W" className="h-7 text-xs" value={config.customWidth} onChange={v => patch({ customWidth: v })} />
+                <FloatingNumberInput label="H" className="h-7 text-xs" value={config.customHeight} onChange={v => patch({ customHeight: v })} />
               </div>
             )}
             <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
@@ -655,18 +655,18 @@ export default function PrintPage() {
           {/* Margins */}
           <div className="grid grid-cols-2 gap-x-2 gap-y-3">
             {(['marginTop', 'marginRight', 'marginBottom', 'marginLeft'] as const).map(key => (
-              <FloatingInput key={key}
+              <FloatingNumberInput key={key}
                 label={({ marginTop: 'Top', marginRight: 'Right', marginBottom: 'Bottom', marginLeft: 'Left' })[key]}
-                type="number" min={0} className="h-7 text-xs"
-                value={config[key]} onChange={e => patch({ [key]: Number(e.target.value) })} />
+                min={0} className="h-7 text-xs"
+                value={config[key]} onChange={v => patch({ [key]: v })} />
             ))}
           </div>
 
           {/* Grid */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <FloatingInput label="Gap" type="number" min={0} step={0.5} className="h-7 text-xs w-16"
-                value={config.gap} onChange={e => patch({ gap: Number(e.target.value) })} />
+              <FloatingNumberInput label="Gap" min={0} step={0.5} className="h-7 text-xs w-16"
+                value={config.gap} onChange={v => patch({ gap: v })} />
               <FloatingSelect
                 label="Columns"
                 value={config.columnsMode}
@@ -679,8 +679,8 @@ export default function PrintPage() {
                 className="flex-1"
               />
               {config.columnsMode === 'manual' && (
-                <FloatingInput label="Cols" type="number" min={1} max={20} className="h-7 text-xs w-14"
-                  value={config.manualColumns} onChange={e => patch({ manualColumns: Number(e.target.value) })} />
+                <FloatingNumberInput label="Cols" min={1} max={20} className="h-7 text-xs w-14"
+                  value={config.manualColumns} onChange={v => patch({ manualColumns: v })} />
               )}
             </div>
             <p className="text-[10px] text-muted-foreground">{cols}×{rows} = {perPage}/page, {totalPages} page{totalPages !== 1 ? 's' : ''}</p>
@@ -693,10 +693,10 @@ export default function PrintPage() {
               Cut marks
             </label>
             <div className="grid grid-cols-2 gap-x-2 gap-y-3 pl-5">
-              <FloatingInput label="Length" type="number" min={0.5} step={0.5} className="h-7 text-xs" disabled={!config.cutMarks}
-                value={config.cutMarkLength} onChange={e => patch({ cutMarkLength: Number(e.target.value) })} />
-              <FloatingInput label="Offset" type="number" min={0} step={0.5} className="h-7 text-xs" disabled={!config.cutMarks}
-                value={config.cutMarkOffset} onChange={e => patch({ cutMarkOffset: Number(e.target.value) })} />
+              <FloatingNumberInput label="Length" min={0.5} step={0.5} className="h-7 text-xs" disabled={!config.cutMarks}
+                value={config.cutMarkLength} onChange={v => patch({ cutMarkLength: v })} />
+              <FloatingNumberInput label="Offset" min={0} step={0.5} className="h-7 text-xs" disabled={!config.cutMarks}
+                value={config.cutMarkOffset} onChange={v => patch({ cutMarkOffset: v })} />
             </div>
             <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
               <Checkbox checked={config.includeBleed} onCheckedChange={(checked) => patch({ includeBleed: !!checked })} />

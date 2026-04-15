@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, Pencil, Copy, Plus, Check, Layers } from 'lucide-react'
+import { ArrowLeft, Pencil, Copy, Plus, Check, Layers, Loader2 } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
 import { ValueItemEditor } from '@/components/layout/ControlPanel'
@@ -124,15 +124,15 @@ export default function CollectionsPage() {
 
   // ── Query hooks (data loading) ──────────────────────────────────
   const { data: game } = useGame(gameId)
-  const { data: collections = [] } = useCollections(gameId)
-  const { data: layouts = [] } = useLayouts(gameId)
-  const { data: gameFonts = {} } = useFonts(gameId)
-  const { data: gameImages = [] } = useImages(gameId)
+  const { data: collections = [], isLoading: collectionsLoading } = useCollections(gameId)
+  const { data: layouts = [], isLoading: layoutsLoading } = useLayouts(gameId)
+  const { data: gameFonts = {}, isLoading: fontsLoading } = useFonts(gameId)
+  const { data: gameImages = [], isLoading: imagesLoading } = useImages(gameId)
 
   const [expandedCollection, setExpandedCollection] = useState<string | null>(() => {
     try { return localStorage.getItem(`game:${gameId}:selectedCollection`) } catch { return null }
   })
-  const { data: collectionCards = [] } = useCards(gameId, expandedCollection ?? undefined)
+  const { data: collectionCards = [], isLoading: cardsLoading } = useCards(gameId, expandedCollection ?? undefined)
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [cardPreviews, setCardPreviews] = useState<Record<string, string>>({})
@@ -380,7 +380,9 @@ export default function CollectionsPage() {
                 setExpandedCollection(key)
                 if (gameId) { if (key) localStorage.setItem(`game:${gameId}:selectedCollection`, key); else localStorage.removeItem(`game:${gameId}:selectedCollection`) }
               }}
-              empty={<p className="text-sm text-muted-foreground">No collections yet.</p>}
+              empty={collectionsLoading
+                ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                : <p className="text-sm text-muted-foreground">No collections yet.</p>}
               toolbar={
                 <Button size="sm" variant="ghost" onClick={() => { setShowCreateCollection(v => { if (!v) { setNewCollectionName(`Collection ${collections.length + 1}`); setNewCollectionLayout('') } else { setNewCollectionName(''); setNewCollectionLayout('') } return !v }) }} disabled={layouts.length === 0} title={showCreateCollection ? 'Cancel' : 'New collection'}>
                   <Plus className={`h-4 w-4 transition-transform ${showCreateCollection ? 'rotate-45' : ''}`} />
@@ -480,7 +482,9 @@ export default function CollectionsPage() {
                   items={collectionCards}
                   getKey={(card: any) => card.id}
                   getName={(card: any) => card.name}
-                  empty={<p className="text-sm text-muted-foreground text-center py-4">No cards in this collection.</p>}
+                  empty={cardsLoading
+                    ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                    : <p className="text-sm text-muted-foreground text-center py-4">No cards in this collection.</p>}
                   viewMode={{ key: `game:${gameId}:collCardViewMode`, default: 'gallery' }}
                   grid={{ colsKey: 'galleryCols', defaultCols: 3 }}
                   getPreviewSrc={(card: any) => cardPreviews[card.id] || ''}
@@ -580,7 +584,9 @@ export default function CollectionsPage() {
                   setSelectedLayoutId(key)
                   if (gameId) { if (key) localStorage.setItem(`game:${gameId}:selectedLayout`, key); else localStorage.removeItem(`game:${gameId}:selectedLayout`) }
                 }}
-                empty={<p className="text-sm text-muted-foreground">No layouts yet.</p>}
+                empty={layoutsLoading
+                  ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                  : <p className="text-sm text-muted-foreground">No layouts yet.</p>}
                 toolbar={
                   <Button size="sm" variant="ghost" onClick={() => { setShowCreateLayout(v => { if (!v) setNewLayoutName(`Layout ${layouts.length + 1}`); else setNewLayoutName(''); return !v }) }} title={showCreateLayout ? 'Cancel' : 'New layout'}>
                     <Plus className={`h-4 w-4 transition-transform ${showCreateLayout ? 'rotate-45' : ''}`} />
@@ -667,6 +673,7 @@ export default function CollectionsPage() {
                 onToggleAdd={() => setShowFontAdd(v => !v)}
                 selectedFont={selectedFont}
                 onSelectFont={setSelectedFont}
+                isLoading={fontsLoading}
               />
 
               <FontPreviewEditor previewText={fontPreviewText} onChangePreviewText={setFontPreviewText} />
@@ -718,6 +725,9 @@ export default function CollectionsPage() {
                 getPreviewSrc={img => img.url}
                 selectedKey={selectedImage}
                 onSelect={setSelectedImage}
+                empty={imagesLoading
+                  ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                  : <p className="text-sm text-muted-foreground">No images yet.</p>}
                 actions={selectedImage ? (<>
                   <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit image"
                     onClick={() => setEditingImage(true)}>

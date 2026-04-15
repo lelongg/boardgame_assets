@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X } from 'lucide-react'
+import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2 } from 'lucide-react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -168,7 +168,7 @@ function EditableCell({ value, onSave, bold, editorType, editorProps, allowedVal
   )
 }
 
-function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange }: {
+function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange, isLoading }: {
   cards: any[]
   gameId: string
   collectionId: string
@@ -176,6 +176,7 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
   gameImages?: { file: string; url: string; name: string }[]
   onCardsChange: (cards: any[]) => void
   onStatusChange: (msg: string) => void
+  isLoading?: boolean
 }) {
   const { storage } = useStorage()
   const stateKey = `dataSheet:${gameId}:${collectionId}`
@@ -270,6 +271,7 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
   const [dropTarget, setDropTarget] = useState<string | null>(null)
 
   if (cards.length === 0) {
+    if (isLoading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
     return <p className="text-sm text-muted-foreground text-center py-8">No cards yet.</p>
   }
 
@@ -434,7 +436,7 @@ export default function GameEditorPage() {
   const { data: gameImages = [] } = useImages(gameId)
   const { data: allLayouts = [] } = useLayouts(gameId)
   const { data: queryLayout } = useLayout(gameId, collection?.layoutId)
-  const { data: queryCards } = useCards(gameId, collectionId)
+  const { data: queryCards, isLoading: cardsLoading } = useCards(gameId, collectionId)
 
   // ── Mutation hooks ──────────────────────────────────────────────
   const updateGameMut = useUpdateGame(gameId)
@@ -512,24 +514,33 @@ export default function GameEditorPage() {
     return () => { cancelled = true; clearTimeout(timer) }
   }, [selectedCard, game?.layout, gameId, collection?.back])
 
-  // Generate thumbnails for detailed/gallery views
+  // Generate thumbnails for detailed/gallery views — only re-render all on layout change or card add/remove
+  const cardsRef = useRef(cards)
+  cardsRef.current = cards
+  const cardIds = useMemo(() => cards.map(c => c.id).join(','), [cards])
   useEffect(() => {
-    if (!game?.layout || !gameId || cards.length === 0) return
+    if (!game?.layout || !gameId || cardsRef.current.length === 0) return
     let cancelled = false
     ;(async () => {
-      const { renderCardSvg } = await import('../render')
+      const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
       const thumbs: Record<string, string> = {}
-      for (const card of cards) {
+      for (const card of cardsRef.current) {
         if (cancelled) return
         try {
-          const svg = renderCardSvg(card, game.layout, { fonts: gameFonts })
-          thumbs[card.id] = `data:image/svg+xml,${encodeURIComponent(svg)}`
+          let svg = renderCardSvg(card, game.layout, { fonts: gameFonts })
+          svg = await embedFontsInSvg(svg, gameId!, gameFonts)
+          svg = await embedImagesInSvg(svg)
+          const blob = new Blob([svg], { type: 'image/svg+xml' })
+          thumbs[card.id] = URL.createObjectURL(blob)
         } catch { /* skip */ }
       }
-      if (!cancelled) setCardThumbnails(thumbs)
+      if (!cancelled) setCardThumbnails(prev => {
+        Object.values(prev).forEach(u => { try { URL.revokeObjectURL(u) } catch {} })
+        return thumbs
+      })
     })()
     return () => { cancelled = true }
-  }, [cards, game?.layout, gameId])
+  }, [cardIds, game?.layout, gameId])
 
   // Auto-save card
   useEffect(() => {
@@ -706,6 +717,9 @@ export default function GameEditorPage() {
                 getPreviewSrc={(card: any) => cardThumbnails[card.id] ?? ''}
                 selectedKey={selectedCardId}
                 onSelect={(key) => { if (key) selectCard(storage, key); else setSelectedCardId(null) }}
+                empty={cardsLoading
+                  ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                  : <p className="text-sm text-muted-foreground">No cards yet.</p>}
                 actions={selectedCard && (<>
                   <button className="rounded p-1 text-muted-foreground hover:text-primary transition-colors" title="Copy" onClick={async () => {
                     if (!selectedCard) return
@@ -875,6 +889,7 @@ export default function GameEditorPage() {
               gameImages={gameImages}
               onCardsChange={setCards}
               onStatusChange={setStatus}
+              isLoading={cardsLoading}
             />
           </TabsContent>
 

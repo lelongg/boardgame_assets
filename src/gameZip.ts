@@ -136,21 +136,43 @@ export const importGameZip = async (
   }
 
   log('Importing images...')
+  const imageRenames: Record<string, string> = {}
   const imageEntries = zip.file(/^images\//)
   for (const f of imageEntries) {
-    const blob = await f.async('blob')
     const fileName = f.name.replace('images/', '')
+    if (!fileName) continue // skip directory entry
+    const blob = await f.async('blob')
     const ext = fileName.match(/\.[^.]+$/)?.[0] ?? '.png'
     const mimeTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' }
     const file = new File([blob], fileName, { type: mimeTypes[ext] ?? 'application/octet-stream' })
-    await storage.uploadImage(newGameId, file)
+    const newPath = await storage.uploadImage(newGameId, file)
+    // Track renames: if storage hashed the filename, we need to rewrite URLs
+    const oldPath = `/api/games/${newGameId}/images/${fileName}`
+    if (newPath && newPath !== oldPath) {
+      imageRenames[oldPath] = newPath
+    }
+  }
+
+  const rewriteAll = (str: string): string => {
+    let result = rewriteUrls(str)
+    for (const [oldPath, newPath] of Object.entries(imageRenames)) {
+      result = result.replaceAll(oldPath, newPath)
+    }
+    // Also rewrite paths using old game ID that were already rewritten
+    if (oldGameId) {
+      for (const [oldPath, newPath] of Object.entries(imageRenames)) {
+        const origPath = oldPath.replace(`/api/games/${newGameId}/`, `/api/games/${oldGameId}/`)
+        result = result.replaceAll(origPath, newPath)
+      }
+    }
+    return result
   }
 
   log('Importing layouts...')
   const layoutFiles = zip.file(/^layouts\/.*\.json$/)
   log(`Found ${layoutFiles.length} layout(s)`)
   for (const f of layoutFiles) {
-    const tpl = JSON.parse(rewriteUrls(await f.async('text')))
+    const tpl = JSON.parse(rewriteAll(await f.async('text')))
     log(`Saving layout: ${tpl.id} (${tpl.name})`)
     await storage.saveLayout(newGameId, tpl.id, tpl)
   }
@@ -165,7 +187,7 @@ export const importGameZip = async (
     const newColId = newCol.id
     // Preserve extra collection fields (back, backFit, etc.)
     const extraFields: Record<string, unknown> = {}
-    if (col.back) extraFields.back = rewriteUrls(col.back)
+    if (col.back) extraFields.back = rewriteAll(col.back)
     if (col.backFit) extraFields.backFit = col.backFit
     if (Object.keys(extraFields).length > 0) {
       await storage.updateCollection(newGameId, newColId, extraFields)
@@ -174,7 +196,7 @@ export const importGameZip = async (
     const colDir = f.name.replace('/collection.json', '')
     const cardFiles = zip.file(new RegExp(`^${colDir}/cards/.*\\.json$`))
     for (const cf of cardFiles) {
-      const card = JSON.parse(rewriteUrls(await cf.async('text')))
+      const card = JSON.parse(rewriteAll(await cf.async('text')))
       await storage.saveCard(newGameId, newColId, card.id, card)
     }
   }

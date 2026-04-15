@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense, useCallback } from 'react'
+import { cn } from '@/lib/utils'
 import { Smile, Upload, X, Eye, Pencil, Image as ImageIcon, ClipboardPaste, ChevronDown } from 'lucide-react'
 import CardThumbnail from '@/components/CardThumbnail'
 import FilterableList from '@/components/FilterableList'
@@ -40,36 +41,38 @@ type FieldMeta = {
   min?: number
   max?: number
   step?: number
+  /** When true, min is a hard physical constraint (e.g. size >= 0). When false, min is only a default slider bound. */
+  hardMin?: boolean
   options?: { value: string; label: string }[]
 }
 
 const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: string, gameFonts?: Record<string, { name: string; file: string }>): FieldMeta => {
   switch (property) {
-    case 'width': return { type: 'number', min: 10, max: 300, step: 0.5 }
-    case 'height': return { type: 'number', min: 10, max: 300, step: 0.5 }
-    case 'radius': return { type: 'number', min: 0, max: 20, step: 0.5 }
-    case 'bleed': return { type: 'number', min: 0, max: 10, step: 0.5 }
-    case 'sizePct': return { type: 'number', min: 0, max: 100, step: 1 }
-    case 'gap': return { type: 'number', min: 0, max: 100, step: 1 }
-    case 'fontSize': return { type: 'number', min: 8, max: 500, step: 1 }
-    case 'widthMm': return { type: 'number', min: 0, max: layout.width, step: 0.5 }
-    case 'heightMm': return { type: 'number', min: 0, max: layout.height, step: 0.5 }
-    case 'offsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.1 }
-    case 'offsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.1 }
+    case 'width': return { type: 'number', min: 10, max: 300, step: 0.5, hardMin: true }
+    case 'height': return { type: 'number', min: 10, max: 300, step: 0.5, hardMin: true }
+    case 'radius': return { type: 'number', min: 0, max: 20, step: 0.5, hardMin: true }
+    case 'bleed': return { type: 'number', min: 0, max: 10, step: 0.5, hardMin: true }
+    case 'sizePct': return { type: 'number', min: 0, max: 100, step: 1, hardMin: true }
+    case 'gap': return { type: 'number', min: 0, max: 100, step: 1, hardMin: true }
+    case 'fontSize': return { type: 'number', min: 1, max: 500, step: 1, hardMin: true }
+    case 'widthMm': return { type: 'number', min: 0, max: layout.width * 2, step: 0.5, hardMin: true }
+    case 'heightMm': return { type: 'number', min: 0, max: layout.height * 2, step: 0.5, hardMin: true }
+    case 'offsetX': return { type: 'number', min: -layout.width, max: layout.width, step: 0.1 }
+    case 'offsetY': return { type: 'number', min: -layout.height, max: layout.height, step: 0.1 }
     case 'rotation': return { type: 'number', min: -360, max: 360, step: 1 }
-    case 'scale': return { type: 'number', min: 0.1, max: 10, step: 0.1 }
-    case 'strokeWidth': return { type: 'number', min: 0, max: 20, step: 0.5 }
-    case 'cornerRadius': return { type: 'number', min: 0, max: 100, step: 1 }
+    case 'scale': return { type: 'number', min: 0.1, max: 10, step: 0.1, hardMin: true }
+    case 'strokeWidth': return { type: 'number', min: 0, max: 20, step: 0.5, hardMin: true }
+    case 'cornerRadius': return { type: 'number', min: 0, max: 100, step: 1, hardMin: true }
     case 'layout': return { type: 'select', options: [
       { value: 'row', label: 'Row' },
       { value: 'column', label: 'Column' },
       { value: 'stack', label: 'Stack' },
       { value: 'grid', label: 'Grid' },
     ]}
-    case 'repeatCount': return { type: 'number', min: 1, max: 20, step: 1 }
-    case 'repeatOffsetX': return { type: 'number', min: -Math.round(layout.width), max: Math.round(layout.width), step: 0.1 }
-    case 'repeatOffsetY': return { type: 'number', min: -Math.round(layout.height), max: Math.round(layout.height), step: 0.1 }
-    case 'columns': return { type: 'number', min: 1, max: 12, step: 1 }
+    case 'repeatCount': return { type: 'number', min: 1, max: 20, step: 1, hardMin: true }
+    case 'repeatOffsetX': return { type: 'number', min: -layout.width, max: layout.width, step: 0.1 }
+    case 'repeatOffsetY': return { type: 'number', min: -layout.height, max: layout.height, step: 0.1 }
+    case 'columns': return { type: 'number', min: 1, max: 12, step: 1, hardMin: true }
     case 'align': return { type: 'select', options: [
       { value: 'left', label: 'Left' },
       { value: 'center', label: 'Center' },
@@ -467,12 +470,13 @@ export const getEditorType = (property: string, itemType?: string): FieldMeta['t
   }
 }
 
-function RepeatButton({ onTick, ...props }: { onTick: () => void } & Omit<React.ComponentProps<typeof Button>, 'onClick'>) {
+function RepeatButton({ onTick, className, ...props }: { onTick: () => void } & Omit<React.ComponentProps<typeof Button>, 'onClick'>) {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const clear = () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null } }
   return (
     <Button
       {...props}
+      className={cn("select-none touch-none", className)}
       onClick={onTick}
       onPointerDown={() => { clear(); const timeout = setTimeout(() => { intervalRef.current = setInterval(onTick, 60) }, 400); intervalRef.current = timeout as any }}
       onPointerUp={clear}
@@ -481,21 +485,75 @@ function RepeatButton({ onTick, ...props }: { onTick: () => void } & Omit<React.
   )
 }
 
-export function NumberEditor({ value, onChange, min, max, step }: { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number }) {
+// Round to step precision to avoid IEEE 754 artifacts (e.g. 4.999999999994)
+function roundToStep(n: number, step: number): number {
+  const precision = Math.max(0, -Math.floor(Math.log10(step)))
+  const factor = Math.pow(10, precision)
+  return Math.round(n * factor) / factor
+}
+
+export function NumberEditor({ value, onChange, min, max, step, hardMin }: { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number; hardMin?: boolean }) {
   const numVal = Number(value || 0)
   const s = step ?? 1
+  const round = (n: number) => roundToStep(n, s)
   const valRef = useRef(numVal)
-  valRef.current = numVal
+  // Only sync ref from prop changes, not every render — avoids stale overwrites during rapid clicks
+  const prevPropValue = useRef(value)
+  if (value !== prevPropValue.current) {
+    prevPropValue.current = value
+    valRef.current = numVal
+  }
+
+  // Local string state so intermediate inputs like "-", "0.", "-0." are preserved
+  const [localText, setLocalText] = useState(String(value ?? 0))
+  const [focused, setFocused] = useState(false)
+
+  // Sync from parent when not focused (e.g. slider or button changes)
+  const prevValue = useRef(value)
+  useEffect(() => {
+    if (value !== prevValue.current) {
+      prevValue.current = value
+      if (!focused) setLocalText(String(value ?? 0))
+    }
+  }, [value, focused])
+
+  const commitText = useCallback((text: string) => {
+    const n = Number(text)
+    if (!isNaN(n) && text !== '') {
+      // Only enforce min when it's a hard physical constraint (e.g. size >= 0)
+      const result = hardMin ? Math.max(min ?? -Infinity, n) : n
+      onChange(String(result))
+      setLocalText(String(result))
+    } else {
+      // Revert to current value
+      setLocalText(String(value ?? 0))
+    }
+  }, [onChange, min, hardMin, value])
+
+  // Dynamic slider range: extends to include current value with headroom
+  const defaultRange = (max ?? 0) - (min ?? 0)
+  const headroom = Math.max(defaultRange * 0.15, s)
+  const sliderMin = min != null ? Math.min(min, numVal - headroom) : undefined
+  const sliderMax = max != null ? Math.max(max, numVal + headroom) : undefined
+
   return (
     <div className="space-y-2">
-      <Slider min={min} max={max} step={step} value={[numVal]} onValueChange={([v]) => onChange(String(v))} />
+      <Slider min={sliderMin} max={sliderMax} step={step} value={[numVal]} onValueChange={([v]) => onChange(String(round(v)))} />
       <div className="relative">
-        <Input type="number" min={min} max={max} step={step} value={numVal} onChange={(e) => onChange(e.target.value)} className="text-center px-9" />
-        <div className="absolute left-1 top-1/2 -translate-y-1/2" onPointerDown={(e) => e.preventDefault()}>
-          <RepeatButton size="sm" variant="ghost" className="h-7 w-7 p-0" onTick={() => { const v = Math.max(min ?? -Infinity, valRef.current - s); valRef.current = v; onChange(String(v)) }}>-</RepeatButton>
+        <Input
+          inputMode="decimal"
+          value={focused ? localText : numVal}
+          onFocus={() => { setFocused(true); setLocalText(String(value ?? 0)) }}
+          onBlur={() => { setFocused(false); commitText(localText) }}
+          onChange={(e) => setLocalText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitText(localText) }}
+          className="text-center px-9"
+        />
+        <div className="absolute left-1 top-1/2 -translate-y-1/2 select-none" onPointerDown={(e) => e.preventDefault()}>
+          <RepeatButton size="sm" variant="ghost" className="h-7 w-7 p-0" onTick={() => { const raw = valRef.current - s; const v = hardMin ? Math.max(min ?? -Infinity, round(raw)) : round(raw); valRef.current = v; onChange(String(v)) }}>-</RepeatButton>
         </div>
-        <div className="absolute right-1 top-1/2 -translate-y-1/2" onPointerDown={(e) => e.preventDefault()}>
-          <RepeatButton size="sm" variant="ghost" className="h-7 w-7 p-0" onTick={() => { const v = Math.min(max ?? Infinity, valRef.current + s); valRef.current = v; onChange(String(v)) }}>+</RepeatButton>
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 select-none" onPointerDown={(e) => e.preventDefault()}>
+          <RepeatButton size="sm" variant="ghost" className="h-7 w-7 p-0" onTick={() => { const v = round(valRef.current + s); valRef.current = v; onChange(String(v)) }}>+</RepeatButton>
         </div>
       </div>
     </div>
@@ -514,7 +572,7 @@ export function ValueItemEditor({ property, itemType, itemId, value, onChange, l
   if (type === 'number') {
     const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
     const meta = getFieldMeta(property, dummyLayout)
-    return <NumberEditor value={value} onChange={onChange} min={meta.min} max={meta.max} step={meta.step} />
+    return <NumberEditor value={value} onChange={onChange} min={meta.min} max={meta.max} step={meta.step} hardMin={meta.hardMin} />
   }
   if (type === 'select') {
     const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
@@ -627,7 +685,7 @@ function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, on
   }
 
   if (meta.type === 'number') {
-    return <NumberEditor value={String(value ?? 0)} onChange={(v) => onChange(Number(v))} min={meta.min} max={meta.max} step={meta.step} />
+    return <NumberEditor value={String(value ?? 0)} onChange={(v) => onChange(Number(v))} min={meta.min} max={meta.max} step={meta.step} hardMin={meta.hardMin} />
   }
 
   if (meta.type === 'select') {

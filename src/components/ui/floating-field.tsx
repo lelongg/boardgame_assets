@@ -113,11 +113,19 @@ export interface FloatingSelectProps {
   placeholder?: string
 }
 
+const EMPTY_SENTINEL = '__none__'
+
 function FloatingSelect({
   label, value, onValueChange, options, className, triggerClassName, placeholder,
 }: FloatingSelectProps) {
+  const uniqueOptions = options
+    .filter((opt, i, arr) => arr.findIndex(o => o.value === opt.value) === i)
+    .map(opt => opt.value === '' ? { value: EMPTY_SENTINEL, label: opt.label || '(none)' } : opt)
+  const selectValue = value === '' ? EMPTY_SENTINEL : (value ?? '')
+  const handleChange = (v: string) => onValueChange?.(v === EMPTY_SENTINEL ? '' : v)
+
   return (
-    <Select value={value} onValueChange={onValueChange}>
+    <Select value={selectValue} onValueChange={handleChange}>
       <div className={cn("relative", className)}>
         <SelectTrigger className={triggerClassName}>
           <SelectValue placeholder={placeholder} />
@@ -127,7 +135,7 @@ function FloatingSelect({
         </span>
       </div>
       <SelectContent>
-        {options.filter((opt, i, arr) => arr.findIndex(o => o.value === opt.value) === i).map((opt) => (
+        {uniqueOptions.map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
         ))}
       </SelectContent>
@@ -136,4 +144,63 @@ function FloatingSelect({
 }
 FloatingSelect.displayName = "FloatingSelect"
 
-export { FloatingInput, FloatingTextarea, FloatingSelect }
+/* ---------- FloatingNumberInput ---------- */
+
+export interface FloatingNumberInputProps
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> {
+  label: string
+  value: number
+  onChange: (value: number) => void
+}
+
+const FloatingNumberInput = React.forwardRef<HTMLInputElement, FloatingNumberInputProps>(
+  ({ label, className, value, onChange, onFocus, onBlur, onKeyDown, ...props }, ref) => {
+    const [focused, setFocused] = React.useState(false)
+    const [localText, setLocalText] = React.useState(String(value))
+
+    // Sync from parent when not focused
+    const prevValue = React.useRef(value)
+    if (value !== prevValue.current) {
+      prevValue.current = value
+      if (!focused) setLocalText(String(value))
+    }
+
+    const commit = (text: string) => {
+      const n = Number(text)
+      if (!isNaN(n) && text !== '') {
+        // Only enforce min (hard floor), no max ceiling
+        const min = props.min != null ? Number(props.min) : -Infinity
+        const floored = Math.max(min, n)
+        onChange(floored)
+        setLocalText(String(floored))
+      } else {
+        setLocalText(String(value))
+      }
+    }
+
+    const displayValue = focused ? localText : String(value)
+    const hasValue = displayValue.length > 0
+
+    return (
+      <FloatingWrapper label={label} hasValue={hasValue} focused={focused}>
+        <input
+          ref={ref}
+          inputMode="decimal"
+          value={displayValue}
+          onFocus={(e) => { setFocused(true); setLocalText(String(value)); onFocus?.(e) }}
+          onBlur={(e) => { setFocused(false); commit(localText); onBlur?.(e) }}
+          onChange={(e) => setLocalText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(localText); onKeyDown?.(e) }}
+          className={cn(
+            "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-transparent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+            className,
+          )}
+          {...props}
+        />
+      </FloatingWrapper>
+    )
+  },
+)
+FloatingNumberInput.displayName = "FloatingNumberInput"
+
+export { FloatingInput, FloatingTextarea, FloatingSelect, FloatingNumberInput }

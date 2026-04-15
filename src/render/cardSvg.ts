@@ -198,10 +198,12 @@ const placeItem = (item: CardLayoutItem, _sectionRect: Rect, targetRect: Rect): 
   const sizeWidth = mmToPx(item.widthMm);
   const sizeHeight = mmToPx(item.heightMm);
   const target = anchorPosition(targetRect, item.attach.anchor);
+  const ox = mmToPx((item as any).offsetX ?? 0);
+  const oy = mmToPx((item as any).offsetY ?? 0);
 
   return {
-    x: target.x - sizeWidth * item.anchor.x,
-    y: target.y - sizeHeight * item.anchor.y,
+    x: target.x - sizeWidth * item.anchor.x + ox,
+    y: target.y - sizeHeight * item.anchor.y + oy,
     width: sizeWidth,
     height: sizeHeight
   };
@@ -411,9 +413,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     if (vis === false || vis === "false") return;
     const baseRect = computed.items.get(item.id);
     if (!baseRect) return;
-    const ox = mmToPx(Number(resolve(item, "offsetX", card, layout)) || 0);
-    const oy = mmToPx(Number(resolve(item, "offsetY", card, layout)) || 0);
-    const rect = (ox || oy) ? { ...baseRect, x: baseRect.x + ox, y: baseRect.y + oy } : baseRect;
+    const rect = baseRect;
     const rotation = Number(resolve(item, "rotation", card, layout)) || 0;
     const pushEl = (svg: string) => {
       if (rotation && svg) {
@@ -439,11 +439,11 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       const slotName = fontKey && options.fontSlots?.[fontKey] ? fontKey : fontSlots[0];
       const fontSlot = options.fontSlots?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
-      const justify = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
-      const alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
+      const justifyContent = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
+      const alignItems = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
       const styledLines = parseRichText(value);
       const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
-      pushEl(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
+      pushEl(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
     }
 
     if (itemType === "frame") {
@@ -608,9 +608,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
     if (vis === false || vis === "false") return "";
     const baseRect = computed.items.get(item.id);
     if (!baseRect) return "";
-    const lox = mmToPx((item as any).offsetX ?? 0);
-    const loy = mmToPx((item as any).offsetY ?? 0);
-    const rect = (lox || loy) ? { ...baseRect, x: baseRect.x + lox, y: baseRect.y + loy } : baseRect;
+    const rect = baseRect;
     const rot = (item as any).rotation ?? 0;
     const wrapRot = (svg: string) => {
       if (!rot || !svg) return svg;
@@ -680,11 +678,11 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
           const fk = String(resolve(t, "font", emptyCard, layoutMm) ?? "");
           const sn = fk && options.fonts?.[fk] ? fk : fontSlots[0];
           const ff = options.fonts?.[sn] ? `'${options.fonts[sn].name}'` : "'sans-serif'";
-          const justify = al === "left" ? "flex-start" : al === "right" ? "flex-end" : "center";
-          const ai = va === "top" ? "flex-start" : va === "bottom" ? "flex-end" : "center";
+          const jc = va === "top" ? "flex-start" : va === "bottom" ? "flex-end" : "center";
+          const ai = al === "left" ? "flex-start" : al === "right" ? "flex-end" : "center";
           const sl = parseRichText(v);
           const h = sl.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
-          parts.push(`<foreignObject x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${ai};justify-content:${justify};font-family:${ff};font-size:${fs}px;color:${co};text-align:${al};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${h}</div></foreignObject>`);
+          parts.push(`<foreignObject x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${ai};justify-content:${jc};font-family:${ff};font-size:${fs}px;color:${co};text-align:${al};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${h}</div></foreignObject>`);
         } else if (tType === "emoji") {
           const em = String(resolve(t, "emoji", emptyCard, layoutMm) ?? "⭐");
           const fs = Number(resolve(t, "fontSize", emptyCard, layoutMm)) || 32;
@@ -710,11 +708,11 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
     const align = (item as any).align ?? "center";
     const vAlign = (item as any).verticalAlign ?? "middle";
     const color = escape((item as any).color ?? palette.ink);
-    const justify = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
-    const alignItems = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
+    const justifyContent = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
+    const alignItems = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
     const styledLines = parseRichText(value);
     const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
-    return wrapRot(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;align-items:${alignItems};justify-content:${justify};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
+    return wrapRot(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
   }).join("");
 
   const sectionRects = showSections ? Array.from(computed.sections.entries())

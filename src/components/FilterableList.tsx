@@ -164,7 +164,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
           {filterInput}
           {cycleMode && (
             <Button size="sm" variant="ghost" onClick={cycleMode} title={mode === 'compact' ? 'Detailed view' : mode === 'detailed' ? 'Gallery view' : 'Compact view'}>
-              {mode === 'compact' ? <LayoutGrid className="h-4 w-4" /> : mode === 'detailed' ? <GalleryHorizontalEnd className="h-4 w-4" /> : <List className="h-4 w-4" />}
+              {mode === 'compact' ? <GalleryHorizontalEnd className="h-4 w-4" /> : mode === 'detailed' ? <LayoutGrid className="h-4 w-4" /> : <List className="h-4 w-4" />}
             </Button>
           )}
           {toolbar}
