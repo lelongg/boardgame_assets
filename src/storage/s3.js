@@ -430,13 +430,13 @@ export const createS3Storage = (options = {}) => {
 
     async listFonts(gameId) {
       const fonts = await getFontManifest(gameId);
-      // Prefetch font binaries into IndexedDB in the background
-      for (const entry of Object.values(fonts)) {
-        if (!entry.file) continue;
+      // Download font binaries into IndexedDB so fetch fallback can serve them
+      await Promise.all(Object.values(fonts).map(async (entry) => {
+        if (!entry.file) return;
         const s3Key = `${prefix}/${gameId}/fonts/${entry.file}`;
         const assetPath = `/api/games/${gameId}/fonts/${entry.file}`;
-        ensureCached(s3Key, assetPath, "font/woff2");
-      }
+        await ensureCached(s3Key, assetPath, "font/woff2");
+      }));
       return fonts;
     },
 
