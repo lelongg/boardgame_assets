@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
-import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import useFuzzyFilter from '@/hooks/useFuzzyFilter'
@@ -7,7 +7,7 @@ import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHe
 import ZoomablePreview from '@/components/ZoomablePreview'
 import CardThumbnail from '@/components/CardThumbnail'
 
-export type ViewMode = 'compact' | 'detailed' | 'gallery'
+export type ViewMode = 'compact' | 'detailed' | 'gallery' | 'preview'
 
 type FilterableListProps<T> = {
   title: string
@@ -43,15 +43,6 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   const itemRefs = useRef<Map<string, HTMLElement>>(new Map())
   const carouselRefs = useRef<Map<string, HTMLElement>>(new Map())
   const needsInit = useRef(false)
-  const bigPreviewKey = viewModeProp ? `${viewModeProp.key}:bigPreview` : null
-  const [bigPreview, setBigPreview_] = useState(() => {
-    if (!bigPreviewKey) return false
-    try { return localStorage.getItem(bigPreviewKey) === '1' } catch { return false }
-  })
-  const setBigPreview = (v: boolean) => {
-    setBigPreview_(v)
-    if (bigPreviewKey) { try { if (v) localStorage.setItem(bigPreviewKey, '1'); else localStorage.removeItem(bigPreviewKey) } catch {} }
-  }
   const carouselScrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
@@ -62,30 +53,35 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
   }, [])
 
-  useEffect(() => {
-    if (!selectedKey) return
-    if (bigPreview) {
-      carouselRefs.current.get(selectedKey)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-      setTimeout(updateCarouselScroll, 100)
-    }
-    itemRefs.current.get(selectedKey)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [selectedKey, bigPreview])
-
-  useEffect(() => {
-    if (bigPreview) setTimeout(updateCarouselScroll, 50)
-  }, [bigPreview])
-
   const [mode, setMode] = useState<ViewMode>(() => {
     if (!viewModeProp) return gridProp ? 'gallery' : 'compact'
     try {
       const saved = localStorage.getItem(viewModeProp.key)
-      if (saved === 'compact' || saved === 'detailed' || saved === 'gallery') return saved
+      if (saved === 'compact' || saved === 'detailed' || saved === 'gallery' || saved === 'preview') return saved
     } catch {}
     return viewModeProp.default ?? 'compact'
   })
 
+  useEffect(() => {
+    if (!selectedKey) return
+    if (mode === 'preview') {
+      carouselRefs.current.get(selectedKey)?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+      setTimeout(updateCarouselScroll, 100)
+    }
+    itemRefs.current.get(selectedKey)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedKey, mode])
+
+  useEffect(() => {
+    if (mode === 'preview') setTimeout(updateCarouselScroll, 50)
+  }, [mode])
+
+  const hasPreviewMode = !!(gridProp && getPreviewSrc)
   const cycleMode = viewModeProp ? () => setMode(m => {
-    const next: ViewMode = m === 'compact' ? 'detailed' : m === 'detailed' ? 'gallery' : 'compact'
+    const next: ViewMode = m === 'compact' ? 'detailed'
+      : m === 'detailed' ? 'gallery'
+      : m === 'gallery' && hasPreviewMode ? 'preview'
+      : 'compact'
+    if (next === 'preview' && !selectedKey && items.length > 0) onSelect?.(getKey(items[0]))
     localStorage.setItem(viewModeProp.key, next)
     return next
   }) : undefined
@@ -149,7 +145,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   const selectedItem = selectedKey ? items.find(i => getKey(i) === selectedKey) : null
   const selectedIdx = selectedItem ? items.indexOf(selectedItem) : -1
   const previewSrc = selectedItem && getPreviewSrc ? getPreviewSrc(selectedItem) : ''
-  const showBigPreview = bigPreview && isGrid && getPreviewSrc && selectedItem
+  const showBigPreview = mode === 'preview' && getPreviewSrc && selectedItem
 
   return (<>
     {hoverThumb && (
@@ -163,8 +159,8 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
         <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           {filterInput}
           {cycleMode && (
-            <Button size="sm" variant="ghost" onClick={cycleMode} title={mode === 'compact' ? 'Detailed view' : mode === 'detailed' ? 'Gallery view' : 'Compact view'}>
-              {mode === 'compact' ? <GalleryHorizontalEnd className="h-4 w-4" /> : mode === 'detailed' ? <LayoutGrid className="h-4 w-4" /> : <List className="h-4 w-4" />}
+            <Button size="sm" variant="ghost" onClick={cycleMode} title={mode === 'compact' ? 'Detailed view' : mode === 'detailed' ? 'Gallery view' : mode === 'gallery' ? (hasPreviewMode ? 'Preview' : 'Compact view') : 'Compact view'}>
+              {mode === 'compact' ? <GalleryHorizontalEnd className="h-4 w-4" /> : mode === 'detailed' ? <LayoutGrid className="h-4 w-4" /> : mode === 'gallery' ? (hasPreviewMode ? <Eye className="h-4 w-4" /> : <List className="h-4 w-4" />) : <List className="h-4 w-4" />}
             </Button>
           )}
           {toolbar}
@@ -175,10 +171,6 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
         {hasSubheader && (
           <div className="flex items-center gap-1 px-2 py-1 border-b shrink-0">
             {showBigPreview ? (<>
-              <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Close"
-                onClick={() => setBigPreview(false)}>
-                <X className="h-3.5 w-3.5" />
-              </button>
               <span className="text-xs font-medium truncate">{getName(selectedItem!)}</span>
               <div className="flex items-center gap-1 ml-auto">
                 <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
@@ -213,18 +205,6 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
               </>}
 
               <div className="flex items-center gap-1 ml-auto">
-                {isGrid && getPreviewSrc && (
-                  <button
-                    className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-                    title="Preview"
-                    onClick={() => {
-                      if (!selectedKey && items.length > 0) onSelect?.(getKey(items[0]))
-                      setBigPreview(true)
-                    }}
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                  </button>
-                )}
                 {actions}
               </div>
             </>)}
