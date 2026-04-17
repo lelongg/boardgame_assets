@@ -510,7 +510,6 @@ export const createGoogleDriveStorage = (options = {}) => {
         }
       }
       
-      games.sort((a, b) => a.name.localeCompare(b.name));
       return games;
     } catch (err) {
       // If not signed in or any other error, return empty array
@@ -624,7 +623,6 @@ export const createGoogleDriveStorage = (options = {}) => {
       }
     }
     
-    cards.sort((a, b) => a.name.localeCompare(b.name));
     return cards;
   };
 

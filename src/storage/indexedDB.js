@@ -8,8 +8,6 @@ import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
-const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare;
-
 const slugify = (v) =>
   v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
@@ -462,7 +460,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       const db = await openDB();
       try {
         const entries = await idbGetAllByPrefix(db, "cards", [gameId, collectionId]);
-        return entries.map((e) => e.value).sort((a, b) => naturalCompare(a.name, b.name));
+        return entries.map((e) => e.value);
       } finally {
         db.close();
       }
@@ -610,7 +608,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       return keys.filter(k => !k.endsWith('_names.json')).map(key => {
         const file = key.slice(prefix.length);
         return { file, url: key, name: names[file] || file };
-      }).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      });
     },
 
     async uploadImage(gameId, file) {

@@ -84,8 +84,8 @@ fs.writeFileSync(path.join(docsDir, "index.html"), `<!doctype html>
 fs.writeFileSync(path.join(docsDir, "404.html"), `<!doctype html>
 <html><head><meta charset="UTF-8" />
 <script>
-  sessionStorage.setItem('redirectPath', window.location.pathname);
-  window.location.href = '/boardgame_assets/editor/';
+  sessionStorage.setItem('redirectPath', window.location.pathname + window.location.search + window.location.hash);
+  window.location.replace('/boardgame_assets/editor/');
 </script>
 </head><body><p>Redirecting...</p></body></html>`, "utf8");
 

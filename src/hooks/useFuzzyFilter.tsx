@@ -11,11 +11,16 @@ function fuzzyMatch(query: string, target: string): boolean {
   return qi === q.length
 }
 
+const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare
+
 /** Returns [filteredItems, filterInput, query] — drop the input into any toolbar. */
 export default function useFuzzyFilter<T>(items: T[], key: (item: T) => string): [T[], React.ReactNode, string] {
   const [query, setQuery] = useState('')
   const filtered = useMemo(
-    () => query ? items.filter(item => fuzzyMatch(query, key(item))) : items,
+    () => {
+      const base = query ? items.filter(item => fuzzyMatch(query, key(item))) : items
+      return [...base].sort((a, b) => naturalCompare(key(a), key(b)))
+    },
     [items, query, key]
   )
   const input = (

@@ -15,13 +15,24 @@ export default function PortalDropdown({ trigger, children, align = 'right' }: P
 
   useEffect(() => {
     if (!open) return
-    if (btnRef.current) {
+    const clamp = () => {
+      if (!btnRef.current) return
       const r = btnRef.current.getBoundingClientRect()
-      setPos({
-        top: r.bottom + 4,
-        left: align === 'right' ? r.right : r.left,
-      })
+      let top = r.bottom + 4
+      let left = align === 'right' ? r.right : r.left
+      // After first render, check menu size and clamp to viewport
+      if (menuRef.current) {
+        const m = menuRef.current.getBoundingClientRect()
+        const effectiveLeft = align === 'right' ? left - m.width : left
+        if (effectiveLeft + m.width > window.innerWidth - 8) left = window.innerWidth - 8 - m.width + (align === 'right' ? m.width : 0)
+        if (effectiveLeft < 8) left = 8 + (align === 'right' ? m.width : 0)
+        if (top + m.height > window.innerHeight - 8) top = r.top - m.height - 4
+      }
+      setPos({ top, left })
     }
+    clamp()
+    // Re-clamp after first render so menuRef is available
+    requestAnimationFrame(clamp)
     const onClickOutside = (e: MouseEvent) => {
       if (menuRef.current?.contains(e.target as Node)) return
       if (btnRef.current?.contains(e.target as Node)) return

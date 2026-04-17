@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2 } from 'lucide-react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -58,38 +59,63 @@ const stripHtml = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/
 function RichTextCell({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [editing, setEditing] = useState(false)
   const editorRef = useRef<any>(null)
+  const cellRef = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
 
-  if (editing) {
-    return (
-      <div className="rounded ring-1 ring-primary bg-background" onClick={e => e.stopPropagation()}>
-        <RichTextField
-          value={value}
-          onChange={v => { editorRef.current = v }}
-        />
-        <div className="flex justify-end gap-1 px-1 pb-1">
-          <button className="text-xs text-muted-foreground hover:text-foreground px-1" onClick={() => { setEditing(false); editorRef.current = null }}>Cancel</button>
-          <button className="text-xs text-primary hover:text-primary/80 font-medium px-1" onClick={() => { if (editorRef.current != null && editorRef.current !== value) onSave(editorRef.current); setEditing(false); editorRef.current = null }}>Save</button>
-        </div>
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (!editing) return
+    if (cellRef.current) {
+      const r = cellRef.current.getBoundingClientRect()
+      let top = r.bottom + 2
+      const left = r.left
+      const width = Math.max(r.width, 250)
+      // Flip above if it would overflow the bottom
+      if (top + 120 > window.innerHeight) top = r.top - 120 - 2
+      setPos({ top, left, width })
+    }
+    const onMouseDown = (e: MouseEvent) => {
+      if (popupRef.current?.contains(e.target as Node)) return
+      if (cellRef.current?.contains(e.target as Node)) return
+      if (editorRef.current != null && editorRef.current !== value) onSave(editorRef.current)
+      setEditing(false); editorRef.current = null
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    return () => document.removeEventListener('mousedown', onMouseDown)
+  }, [editing, value, onSave])
 
   const plain = stripHtml(value)
   return (
     <div
-      className="flex items-center rounded ring-1 ring-transparent cursor-text"
-      onClick={() => setEditing(true)}
+      ref={cellRef}
+      className={`flex items-center rounded ring-1 cursor-text ${editing ? 'ring-primary' : 'ring-transparent'}`}
+      onClick={() => { if (!editing) setEditing(true) }}
     >
       <div className="flex-1 px-1 py-0.5 min-h-[1.5rem] truncate [&_strong]:font-bold [&_em]:italic [&_p]:inline" dangerouslySetInnerHTML={{ __html: value || '' }} />
-      {!plain && <span className="flex-1 px-1 py-0.5 text-muted-foreground/50 italic">-</span>}
+      {!plain && !editing && <span className="flex-1 px-1 py-0.5 text-muted-foreground/50 italic">-</span>}
+      {editing && createPortal(
+        <div
+          ref={popupRef}
+          className="fixed z-50 rounded-md border bg-popover shadow-md"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}
+          onClick={e => e.stopPropagation()}
+        >
+          <RichTextField
+            value={value}
+            onChange={v => { editorRef.current = v }}
+          />
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
 
-function EditableCell({ value, onSave, bold, editorType, editorProps, allowedValues }: {
+function EditableCell({ value, onSave, bold, editorType, editorProps, allowedValues, gameImages }: {
   value: string; onSave: (v: string) => void; bold?: boolean
   editorType?: string; editorProps?: Record<string, any>
   allowedValues?: string[]
+  gameImages?: { file: string; url: string; name: string }[]
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -126,15 +152,17 @@ function EditableCell({ value, onSave, bold, editorType, editorProps, allowedVal
     </PortalDropdown>
   ) : null
 
+  const imgLabel = (v: string) => gameImages?.find(img => img.url === v)?.name ?? v
+
   if (allowedValues?.length) {
     return (
       <select
-        className="w-full bg-transparent text-sm px-1 py-0.5 rounded outline-none cursor-pointer focus:ring-1 focus:ring-primary"
+        className="w-full bg-transparent text-sm pl-1 pr-5 py-0.5 rounded outline-none cursor-pointer focus:ring-1 focus:ring-primary truncate"
         value={value}
         onChange={e => onSave(e.target.value)}
       >
-        {!allowedValues.includes(value) && <option value={value}>{value || '-'}</option>}
-        {allowedValues.map(v => <option key={v} value={v}>{v || '(empty)'}</option>)}
+        {!allowedValues.includes(value) && <option value={value}>{imgLabel(value) || '-'}</option>}
+        {allowedValues.map(v => <option key={v} value={v}>{imgLabel(v) || '(empty)'}</option>)}
       </select>
     )
   }
@@ -158,7 +186,7 @@ function EditableCell({ value, onSave, bold, editorType, editorProps, allowedVal
         <div className={`flex-1 px-1 py-0.5 min-h-[1.5rem] truncate ${bold ? 'font-medium' : ''}`}>
           {editorType === 'color' && draft ? (
             <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ backgroundColor: draft }} />{draft}</span>
-          ) : draft || <span className="text-muted-foreground/50 italic">-</span>}
+          ) : (draft ? imgLabel(draft) : '') || <span className="text-muted-foreground/50 italic">-</span>}
         </div>
       )}
       {adornment
@@ -199,6 +227,25 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
 
   const fieldNames = useMemo(() => [...new Set(cards.flatMap(c => Object.keys(c.fields ?? {})))], [cards])
 
+  // Build a map from field key (e.g. "defaultValue:suit") to item type (e.g. "image")
+  const fieldItemTypes = useMemo(() => {
+    const map: Record<string, string> = {}
+    if (!layout?.root) return map
+    const collect = (section: any) => {
+      for (const [prop, binding] of Object.entries(section.bindings ?? {} as Record<string, { field: string }>)) {
+        map[`${prop}:${(binding as any).field}`] = 'section'
+      }
+      section.items?.forEach((item: any) => {
+        for (const [prop, binding] of Object.entries(item.bindings ?? {} as Record<string, { field: string }>)) {
+          map[`${prop}:${(binding as any).field}`] = item.type ?? 'text'
+        }
+      })
+      section.children?.forEach(collect)
+    }
+    collect(layout.root)
+    return map
+  }, [layout])
+
   const saveCard = async (cardId: string, updated: any) => {
     onCardsChange(cards.map(c => c.id === cardId ? updated : c))
     try { await storage.saveCard(gameId, collectionId, cardId, updated) }
@@ -226,7 +273,8 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
     },
     ...fieldNames.map(f => {
       const property = f.includes(':') ? f.split(':')[0] : f
-      const edType = getEditorType(property)
+      const itemType = fieldItemTypes[f]
+      const edType = getEditorType(property, itemType)
       // Detect richtext: check if any card has HTML in this field
       const effectiveType = edType === 'text' && cards.some(c => /<(?:p|strong|em)[ >]/.test(c.fields?.[f] ?? ''))
         ? 'richtext' : edType
@@ -242,13 +290,14 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
             value={row.original.fields?.[f] ?? ''}
             onSave={v => { const c = row.original; saveCard(c.id, { ...c, fields: { ...c.fields, [f]: v } }) }}
             allowedValues={allowed}
-            editorType={!allowed?.length && hasSpecialEditor ? effectiveType : undefined}
-            editorProps={!allowed?.length && hasSpecialEditor ? { property, layout, gameImages } : undefined}
+            editorType={hasSpecialEditor ? effectiveType : undefined}
+            editorProps={hasSpecialEditor ? { property, itemType, layout, gameImages } : undefined}
+            gameImages={gameImages}
           />
         ),
       }
     }),
-  ], [fieldNames, cards])
+  ], [fieldNames, cards, fieldItemTypes])
 
   const table = useReactTable({
     data: cards,
@@ -312,7 +361,7 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
         </span>
       </div>
       <div className="overflow-auto rounded-lg border max-h-[75vh]">
-        <table className="text-sm" style={{ minWidth: '100%', width: table.getCenterTotalSize() }}>
+        <table className="text-sm" style={{ minWidth: '100%', width: table.getCenterTotalSize(), tableLayout: 'fixed' }}>
           <thead className="sticky top-0 bg-muted z-10">
             {table.getHeaderGroups().map((hg: any) => (
               <tr key={hg.id}>

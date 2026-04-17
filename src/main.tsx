@@ -7,6 +7,19 @@ import './index.css'
 import { getAsset } from './storage/assetCache'
 import { StorageProvider } from './hooks/useStorage'
 
+// Restore SPA route after GitHub Pages 404 redirect
+const redirectPath = sessionStorage.getItem('redirectPath')
+if (redirectPath) {
+  sessionStorage.removeItem('redirectPath')
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+  if (redirectPath.startsWith(base + '/')) {
+    const route = redirectPath.slice(base.length)
+    if (route !== '/' && route !== window.location.pathname) {
+      history.replaceState(null, '', route)
+    }
+  }
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

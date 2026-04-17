@@ -287,7 +287,6 @@ export const createGoogleDriveStorage = (options = {}) => {
           if (meta?.id) { games.push(meta); fileIds.set(`game:${meta.id}`, gf.id); }
         }
       }
-      games.sort((a, b) => a.name.localeCompare(b.name));
       return games;
     } catch (err) { console.warn("listGames:", err); return []; }
   };
@@ -454,7 +453,6 @@ export const createGoogleDriveStorage = (options = {}) => {
       cards.push(card);
       fileIds.set(`card:${gameId}:${collectionId}:${card.id}`, f.id);
     }
-    cards.sort((a, b) => a.name.localeCompare(b.name));
     return cards;
   };
 
