@@ -180,7 +180,10 @@ export function useUpdateCollection(gameId: string | undefined) {
   return useMutation<any, Error, { collectionId: string; updates: Record<string, any> }>({
     mutationFn: ({ collectionId, updates }) =>
       storage.updateCollection(gameId!, collectionId, updates),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.collections(gameId!) }) },
+    onSuccess: (_data, { collectionId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections(gameId!) })
+      qc.invalidateQueries({ queryKey: queryKeys.collection(gameId!, collectionId) })
+    },
   })
 }
 
