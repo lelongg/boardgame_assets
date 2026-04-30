@@ -226,8 +226,6 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
   useEffect(() => { saveState('order', columnOrder) }, [columnOrder])
   useEffect(() => { saveState('sizing', columnSizing) }, [columnSizing])
 
-  const fieldNames = useMemo(() => [...new Set(cards.flatMap(c => Object.keys(c.fields ?? {})))], [cards])
-
   // Build a map from field key (e.g. "defaultValue:suit") to item type (e.g. "image")
   const fieldItemTypes = useMemo(() => {
     const map: Record<string, string> = {}
@@ -246,6 +244,15 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
     collect(layout.root)
     return map
   }, [layout])
+
+  // Field names are the union of fields used by any card and fields declared by
+  // the layout's bindings, so columns appear even when no card has set a value.
+  const fieldNames = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of cards) for (const k of Object.keys(c.fields ?? {})) set.add(k)
+    for (const k of Object.keys(fieldItemTypes)) set.add(k)
+    return [...set]
+  }, [cards, fieldItemTypes])
 
   const saveCard = async (cardId: string, updated: any) => {
     onCardsChange(cards.map(c => c.id === cardId ? updated : c))
