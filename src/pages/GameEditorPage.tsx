@@ -196,7 +196,7 @@ function EditableCell({ value, onSave, bold, editorType, editorProps, allowedVal
   )
 }
 
-function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange, isLoading }: {
+function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange, isLoading, onCreateCard }: {
   cards: any[]
   gameId: string
   collectionId: string
@@ -205,6 +205,7 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
   onCardsChange: (cards: any[]) => void
   onStatusChange: (msg: string) => void
   isLoading?: boolean
+  onCreateCard: (name?: string) => Promise<void>
 }) {
   const { storage } = useStorage()
   const stateKey = `dataSheet:${gameId}:${collectionId}`
@@ -321,7 +322,14 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
 
   if (cards.length === 0) {
     if (isLoading) return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-    return <p className="text-sm text-muted-foreground text-center py-8">No cards yet.</p>
+    return (
+      <div className="text-center py-8 space-y-3">
+        <p className="text-sm text-muted-foreground">No cards yet.</p>
+        <Button size="sm" variant="outline" onClick={() => onCreateCard()}>
+          <Plus className="h-4 w-4 mr-1" /> New Card
+        </Button>
+      </div>
+    )
   }
 
   const SortIcon = ({ column }: { column: any }) => {
@@ -355,6 +363,9 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
         </div>
         <Button size="sm" variant="ghost" onClick={resetState} title="Reset sheet">
           <RotateCcw className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => onCreateCard()} title="New card">
+          <Plus className="h-3.5 w-3.5" />
         </Button>
         <span className="text-xs text-muted-foreground ml-auto">
           {table.getFilteredRowModel().rows.length} / {cards.length} cards
@@ -939,6 +950,7 @@ export default function GameEditorPage() {
               onCardsChange={setCards}
               onStatusChange={setStatus}
               isLoading={cardsLoading}
+              onCreateCard={handleCreateCard}
             />
           </TabsContent>
 
