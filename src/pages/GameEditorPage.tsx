@@ -56,6 +56,10 @@ const EDITOR_ICONS: Record<string, typeof Palette> = {
 /** Strip HTML tags for plain-text preview, preserving text content. */
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ')
 
+/** localStorage key for a card's unsaved draft (survives page reload). */
+const cardDraftKey = (gameId: string, collectionId: string, cardId: string) =>
+  `editor:draft:${gameId}:${collectionId}:${cardId}`
+
 function RichTextCell({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [editing, setEditing] = useState(false)
   const editorRef = useRef<any>(null)
@@ -520,20 +524,22 @@ export default function GameEditorPage() {
     return { ...gameData, layout: queryLayout }
   }, [gameData, queryLayout])
 
-  // localStorage key for card drafts (unsaved edits that survive page reload)
-  const draftKey = (cardId: string) => `editor:draft:${gameId}:${collectionId}:${cardId}`
-
   // Cards: local state seeded from query, kept local for editing
   const [cards, setCards] = useState<any[]>([])
   const cardsInitialized = useRef(false)
   useEffect(() => {
     if (queryCards && !cardsInitialized.current) {
+      if (!gameId || !collectionId) return
       // Apply any localStorage drafts (unsaved edits from a previous session
       // that were interrupted before the async storage write could complete).
       const cardsWithDrafts = queryCards.map((c: any) => {
         try {
-          const draftJson = localStorage.getItem(draftKey(c.id))
-          if (draftJson) return JSON.parse(draftJson)
+          const draftJson = localStorage.getItem(cardDraftKey(gameId, collectionId, c.id))
+          if (draftJson) {
+            const draft = JSON.parse(draftJson)
+            // Only use the draft if it's an object with the matching card id.
+            if (draft && typeof draft === 'object' && draft.id === c.id) return draft
+          }
         } catch { /* ignore corrupt drafts */ }
         return c
       })
@@ -546,7 +552,8 @@ export default function GameEditorPage() {
         setSelectedCardId(cardToSelect)
         // Use the storage version as the "saved" baseline so that a restored
         // draft triggers auto-save immediately on mount.
-        setSavedCardJson(JSON.stringify(queryCards.find((c: any) => c.id === cardToSelect) ?? ''))
+        const storedCard = queryCards.find((c: any) => c.id === cardToSelect)
+        setSavedCardJson(storedCard ? JSON.stringify(storedCard) : '')
       }
     }
   }, [queryCards])
@@ -605,7 +612,7 @@ export default function GameEditorPage() {
       .then(() => {
         // Clear the localStorage draft now that the storage write succeeded
         // (the component may already be unmounted so we can't rely on state effects).
-        try { localStorage.removeItem(`editor:draft:${gameId}:${collectionId}:${cardId}`) } catch { /* ignore */ }
+        try { localStorage.removeItem(cardDraftKey(gameId, collectionId, cardId)) } catch { /* ignore */ }
       })
       .catch((err: unknown) => console.error('Flush save failed:', err))
   }, [gameId, collectionId])
@@ -623,10 +630,10 @@ export default function GameEditorPage() {
     if (cardJson === savedCardJson) {
       // Card is fully saved – remove any stale draft so we don't restore old
       // data after the user has deliberately made further edits and saved.
-      try { localStorage.removeItem(draftKey(selectedCard.id)) } catch { /* ignore */ }
+      try { localStorage.removeItem(cardDraftKey(gameId, collectionId, selectedCard.id)) } catch { /* ignore */ }
       return
     }
-    try { localStorage.setItem(draftKey(selectedCard.id), cardJson) } catch { /* ignore quota errors */ }
+    try { localStorage.setItem(cardDraftKey(gameId, collectionId, selectedCard.id), cardJson) } catch { /* ignore quota errors */ }
   }, [selectedCard, savedCardJson, gameId, collectionId])
 
   useEffect(() => { localStorage.setItem(lsKey('cardSel'), JSON.stringify([...cardSelection])) }, [cardSelection])
@@ -739,7 +746,7 @@ export default function GameEditorPage() {
     try {
       await deleteCardMut.mutateAsync(selectedCardId)
       // Clear any localStorage draft for the deleted card.
-      try { localStorage.removeItem(draftKey(selectedCardId)) } catch { /* ignore */ }
+      try { localStorage.removeItem(cardDraftKey(gameId, collectionId, selectedCardId)) } catch { /* ignore */ }
       setCards(updatedCards)
       if (updatedCards.length > 0) {
         const nextIdx = Math.min(idx, updatedCards.length - 1)
