@@ -537,6 +537,17 @@ export default function GameEditorPage() {
     }
   }, [queryCards])
 
+  // Mirror the local `cards` state into the React Query cache so that edits
+  // persisted via storage.saveCard (which bypasses the mutation hooks) are not
+  // shadowed by a stale cache when the user navigates away and remounts the
+  // page. Without this, with staleTime=Infinity (local) or 5min (remote), the
+  // query returns pre-edit data on remount and the local state is re-seeded
+  // from it, making saved edits appear lost.
+  useEffect(() => {
+    if (!cardsInitialized.current || !gameId || !collectionId) return
+    queryClient.setQueryData(queryKeys.cards(gameId, collectionId), cards)
+  }, [cards, gameId, collectionId, queryClient])
+
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const selectedCard = useMemo(() => cards.find(c => c.id === selectedCardId) ?? null, [cards, selectedCardId])
   const [cardPreview, setCardPreview] = useState<string>('')
