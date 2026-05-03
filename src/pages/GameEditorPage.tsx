@@ -520,18 +520,32 @@ export default function GameEditorPage() {
     return { ...gameData, layout: queryLayout }
   }, [gameData, queryLayout])
 
+  // localStorage key for card drafts (unsaved edits that survive page reload)
+  const draftKey = (cardId: string) => `editor:draft:${gameId}:${collectionId}:${cardId}`
+
   // Cards: local state seeded from query, kept local for editing
   const [cards, setCards] = useState<any[]>([])
   const cardsInitialized = useRef(false)
   useEffect(() => {
     if (queryCards && !cardsInitialized.current) {
-      setCards(queryCards)
+      // Apply any localStorage drafts (unsaved edits from a previous session
+      // that were interrupted before the async storage write could complete).
+      const cardsWithDrafts = queryCards.map((c: any) => {
+        try {
+          const draftJson = localStorage.getItem(draftKey(c.id))
+          if (draftJson) return JSON.parse(draftJson)
+        } catch { /* ignore corrupt drafts */ }
+        return c
+      })
+      setCards(cardsWithDrafts)
       cardsInitialized.current = true
       // Auto-select
-      if (queryCards.length > 0) {
+      if (cardsWithDrafts.length > 0) {
         const saved = localStorage.getItem(`editor:${gameId}:${collectionId}:selectedCard`)
-        const cardToSelect = saved && queryCards.some((c: any) => c.id === saved) ? saved : queryCards[0].id
+        const cardToSelect = saved && cardsWithDrafts.some((c: any) => c.id === saved) ? saved : cardsWithDrafts[0].id
         setSelectedCardId(cardToSelect)
+        // Use the storage version as the "saved" baseline so that a restored
+        // draft triggers auto-save immediately on mount.
         setSavedCardJson(JSON.stringify(queryCards.find((c: any) => c.id === cardToSelect) ?? ''))
       }
     }
@@ -586,12 +600,34 @@ export default function GameEditorPage() {
     const s = storageRef.current
     if (!card || !gameId || !collectionId || !s) return
     if (JSON.stringify(card) === savedJson) return
-    s.saveCard(gameId, collectionId, card.id, card)
+    const cardId = card.id
+    s.saveCard(gameId, collectionId, cardId, card)
+      .then(() => {
+        // Clear the localStorage draft now that the storage write succeeded
+        // (the component may already be unmounted so we can't rely on state effects).
+        try { localStorage.removeItem(`editor:draft:${gameId}:${collectionId}:${cardId}`) } catch { /* ignore */ }
+      })
       .catch((err: unknown) => console.error('Flush save failed:', err))
   }, [gameId, collectionId])
 
   // Flush on unmount so navigation away never discards pending edits.
   useEffect(() => () => { flushSave() }, [flushSave])
+
+  // Write unsaved card data to localStorage immediately whenever there are
+  // pending changes.  localStorage writes are synchronous and survive a page
+  // reload, so this guarantees the draft is present even if the browser
+  // unloads the page before the async storage.saveCard call completes.
+  useEffect(() => {
+    if (!selectedCard || !gameId || !collectionId) return
+    const cardJson = JSON.stringify(selectedCard)
+    if (cardJson === savedCardJson) {
+      // Card is fully saved – remove any stale draft so we don't restore old
+      // data after the user has deliberately made further edits and saved.
+      try { localStorage.removeItem(draftKey(selectedCard.id)) } catch { /* ignore */ }
+      return
+    }
+    try { localStorage.setItem(draftKey(selectedCard.id), cardJson) } catch { /* ignore quota errors */ }
+  }, [selectedCard, savedCardJson, gameId, collectionId])
 
   useEffect(() => { localStorage.setItem(lsKey('cardSel'), JSON.stringify([...cardSelection])) }, [cardSelection])
 
@@ -702,6 +738,8 @@ export default function GameEditorPage() {
     const updatedCards = cards.filter(c => c.id !== selectedCardId)
     try {
       await deleteCardMut.mutateAsync(selectedCardId)
+      // Clear any localStorage draft for the deleted card.
+      try { localStorage.removeItem(draftKey(selectedCardId)) } catch { /* ignore */ }
       setCards(updatedCards)
       if (updatedCards.length > 0) {
         const nextIdx = Math.min(idx, updatedCards.length - 1)
