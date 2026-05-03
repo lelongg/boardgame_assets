@@ -12,7 +12,7 @@
     "clean": "node src/clean.js",
     "serve": "vite",
     "serve:api": "tsx src/server.ts 5174",
-    "serve:watch": "tsx watch src/server.ts",
+    "serve:watch": "tsx watch src/server.ts 5174",
     "preview": "vite preview",
     "test": "node --test --import tsx test/*.test.js"
   },

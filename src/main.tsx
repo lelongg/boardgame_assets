@@ -14,8 +14,8 @@ if (redirectPath) {
   const base = import.meta.env.BASE_URL.replace(/\/$/, '')
   if (redirectPath.startsWith(base + '/')) {
     const route = redirectPath.slice(base.length)
-    if (route !== '/' && route !== window.location.pathname) {
-      history.replaceState(null, '', route)
+    if (route !== '/' && redirectPath !== window.location.pathname) {
+      history.replaceState(null, '', redirectPath)
     }
   }
 }
