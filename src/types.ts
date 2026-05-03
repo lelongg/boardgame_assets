@@ -74,13 +74,26 @@ export type CardLayoutCopyItem = CardLayoutItemBase & {
   scale?: number;
 };
 
+// Numbers item - displays text from a field using tabular figures (CSS tabular-nums)
+// for properly aligned digits. Same shape as a text item.
+export type CardLayoutNumbersItem = CardLayoutItemBase & {
+  type: "numbers";
+  defaultValue?: string;
+  fontSize: number;
+  align: "left" | "center" | "right";
+  verticalAlign?: "top" | "middle" | "bottom";
+  font?: string;
+  color?: string;
+};
+
 // Union type for all item types
 export type CardLayoutItem =
   | CardLayoutTextItem
   | CardLayoutFrameItem
   | CardLayoutImageItem
   | CardLayoutEmojiItem
-  | CardLayoutCopyItem;
+  | CardLayoutCopyItem
+  | CardLayoutNumbersItem;
 
 export type CardLayoutSection = {
   id: string;

@@ -1,4 +1,4 @@
-import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutTextItem, CardLayoutEmojiItem, PropertyBinding } from "./types";
+import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutTextItem, CardLayoutEmojiItem, CardLayoutNumbersItem, PropertyBinding } from "./types";
 
 /**
  * Safely parse a number from a value that might be empty, null, or undefined.
@@ -88,7 +88,7 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
         : 20;
     // Determine item type - only if explicitly set
     const hasType = obj.type !== undefined && obj.type !== null && obj.type !== "";
-    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image", "emoji", "copy"] as const, "text" as const) : null;
+    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image", "emoji", "copy", "numbers"] as const, "text" as const) : null;
     // Common base
     const base = {
         id,
@@ -146,6 +146,20 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
             copyTargetId: typeof obj.copyTargetId === 'string' ? obj.copyTargetId : undefined,
             scale: obj.scale !== undefined && obj.scale !== null ? safeNumber(obj.scale, 1) : undefined,
         };
+    }
+    if (type === "numbers") {
+        const numbersItem: CardLayoutNumbersItem = {
+            ...base,
+            bindings: normalizeBindings(obj),
+            type: "numbers" as const,
+            defaultValue: obj.defaultValue !== undefined && obj.defaultValue !== null && obj.defaultValue !== '' ? safeString(obj.defaultValue, "") : undefined,
+            fontSize: safeNumber(obj.fontSize, 16),
+            align: safeEnum(obj.align, ["left", "center", "right"] as const, "center" as const),
+            verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
+            font: obj.font !== undefined && obj.font !== null && obj.font !== "" ? safeString(obj.font, "body") : undefined,
+            color: safeString(obj.color, "#000000"),
+        };
+        return numbersItem;
     }
     // Default to text item (with optional type for legacy support)
     const textItem: CardLayoutTextItem = {

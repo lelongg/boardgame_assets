@@ -87,6 +87,7 @@ const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boole
   const itemType = node.type ?? 'text'
   switch (itemType) {
     case 'text': return [...COMMON_ITEM_PROPERTIES, ...TEXT_PROPERTIES]
+    case 'numbers': return [...COMMON_ITEM_PROPERTIES, ...TEXT_PROPERTIES]
     case 'frame': return [...COMMON_ITEM_PROPERTIES, ...FRAME_PROPERTIES]
     case 'image': return [...COMMON_ITEM_PROPERTIES, ...IMAGE_PROPERTIES]
     case 'emoji': return [...COMMON_ITEM_PROPERTIES, ...EMOJI_PROPERTIES]

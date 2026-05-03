@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react'
-import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile, Copy, FolderTree } from 'lucide-react'
+import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile, Copy, FolderTree, Hash } from 'lucide-react'
 import { flattenNodes } from './layoutHelpers'
 import PortalDropdown from '@/components/ui/PortalDropdown'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
@@ -11,7 +11,7 @@ type NodeTreeProps = {
   onSelectNode: (id: string) => void
   onDrop: (dragId: string, dragKind: 'section' | 'item', dropTargetId: string, position: 'before' | 'after' | 'inside') => void
   onAddSection?: () => void
-  onAddItem?: (type: 'text' | 'frame' | 'image' | 'emoji' | 'copy') => void
+  onAddItem?: (type: 'text' | 'frame' | 'image' | 'emoji' | 'copy' | 'numbers') => void
   onDuplicate?: () => void
   onDelete?: () => void
   canDelete?: boolean
@@ -151,6 +151,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
             >
               {(close) => (<>
                 <button onClick={() => { onAddItem('text'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Type className="h-3.5 w-3.5" /> Text</button>
+                <button onClick={() => { onAddItem('numbers'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Hash className="h-3.5 w-3.5" /> Numbers</button>
                 <button onClick={() => { onAddItem('frame'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Frame className="h-3.5 w-3.5" /> Frame</button>
                 <button onClick={() => { onAddItem('image'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Image className="h-3.5 w-3.5" /> Image</button>
                 <button onClick={() => { onAddItem('emoji'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Smile className="h-3.5 w-3.5" /> Emoji</button>
@@ -189,7 +190,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
         const prefix = isSection ? (hasChildren ? (isCollapsed ? '▸' : '▾') : '▾') : '·'
         const iconClass = "h-3.5 w-3.5 inline-block opacity-60"
         const sectionIcons: Record<string, React.ReactNode> = { column: <Rows3 className={iconClass} />, row: <Columns3 className={iconClass} />, stack: <Layers className={iconClass} />, grid: <Grid3X3 className={iconClass} /> }
-        const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} />, emoji: <Smile className={iconClass} />, copy: <Copy className={iconClass} /> }
+        const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, numbers: <Hash className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} />, emoji: <Smile className={iconClass} />, copy: <Copy className={iconClass} /> }
         const typeIcon = node.kind === 'section'
           ? sectionIcons[(node.obj as CardLayoutSection).layout] ?? null
           : itemIcons[(node.obj as any).type ?? 'text'] ?? null

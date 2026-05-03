@@ -428,7 +428,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     // Handle different item types (default to text for backward compatibility)
     const itemType = item.type ?? "text";
 
-    if (itemType === "text") {
+    if (itemType === "text" || itemType === "numbers") {
+      const isNumbers = itemType === "numbers";
       const value = String(resolve(item, "defaultValue", card, layout) ?? "");
       if (!value) return;
       const fontSize = Number(resolve(item, "fontSize", card, layout)) || 16;
@@ -443,7 +444,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       const alignItems = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
       const styledLines = parseRichText(value);
       const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
-      pushEl(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
+      const tabularStyle = isNumbers ? "font-variant-numeric:tabular-nums;" : "";
+      pushEl(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};${tabularStyle}overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
     }
 
     if (itemType === "frame") {
@@ -510,7 +512,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
         const tRect = computed.items.get(t.id);
         if (!tRect) return;
         const tType = t.type ?? "text";
-        if (tType === "text") {
+        if (tType === "text" || tType === "numbers") {
           const value = String(resolve(t, "defaultValue", card, layout) ?? "");
           if (!value) return;
           const fontSize = Number(resolve(t, "fontSize", card, layout)) || 16;
@@ -523,7 +525,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
           const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
           const textX = align === "left" ? tRect.x : align === "right" ? tRect.x + tRect.width : tRect.x + tRect.width / 2;
           const textY = vAlign === "top" ? tRect.y : vAlign === "bottom" ? tRect.y + tRect.height : tRect.y + tRect.height / 2;
-          copyParts.push(`<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign as any)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}">${escape(value)}</text>`);
+          const tabAttr = tType === "numbers" ? ` font-variant-numeric="tabular-nums" style="font-variant-numeric: tabular-nums"` : "";
+          copyParts.push(`<text x="${textX}" y="${textY}" text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign as any)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"${tabAttr}>${escape(value)}</text>`);
         } else if (tType === "emoji") {
           const emoji = String(resolve(t, "emoji", card, layout) ?? "⭐");
           const fontSize = Number(resolve(t, "fontSize", card, layout)) || 32;
@@ -545,7 +548,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
 
   const usedSlots = new Set<string>();
   items.forEach((item) => {
-    if ((item.type ?? "text") === "text") {
+    const ttype = item.type ?? "text";
+    if (ttype === "text" || ttype === "numbers") {
       const textItem = item as CardLayoutTextItem;
       const slotName = textItem.font && options.fontSlots?.[textItem.font] ? textItem.font : fontSlots[0];
       if (slotName) usedSlots.add(slotName);
@@ -668,7 +672,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
         const tRect = computed.items.get(t.id);
         if (!tRect) return;
         const tType = t.type ?? "text";
-        if (tType === "text") {
+        if (tType === "text" || tType === "numbers") {
           const v = String(resolve(t, "defaultValue", emptyCard, layoutMm) ?? "");
           if (!v) return;
           const fs = Number(resolve(t, "fontSize", emptyCard, layoutMm)) || 20;
@@ -682,7 +686,8 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
           const ai = al === "left" ? "flex-start" : al === "right" ? "flex-end" : "center";
           const sl = parseRichText(v);
           const h = sl.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
-          parts.push(`<foreignObject x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${ai};justify-content:${jc};font-family:${ff};font-size:${fs}px;color:${co};text-align:${al};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${h}</div></foreignObject>`);
+          const tabStyle = tType === "numbers" ? "font-variant-numeric:tabular-nums;" : "";
+          parts.push(`<foreignObject x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${ai};justify-content:${jc};font-family:${ff};font-size:${fs}px;color:${co};text-align:${al};${tabStyle}overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${h}</div></foreignObject>`);
         } else if (tType === "emoji") {
           const em = String(resolve(t, "emoji", emptyCard, layoutMm) ?? "⭐");
           const fs = Number(resolve(t, "fontSize", emptyCard, layoutMm)) || 32;
@@ -699,6 +704,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
       return wrapRot(parts.join(""));
     }
     if (item.type === "frame" || item.type === "image" || item.type === "emoji" || item.type === "copy") return "";
+    const isNumbers = item.type === "numbers";
     const value = String(resolve(item, "defaultValue", emptyCard, layoutMm) ?? "");
     if (!value) return "";
     const slotName = (item as any).font && options.fonts?.[(item as any).font] ? (item as any).font : fontSlots[0];
@@ -712,7 +718,8 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
     const alignItems = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
     const styledLines = parseRichText(value);
     const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
-    return wrapRot(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
+    const tabularStyle = isNumbers ? "font-variant-numeric:tabular-nums;" : "";
+    return wrapRot(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};${tabularStyle}overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
   }).join("");
 
   const sectionRects = showSections ? Array.from(computed.sections.entries())

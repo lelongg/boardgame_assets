@@ -254,3 +254,53 @@ test("image item without URL does not render", () => {
   const svg = renderCardSvg(card, layout);
   assert.ok(!svg.includes("<image"), "SVG should not contain an image element when field is missing");
 });
+
+test("numbers item renders with tabular-nums css", () => {
+  const card = {
+    id: "test-card",
+    name: "Test Card",
+    fields: {
+      score: "1234"
+    }
+  };
+
+  const layout = {
+    version: 2,
+    id: "test",
+    name: "Test",
+    width: 63.5,
+    height: 88.9,
+    radius: 2.5,
+    bleed: 1.5,
+    root: {
+      id: "root",
+      name: "Root",
+      layout: "stack",
+      sizePct: 100,
+      gap: 0,
+      children: [],
+      items: [
+        {
+          type: "numbers",
+          id: "numbers-item",
+          name: "Score",
+          bindings: { defaultValue: { field: "score" } },
+          anchor: { x: 0.5, y: 0.5 },
+          attach: {
+            targetType: "section",
+            targetId: "root",
+            anchor: { x: 0.5, y: 0.5 }
+          },
+          widthMm: 40,
+          heightMm: 20,
+          fontSize: 24,
+          align: "right"
+        }
+      ]
+    }
+  };
+
+  const svg = renderCardSvg(card, layout);
+  assert.ok(svg.includes("1234"), "SVG should contain the numeric field value");
+  assert.ok(svg.includes("tabular-nums"), "SVG should apply font-variant-numeric: tabular-nums for numbers items");
+});
