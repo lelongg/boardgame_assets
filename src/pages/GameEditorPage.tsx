@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2 } from 'lucide-react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
@@ -554,6 +554,34 @@ export default function GameEditorPage() {
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
   const [cardSelection, _setCardSelection] = useState<Set<string>>(() => loadSet('cardSel'))
 
+  // Refs that always point at the latest values — used by flushSave which is
+  // called from event handlers and cleanup effects where stale closures would
+  // otherwise capture an old snapshot of state.
+  const selectedCardRef = useRef<typeof selectedCard>(null)
+  const savedCardJsonRef = useRef<string>('')
+  const storageRef = useRef<typeof storage>(null)
+  selectedCardRef.current = selectedCard
+  savedCardJsonRef.current = savedCardJson
+  storageRef.current = storage
+
+  /**
+   * Immediately persist the selected card if it has unsaved changes.
+   * Called fire-and-forget when switching cards or unmounting so that edits
+   * made inside the debounce window are never lost.
+   */
+  const flushSave = useCallback(() => {
+    const card = selectedCardRef.current
+    const savedJson = savedCardJsonRef.current
+    const s = storageRef.current
+    if (!card || !gameId || !collectionId || !s) return
+    if (JSON.stringify(card) === savedJson) return
+    s.saveCard(gameId, collectionId, card.id, card)
+      .catch((err: unknown) => console.error('Flush save failed:', err))
+  }, [gameId, collectionId])
+
+  // Flush on unmount so navigation away never discards pending edits.
+  useEffect(() => () => { flushSave() }, [flushSave])
+
   useEffect(() => { localStorage.setItem(lsKey('cardSel'), JSON.stringify([...cardSelection])) }, [cardSelection])
 
   useFontStyles(gameId, gameFonts, 'game-fonts-style')
@@ -580,7 +608,7 @@ export default function GameEditorPage() {
         setCardPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return blobUrl })
         setCardThumbnails(prev => {
           const old = prev[cardId]
-          if (old) { try { URL.revokeObjectURL(old) } catch {} }
+          if (old) { try { URL.revokeObjectURL(old) } catch { /* safe to ignore */ } }
           return { ...prev, [cardId]: thumbUrl }
         })
       } catch (error) {
@@ -635,6 +663,8 @@ export default function GameEditorPage() {
   }, [selectedCard, gameId, storage])
 
   const selectCard = (_s: any, cardId: string) => {
+    // Flush any edits made within the debounce window before switching away.
+    flushSave()
     setSelectedCardId(cardId)
     setSavedCardJson(JSON.stringify(cards.find(c => c.id === cardId) ?? ''))
     if (gameId && collectionId) localStorage.setItem(`editor:${gameId}:${collectionId}:selectedCard`, cardId)
