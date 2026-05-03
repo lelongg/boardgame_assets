@@ -509,6 +509,11 @@ async function createFullTestGame(storage) {
             fontSize: 14, align: "left", verticalAlign: "top", color: "#333",
             anchor: { x: 0, y: 0 }, attach: { targetType: "item", targetId: "art-item", anchor: { x: 0, y: 1 } },
             widthMm: 90, heightMm: 30 },
+          { id: "score-item", name: "Score", type: "numbers", defaultValue: "0",
+            bindings: { defaultValue: { field: "cost" } },
+            fontSize: 22, align: "right", verticalAlign: "middle", color: "#222",
+            anchor: { x: 1, y: 0 }, attach: { targetType: "section", targetId: "body", anchor: { x: 1, y: 0 } },
+            widthMm: 25, heightMm: 12 },
         ],
       },
     ],
@@ -557,7 +562,7 @@ async function verifyFullTestGame(storage, gameId) {
   const items = [];
   function collect(s) { items.push(...(s.items || [])); (s.children || []).forEach(collect); }
   collect(tpl.root);
-  assert.equal(items.length, 5, `expected 5 items, got ${items.length}: ${items.map(i => i.name).join(", ")}`);
+  assert.equal(items.length, 6, `expected 6 items, got ${items.length}: ${items.map(i => i.name).join(", ")}`);
 
   // Text item
   const title = items.find(i => i.id === "title-item");
@@ -591,6 +596,14 @@ async function verifyFullTestGame(storage, gameId) {
   const desc = items.find(i => i.id === "desc-item");
   assert.ok(desc); assert.equal(desc.attach.targetType, "item");
   assert.equal(desc.attach.targetId, "art-item");
+
+  // Numbers item
+  const score = items.find(i => i.id === "score-item");
+  assert.ok(score); assert.equal(score.type, "numbers");
+  assert.equal(score.bindings?.defaultValue?.field, "cost");
+  assert.equal(score.defaultValue, "0");
+  assert.equal(score.fontSize, 22); assert.equal(score.align, "right");
+  assert.equal(score.verticalAlign, "middle"); assert.equal(score.color, "#222");
 
   // Grid section
   const grid = tpl.root.children.find(c => c.children?.some(cc => cc.id === "grid-section"));

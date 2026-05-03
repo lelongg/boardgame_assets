@@ -77,7 +77,7 @@ export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, 
     }
     setSelectedNodeId(id)
     const newTypeKey = getNodeTypeKey(id)
-    const defaults: Record<string, string> = { section: 'layout', text: 'defaultValue', frame: 'fillColor', image: 'defaultValue', emoji: 'emoji' }
+    const defaults: Record<string, string> = { section: 'layout', text: 'defaultValue', frame: 'fillColor', image: 'defaultValue', emoji: 'emoji', numbers: 'defaultValue' }
     setSelectedProperty(propertyByType[newTypeKey] ?? defaults[newTypeKey] ?? 'name')
   }
 
@@ -117,7 +117,7 @@ export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, 
     setSelectedNodeId(section.id)
   }
 
-  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji' | 'copy') => {
+  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji' | 'copy' | 'numbers') => {
     const t = JSON.parse(JSON.stringify(layout))
     let parentId: string
     if (selectedKind === 'section' && selectedNodeId) parentId = selectedNodeId
@@ -134,6 +134,7 @@ export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, 
       image: { ...base, type: 'image', name: 'New Image', fit: 'cover', cornerRadius: 0 },
       emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
       copy: { ...base, type: 'copy', name: 'Copy' },
+      numbers: { ...base, type: 'numbers', name: 'New Numbers', fontSize: 20, align: 'right', defaultValue: '0' },
     }
     const item = items[itemType]
     if (selectedKind === 'item' && selectedNodeId) {
