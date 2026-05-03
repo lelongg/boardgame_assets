@@ -573,7 +573,16 @@ export default function GameEditorPage() {
         if (cancelled) return
         const blob = new Blob([svg], { type: 'image/svg+xml' })
         const blobUrl = URL.createObjectURL(blob)
+        // Create a separate URL for the card list thumbnail so each can be
+        // revoked independently (revoking the preview must not break the thumb).
+        const thumbUrl = URL.createObjectURL(blob)
+        const cardId = selectedCard.id
         setCardPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return blobUrl })
+        setCardThumbnails(prev => {
+          const old = prev[cardId]
+          if (old) { try { URL.revokeObjectURL(old) } catch {} }
+          return { ...prev, [cardId]: thumbUrl }
+        })
       } catch (error) {
         if (!cancelled) console.error('Error updating card preview:', error)
       }
@@ -619,6 +628,7 @@ export default function GameEditorPage() {
         setSavedCardJson(JSON.stringify(selectedCard))
       } catch (error) {
         console.error('Auto-save failed:', error)
+        setStatus('Auto-save failed. Check your connection or storage settings.')
       }
     }, 2000)
     return () => clearTimeout(timer)

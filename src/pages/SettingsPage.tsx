@@ -63,7 +63,8 @@ export default function SettingsPage() {
 
   const handleApplyProvider = () => {
     setProvider(selectedProvider)
-    navigate('/')
+    // Hard reload so the storage singleton is re-created for the new provider
+    window.location.href = '/'
   }
 
   const providerChanged = selectedProvider !== savedProvider
