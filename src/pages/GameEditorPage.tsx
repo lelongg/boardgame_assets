@@ -581,7 +581,7 @@ export default function GameEditorPage() {
   const cardEditor = useCollapsible()
   const layoutSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const latestLayoutRef = useRef<any>(null)
-  useEffect(() => () => clearTimeout(layoutSaveTimer.current), [])
+  const pendingLayoutIdRef = useRef<string | null>(null)
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
   const [cardSelection, _setCardSelection] = useState<Set<string>>(() => loadSet('cardSel'))
@@ -619,6 +619,31 @@ export default function GameEditorPage() {
 
   // Flush on unmount so navigation away never discards pending edits.
   useEffect(() => () => { flushSave() }, [flushSave])
+
+  /**
+   * Immediately persist any pending (debounced) layout edit. Called when
+   * switching collections/games or unmounting so a font-size or other layout
+   * tweak made within the 300ms debounce window in `handleLayoutSave` is
+   * never silently dropped.
+   */
+  const flushLayoutSave = useCallback(() => {
+    if (!layoutSaveTimer.current) return
+    clearTimeout(layoutSaveTimer.current)
+    layoutSaveTimer.current = undefined
+    const layout = latestLayoutRef.current
+    const layoutId = pendingLayoutIdRef.current
+    const s = storageRef.current
+    if (!gameId || !layoutId || !layout || !s) return
+    // Fire-and-forget: the component may already be unmounting so we can't
+    // await or surface errors via setStatus here.
+    s.saveLayout(gameId, layoutId, layout).catch((err: unknown) =>
+      console.error('Flush layout save failed:', err)
+    )
+  }, [gameId])
+
+  // Flush any pending layout save on unmount, or when switching to a
+  // different game/collection (which loads a different layout).
+  useEffect(() => () => { flushLayoutSave() }, [flushLayoutSave, collectionId])
 
   // Write unsaved card data to localStorage immediately whenever there are
   // pending changes.  localStorage writes are synchronous and survive a page
@@ -771,8 +796,10 @@ export default function GameEditorPage() {
     // Optimistic: update the query cache immediately for instant UI feedback
     queryClient.setQueryData(queryKeys.layout(gameId, collection.layoutId), updatedLayout)
     latestLayoutRef.current = updatedLayout
+    pendingLayoutIdRef.current = collection.layoutId
     clearTimeout(layoutSaveTimer.current)
     layoutSaveTimer.current = setTimeout(async () => {
+      layoutSaveTimer.current = undefined
       try {
         await saveLayoutMut.mutateAsync({ layoutId: collection!.layoutId, layout: latestLayoutRef.current })
       } catch { setStatus('Error saving layout.') }
