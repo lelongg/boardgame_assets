@@ -90,7 +90,10 @@ export function useLayout(gameId: string | undefined, layoutId: string | undefin
     queryKey: queryKeys.layout(gameId!, layoutId!),
     queryFn: () => storage.getLayout(gameId!, layoutId!),
     enabled: !!storage && !!gameId && !!layoutId,
-    staleTime: staleTime(),
+    // Always Infinity: the cache is kept current via setQueryData on every save,
+    // so auto-refetch on window-focus or mount would race with in-flight mutations
+    // and could overwrite optimistic edits with stale storage data.
+    staleTime: Infinity,
     gcTime: gcTime(),
     placeholderData: keepPreviousData,
   })
