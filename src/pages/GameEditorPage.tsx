@@ -45,6 +45,7 @@ import ImportPanel from '@/components/ImportPanel'
 import ZipMergePanel from '@/components/ZipMergePanel'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 import RichTextField from '@/components/RichTextField'
+import { createLatestSaveQueue } from '@/lib/latestSaveQueue'
 
 const EDITOR_ICONS: Record<string, typeof Palette> = {
   color: Palette,
@@ -200,18 +201,18 @@ function EditableCell({ value, onSave, bold, editorType, editorProps, allowedVal
   )
 }
 
-function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange, isLoading, onCreateCard }: {
+function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange, isLoading, onCreateCard, onSaveCard }: {
   cards: any[]
   gameId: string
   collectionId: string
   layout?: any
   gameImages?: { file: string; url: string; name: string }[]
-  onCardsChange: (cards: any[]) => void
+  onCardsChange: (cards: any[] | ((prev: any[]) => any[])) => void
   onStatusChange: (msg: string) => void
   isLoading?: boolean
   onCreateCard: (name?: string) => Promise<void>
+  onSaveCard: (card: any) => Promise<unknown>
 }) {
-  const { storage } = useStorage()
   const stateKey = `dataSheet:${gameId}:${collectionId}`
   const loadState = <T,>(key: string, fallback: T): T => {
     try { const v = localStorage.getItem(`${stateKey}:${key}`); return v ? JSON.parse(v) : fallback } catch { return fallback }
@@ -259,8 +260,8 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
   }, [cards, fieldItemTypes])
 
   const saveCard = async (cardId: string, updated: any) => {
-    onCardsChange(cards.map(c => c.id === cardId ? updated : c))
-    try { await storage.saveCard(gameId, collectionId, cardId, updated) }
+    onCardsChange(prev => prev.map(c => c.id === cardId ? updated : c))
+    try { await onSaveCard(updated) }
     catch { onStatusChange('Error saving card.') }
   }
 
@@ -589,9 +590,41 @@ export default function GameEditorPage() {
   const selectedCardRef = useRef<typeof selectedCard>(null)
   const savedCardJsonRef = useRef<string>('')
   const storageRef = useRef<typeof storage>(null)
+  const saveLayoutMutRef = useRef(saveLayoutMut)
+  const cardSaveQueuesRef = useRef(new Map<string, ReturnType<typeof createLatestSaveQueue<any>>>())
+  const layoutSaveQueuesRef = useRef(new Map<string, ReturnType<typeof createLatestSaveQueue<any>>>())
   selectedCardRef.current = selectedCard
   savedCardJsonRef.current = savedCardJson
   storageRef.current = storage
+  saveLayoutMutRef.current = saveLayoutMut
+
+  const enqueueCardSave = useCallback((card: any) => {
+    if (!gameId || !collectionId) return Promise.reject(new Error('Missing game or collection.'))
+    const key = `${gameId}:${collectionId}:${card.id}`
+    let queue = cardSaveQueuesRef.current.get(key)
+    if (!queue) {
+      queue = createLatestSaveQueue<any>(async (latestCard) => {
+        const s = storageRef.current
+        if (!s) throw new Error('Storage is not ready.')
+        await s.saveCard(gameId, collectionId, latestCard.id, latestCard)
+      })
+      cardSaveQueuesRef.current.set(key, queue)
+    }
+    return queue.enqueue(card)
+  }, [gameId, collectionId])
+
+  const enqueueLayoutSave = useCallback((layout: any) => {
+    if (!gameId || !collection?.layoutId) return Promise.reject(new Error('Missing game or layout.'))
+    const key = `${gameId}:${collection.layoutId}`
+    let queue = layoutSaveQueuesRef.current.get(key)
+    if (!queue) {
+      queue = createLatestSaveQueue<any>(async (latestLayout) => {
+        await saveLayoutMutRef.current.mutateAsync({ layoutId: collection.layoutId, layout: latestLayout })
+      })
+      layoutSaveQueuesRef.current.set(key, queue)
+    }
+    return queue.enqueue(layout)
+  }, [gameId, collection?.layoutId])
 
   /**
    * Immediately persist the selected card if it has unsaved changes.
@@ -601,18 +634,18 @@ export default function GameEditorPage() {
   const flushSave = useCallback(() => {
     const card = selectedCardRef.current
     const savedJson = savedCardJsonRef.current
-    const s = storageRef.current
-    if (!card || !gameId || !collectionId || !s) return
+    if (!card || !gameId || !collectionId) return
     if (JSON.stringify(card) === savedJson) return
     const cardId = card.id
-    s.saveCard(gameId, collectionId, cardId, card)
-      .then(() => {
+    enqueueCardSave(card)
+      .then((result) => {
+        if (result !== 'saved') return
         // Clear the localStorage draft now that the storage write succeeded
         // (the component may already be unmounted so we can't rely on state effects).
         try { localStorage.removeItem(cardDraftKey(gameId, collectionId, cardId)) } catch { /* ignore */ }
       })
       .catch((err: unknown) => console.error('Flush save failed:', err))
-  }, [gameId, collectionId])
+  }, [gameId, collectionId, enqueueCardSave])
 
   // Flush on unmount so navigation away never discards pending edits.
   useEffect(() => () => { flushSave() }, [flushSave])
@@ -703,15 +736,15 @@ export default function GameEditorPage() {
     if (JSON.stringify(selectedCard) === savedCardJson) return
     const timer = setTimeout(async () => {
       try {
-        await storage.saveCard(gameId, collectionId, selectedCard.id, selectedCard)
-        setSavedCardJson(JSON.stringify(selectedCard))
+        const result = await enqueueCardSave(selectedCard)
+        if (result === 'saved') setSavedCardJson(JSON.stringify(selectedCard))
       } catch (error) {
         console.error('Auto-save failed:', error)
         setStatus('Auto-save failed. Check your connection or storage settings.')
       }
     }, 2000)
     return () => clearTimeout(timer)
-  }, [selectedCard, gameId, storage])
+  }, [selectedCard, savedCardJson, gameId, collectionId, storage, enqueueCardSave])
 
   const selectCard = (_s: any, cardId: string) => {
     // Flush any edits made within the debounce window before switching away.
@@ -729,7 +762,7 @@ export default function GameEditorPage() {
     setSelectedCardId(newCard.id)
     setSavedCardJson(JSON.stringify(newCard))
     try {
-      await storage.saveCard(gameId, collectionId, newCard.id, newCard)
+      await enqueueCardSave(newCard)
     } catch {
       setCards(prev => prev.filter(c => c.id !== newCard.id))
       setStatus('Error creating card.')
@@ -772,10 +805,7 @@ export default function GameEditorPage() {
     if (!gameId || !game || !collection) return
     // Optimistic: update the query cache immediately for instant UI feedback.
     queryClient.setQueryData(queryKeys.layout(gameId, collection.layoutId), updatedLayout)
-    saveLayoutMut.mutate(
-      { layoutId: collection.layoutId, layout: updatedLayout },
-      { onError: () => setStatus('Error saving layout.') }
-    )
+    enqueueLayoutSave(updatedLayout).catch(() => setStatus('Error saving layout.'))
   }
 
 
@@ -1053,6 +1083,7 @@ export default function GameEditorPage() {
               onStatusChange={setStatus}
               isLoading={cardsLoading}
               onCreateCard={handleCreateCard}
+              onSaveCard={enqueueCardSave}
             />
           </TabsContent>
 
