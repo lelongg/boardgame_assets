@@ -69,9 +69,6 @@ export const applyPropertyChange = (layout: CardLayout, nodeId: string, property
     if (Object.keys(node.bindings).length === 0) delete node.bindings
   } else if (TEMPLATE_KEYS.has(property)) {
     (layout as any)[property] = value
-  } else if (property === 'name' && nodeId === layout.root.id) {
-    node.name = value
-    layout.name = value as string
   } else if (property === 'attachAnchor') {
     if (!node.attach) node.attach = { targetType: 'section', targetId: '', anchor: { x: 0, y: 0 } }
     node.attach.anchor = value
@@ -81,6 +78,9 @@ export const applyPropertyChange = (layout: CardLayout, nodeId: string, property
     node.attach.targetType = getNodeKind(layout.root, value as string) ?? 'section'
   } else {
     node[property] = value
+  }
+  if (property === 'name' && nodeId === layout.root.id) {
+    layout.name = value as string
   }
   return true
 }
