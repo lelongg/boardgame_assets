@@ -10,6 +10,7 @@ import {
   DeleteObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
+import { FetchHttpHandler } from "@smithy/fetch-http-handler";
 import { getAsset, putAsset, deleteAsset } from "./assetCache.js";
 import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
 
@@ -43,12 +44,24 @@ export const createS3Storage = (options = {}) => {
     prefix = "boardgame-assets",
   } = options;
 
+  // Strip trailing slashes to avoid double-slash URLs that may trigger a
+  // 301/302 redirect.  When the browser follows a non-307/308 redirect it
+  // converts the method to GET, which silently "succeeds" on an existing
+  // object and leaves the data unchanged.
+  const normalizedEndpoint = endpoint ? endpoint.replace(/\/+$/, "") : undefined;
+
   const client = new S3Client({
     region,
     credentials: accessKeyId && secretAccessKey
       ? { accessKeyId, secretAccessKey }
       : undefined,
-    ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
+    ...(normalizedEndpoint ? { endpoint: normalizedEndpoint, forcePathStyle: true } : {}),
+    // Disable automatic redirect following so that any unexpected redirect
+    // (e.g. path normalisation, bucket relocation) surfaces as an error
+    // instead of silently converting a PUT into a GET.
+    requestHandler: new FetchHttpHandler({
+      requestInit: () => ({ redirect: "error" }),
+    }),
   });
 
   // ── S3 helpers ──────────────────────────────────────────────────────────
