@@ -680,7 +680,7 @@ describe("s3 backend (s3rver)", () => {
   backendCompatSuite("s3", async () => createTestS3());
 });
 
-describe("s3 prefix normalisation", () => {
+describe("s3 prefix normalization", () => {
   it("empty string prefix behaves identically to default prefix", async () => {
     // Simulate one device that typed "boardgame-assets" and one that left the
     // field blank (stores prefix:"" in localStorage).
@@ -699,7 +699,7 @@ describe("s3 prefix normalisation", () => {
 
     // Reader with prefix:"" — should fall back to the same default that the
     // writer used (sharedPrefix maps to "boardgame-assets" in production; here
-    // we verify the empty-string path is normalised, so we share the explicit
+    // we verify the empty-string path is normalized, so we share the explicit
     // prefix via a wrapper to keep the test hermetic).
     const readerExplicit = createS3Storage({
       bucket: S3_BUCKET,
@@ -729,7 +729,7 @@ describe("s3 prefix normalisation", () => {
     assert.ok(Array.isArray(gamesBlank),
       "blank prefix reader should return an array without throwing");
 
-    // Also verify that the normalised default "boardgame-assets" is actually
+    // Also verify that the normalized default "boardgame-assets" is actually
     // applied — any storage created without a prefix uses the same namespace.
     const readerDefault = createS3Storage({
       bucket: S3_BUCKET,
