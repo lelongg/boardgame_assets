@@ -143,7 +143,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
 
   const hasSubheader = true
   const selectedItem = selectedKey ? items.find(i => getKey(i) === selectedKey) : null
-  const selectedIdx = selectedItem ? items.indexOf(selectedItem) : -1
+  const selectedIdx = selectedItem ? filtered.indexOf(selectedItem) : -1
   const previewSrc = selectedItem && getPreviewSrc ? getPreviewSrc(selectedItem) : ''
   const showBigPreview = mode === 'preview' && getPreviewSrc && selectedItem
 
@@ -175,12 +175,12 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
               <div className="flex items-center gap-1 ml-auto">
                 <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
                   disabled={selectedIdx <= 0}
-                  onClick={() => { if (selectedIdx > 0) onSelect?.(getKey(items[selectedIdx - 1])) }}
+                  onClick={() => { if (selectedIdx > 0) onSelect?.(getKey(filtered[selectedIdx - 1])) }}
                   title="Previous"><ChevronLeft className="h-3.5 w-3.5" /></button>
-                <span className="text-xs text-muted-foreground">{selectedIdx + 1}/{items.length}</span>
+                <span className="text-xs text-muted-foreground">{selectedIdx + 1}/{filtered.length}</span>
                 <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                  disabled={selectedIdx >= items.length - 1}
-                  onClick={() => { if (selectedIdx < items.length - 1) onSelect?.(getKey(items[selectedIdx + 1])) }}
+                  disabled={selectedIdx >= filtered.length - 1}
+                  onClick={() => { if (selectedIdx < filtered.length - 1) onSelect?.(getKey(filtered[selectedIdx + 1])) }}
                   title="Next"><ChevronRight className="h-3.5 w-3.5" /></button>
                 {actions}
               </div>
@@ -220,7 +220,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
               className="h-full flex gap-2 overflow-x-scroll overflow-y-hidden p-2 min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               onScroll={updateCarouselScroll}
               onWheel={(e) => { e.currentTarget.scrollLeft += e.deltaY; e.preventDefault() }}>
-              {items.map(item => (
+              {filtered.map(item => (
                 <div key={getKey(item)} className="flex-shrink-0 w-16"
                   ref={(el) => { const k = getKey(item); if (el) carouselRefs.current.set(k, el); else carouselRefs.current.delete(k) }}>
                   <CardThumbnail
