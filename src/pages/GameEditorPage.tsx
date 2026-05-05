@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2 } from 'lucide-react'
+import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2, RefreshCw } from 'lucide-react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { ValueItemEditor, getEditorType } from '@/components/layout/ControlPanel'
 import PortalDropdown from '@/components/ui/PortalDropdown'
 import { Palette, Smile, Image, ToggleLeft } from 'lucide-react'
@@ -579,6 +580,7 @@ export default function GameEditorPage() {
   const [cardThumbnails, setCardThumbnails] = useState<Record<string, string>>({})
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newCardName, setNewCardName] = useState('')
+  const [showReloadDialog, setShowReloadDialog] = useState(false)
   const cardEditor = useCollapsible()
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
@@ -808,6 +810,39 @@ export default function GameEditorPage() {
     enqueueLayoutSave(updatedLayout).catch(() => setStatus('Error saving layout.'))
   }
 
+  /** True when there are unsaved local card edits (localStorage drafts or current card pending write). */
+  const hasLocalCardChanges = useMemo(() => {
+    if (!gameId || !collectionId) return false
+    for (const card of cards) {
+      if (localStorage.getItem(cardDraftKey(gameId, collectionId, card.id))) return true
+    }
+    if (selectedCard && JSON.stringify(selectedCard) !== savedCardJson) return true
+    return false
+  }, [gameId, collectionId, cards, selectedCard, savedCardJson])
+
+  const reloadCardsFromStorage = () => {
+    if (!gameId || !collectionId) return
+    // Remove all localStorage drafts for this collection so re-seeding uses clean storage data.
+    for (const card of cards) {
+      try { localStorage.removeItem(cardDraftKey(gameId, collectionId, card.id)) } catch (err) { console.error('Failed to clear card draft:', err) }
+    }
+    // Deselect card to prevent auto-save firing during reload.
+    setSelectedCardId(null)
+    setSavedCardJson('')
+    // Allow the next query result to re-seed the cards state.
+    cardsInitialized.current = false
+    // Force a fresh fetch from the storage backend.
+    queryClient.invalidateQueries({ queryKey: queryKeys.cards(gameId, collectionId) })
+    setShowReloadDialog(false)
+  }
+
+  const handleReloadClick = () => {
+    if (hasLocalCardChanges) {
+      setShowReloadDialog(true)
+    } else {
+      reloadCardsFromStorage()
+    }
+  }
 
   if (!game) {
     return (
@@ -883,6 +918,11 @@ export default function GameEditorPage() {
         ))}
       </>}
       status={status}
+      storageActions={
+        <Button size="sm" variant="ghost" onClick={handleReloadClick} title="Reload from storage">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+      }
       errorDetail={errorDetail}
       onDismissError={clearError}
     >
@@ -927,9 +967,11 @@ export default function GameEditorPage() {
                   <ConfirmButton iconOnly onConfirm={handleDeleteCard} />
                 </>)}
                 toolbar={
-                  <Button size="sm" variant="ghost" onClick={() => { setShowCreateForm(v => { if (!v) setNewCardName(`Card ${cards.length + 1}`); else setNewCardName(''); return !v }) }} title={showCreateForm ? 'Cancel' : 'New card'}>
-                    <Plus className={`h-4 w-4 transition-transform ${showCreateForm ? 'rotate-45' : ''}`} />
-                  </Button>
+                  <>
+                    <Button size="sm" variant="ghost" onClick={() => { setShowCreateForm(v => { if (!v) setNewCardName(`Card ${cards.length + 1}`); else setNewCardName(''); return !v }) }} title={showCreateForm ? 'Cancel' : 'New card'}>
+                      <Plus className={`h-4 w-4 transition-transform ${showCreateForm ? 'rotate-45' : ''}`} />
+                    </Button>
+                  </>
                 }
                 drawer={showCreateForm ? (
                   <form className="px-2 py-2 border-b space-y-2" onSubmit={async (e) => {
@@ -1211,6 +1253,21 @@ export default function GameEditorPage() {
             />
           </TabsContent>
         </Tabs>
+
+        <Dialog open={showReloadDialog} onOpenChange={setShowReloadDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reload from storage?</DialogTitle>
+              <DialogDescription>
+                You have unsaved local modifications. Reloading will discard all local changes and replace them with the version in storage.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowReloadDialog(false)}>Keep local</Button>
+              <Button variant="destructive" onClick={reloadCardsFromStorage}>Load from storage</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
     </PageLayout>
   )
 }
