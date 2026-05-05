@@ -918,6 +918,11 @@ export default function GameEditorPage() {
         ))}
       </>}
       status={status}
+      storageActions={
+        <Button size="sm" variant="ghost" onClick={handleReloadClick} title="Reload from storage">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+      }
       errorDetail={errorDetail}
       onDismissError={clearError}
     >
@@ -963,9 +968,6 @@ export default function GameEditorPage() {
                 </>)}
                 toolbar={
                   <>
-                    <Button size="sm" variant="ghost" onClick={handleReloadClick} title="Reload from storage">
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => { setShowCreateForm(v => { if (!v) setNewCardName(`Card ${cards.length + 1}`); else setNewCardName(''); return !v }) }} title={showCreateForm ? 'Cancel' : 'New card'}>
                       <Plus className={`h-4 w-4 transition-transform ${showCreateForm ? 'rotate-45' : ''}`} />
                     </Button>

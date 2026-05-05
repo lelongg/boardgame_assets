@@ -5,13 +5,14 @@ import { getProvider, BACKENDS } from '../storage'
 type PageLayoutProps = {
   header: ReactNode
   status?: string
+  storageActions?: ReactNode
   errorDetail?: string | null
   onDismissError?: () => void
   maxWidth?: string
   children: ReactNode
 }
 
-export default function PageLayout({ header, status, errorDetail, onDismissError, maxWidth = 'max-w-7xl', children }: PageLayoutProps) {
+export default function PageLayout({ header, status, storageActions, errorDetail, onDismissError, maxWidth = 'max-w-7xl', children }: PageLayoutProps) {
   const active = BACKENDS.find(b => b.key === getProvider())
   const ActiveIcon = active?.icon
 
@@ -23,6 +24,7 @@ export default function PageLayout({ header, status, errorDetail, onDismissError
           {status && (
             <span className="ml-auto text-sm text-muted-foreground hidden sm:inline">{status}</span>
           )}
+          {storageActions}
           {ActiveIcon && (
             <span className="text-muted-foreground" title={active?.name}>
               <ActiveIcon className="h-4 w-4" />
