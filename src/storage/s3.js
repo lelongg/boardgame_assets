@@ -41,8 +41,13 @@ export const createS3Storage = (options = {}) => {
     accessKeyId,
     secretAccessKey,
     endpoint,
-    prefix = "boardgame-assets",
+    prefix: rawPrefix,
   } = options;
+
+  // Treat an absent or blank prefix the same as the built-in default so that
+  // a device whose UI form left the field empty still looks in the same place
+  // as one that explicitly typed "boardgame-assets".
+  const prefix = (rawPrefix ?? "").trim() || "boardgame-assets";
 
   // Strip trailing slashes to avoid double-slash URLs that may trigger a
   // 301/302 redirect.  When the browser follows a non-307/308 redirect it

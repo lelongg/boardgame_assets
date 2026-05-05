@@ -37,7 +37,7 @@ export default function GamesPage() {
   const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
   const queryClient = useQueryClient()
 
-  const { data: games = [], isLoading: gamesLoading } = useGames()
+  const { data: games = [], isLoading: gamesLoading, isError: gamesError, error: gamesLoadError } = useGames()
   const createGame = useCreateGame()
   const deleteGame = useDeleteGame()
 
@@ -248,6 +248,8 @@ export default function GamesPage() {
             onSelect={setExpandedGame}
             empty={!storage || gamesLoading
               ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+              : gamesError
+              ? <p className="text-sm text-destructive">Failed to load games: {gamesLoadError instanceof Error ? gamesLoadError.message : String(gamesLoadError)}</p>
               : <p className="text-sm text-muted-foreground">No games yet. Create one!</p>
             }
             toolbar={<>
