@@ -810,21 +810,21 @@ export default function GameEditorPage() {
     enqueueLayoutSave(updatedLayout).catch(() => setStatus('Error saving layout.'))
   }
 
-  /** Returns true when there are unsaved local card edits (localStorage drafts or current card pending write). */
-  const hasLocalCardChanges = () => {
+  /** True when there are unsaved local card edits (localStorage drafts or current card pending write). */
+  const hasLocalCardChanges = useMemo(() => {
     if (!gameId || !collectionId) return false
     for (const card of cards) {
       if (localStorage.getItem(cardDraftKey(gameId, collectionId, card.id))) return true
     }
     if (selectedCard && JSON.stringify(selectedCard) !== savedCardJson) return true
     return false
-  }
+  }, [gameId, collectionId, cards, selectedCard, savedCardJson])
 
   const reloadCardsFromStorage = () => {
     if (!gameId || !collectionId) return
     // Remove all localStorage drafts for this collection so re-seeding uses clean storage data.
     for (const card of cards) {
-      try { localStorage.removeItem(cardDraftKey(gameId, collectionId, card.id)) } catch { /* ignore */ }
+      try { localStorage.removeItem(cardDraftKey(gameId, collectionId, card.id)) } catch (err) { console.error('Failed to clear card draft:', err) }
     }
     // Deselect card to prevent auto-save firing during reload.
     setSelectedCardId(null)
@@ -837,7 +837,7 @@ export default function GameEditorPage() {
   }
 
   const handleReloadClick = () => {
-    if (hasLocalCardChanges()) {
+    if (hasLocalCardChanges) {
       setShowReloadDialog(true)
     } else {
       reloadCardsFromStorage()
