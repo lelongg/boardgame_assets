@@ -616,17 +616,18 @@ export default function GameEditorPage() {
   }, [gameId, collectionId])
 
   const enqueueLayoutSave = useCallback((layout: any) => {
-    if (!gameId || !collection?.layoutId) return Promise.reject(new Error('Missing game or layout.'))
-    const key = `${gameId}:${collection.layoutId}`
+    const layoutId = layout.id
+    if (!gameId || !layoutId) return Promise.reject(new Error('Missing game or layout id.'))
+    const key = `${gameId}:${layoutId}`
     let queue = layoutSaveQueuesRef.current.get(key)
     if (!queue) {
       queue = createLatestSaveQueue<any>(async (latestLayout) => {
-        await saveLayoutMutRef.current.mutateAsync({ layoutId: collection.layoutId, layout: latestLayout })
+        await saveLayoutMutRef.current.mutateAsync({ layoutId, layout: latestLayout })
       })
       layoutSaveQueuesRef.current.set(key, queue)
     }
     return queue.enqueue(layout)
-  }, [gameId, collection?.layoutId])
+  }, [gameId])
 
   /**
    * Immediately persist the selected card if it has unsaved changes.
@@ -804,9 +805,8 @@ export default function GameEditorPage() {
   // would silently drop the change. Persisting synchronously also means that
   // the unmount safety-net flushes are no longer required for layout edits.
   const handleLayoutSave = (updatedLayout: any) => {
-    if (!gameId || !game || !collection) return
-    // Optimistic: update the query cache immediately for instant UI feedback.
-    queryClient.setQueryData(queryKeys.layout(gameId, collection.layoutId), updatedLayout)
+    if (!gameId || !game) return
+    queryClient.setQueryData(queryKeys.layout(gameId, updatedLayout.id), updatedLayout)
     enqueueLayoutSave(updatedLayout).catch(() => setStatus('Error saving layout.'))
   }
 

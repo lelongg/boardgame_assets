@@ -184,6 +184,9 @@ export function useUpdateCollection(gameId: string | undefined) {
     mutationFn: ({ collectionId, updates }) =>
       storage.updateCollection(gameId!, collectionId, updates),
     onSuccess: (_data, { collectionId }) => {
+      // Immediately update the single-collection cache so dependents (e.g. the
+      // layout dropdown) react without waiting for a background refetch.
+      qc.setQueryData(queryKeys.collection(gameId!, collectionId), _data)
       qc.invalidateQueries({ queryKey: queryKeys.collections(gameId!) })
       qc.invalidateQueries({ queryKey: queryKeys.collection(gameId!, collectionId) })
     },
