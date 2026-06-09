@@ -344,6 +344,11 @@ export const createS3Storage = (options = {}) => {
     },
 
     async deleteLayout(gameId, layoutId) {
+      // Match the localFile/indexedDB backends: refuse to orphan collections.
+      const collections = await this.listCollections(gameId);
+      if (collections.some((col) => col.layoutId === layoutId)) {
+        throw new Error("Layout is in use by a collection");
+      }
       await deleteObject(layoutKey(gameId, layoutId));
     },
 

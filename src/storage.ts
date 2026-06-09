@@ -73,6 +73,10 @@ export const createStorage = () => {
       }
       return storage;
     })();
+    // Don't cache a rejected promise: a transient init failure (e.g. network
+    // hiccup during Drive/S3 session restore) would otherwise wedge the app
+    // on "Loading..." until a full page reload.
+    pendingStorage.catch(() => { pendingStorage = null; });
   }
   return pendingStorage;
 };

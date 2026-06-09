@@ -20,6 +20,15 @@ const loadGoogleScript = () =>
 const slugify = (v) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 const escQ = (v) => String(v).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 const now = () => new Date().toISOString();
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const hashArrayBuffer = async (buf) => {
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12);
+};
 
 export const createGoogleDriveStorage = (options = {}) => {
   const clientId = options.clientId ?? "";
@@ -330,9 +339,14 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const deleteGame = async (gameId) => {
-    const fid = folderIds.get(`game:${gameId}`);
-    if (fid) { await rmFile(fid); folderIds.delete(`game:${gameId}`); }
+    let fid = folderIds.get(`game:${gameId}`);
+    if (!fid) {
+      const folders = await foldersIn(rootParent());
+      fid = folders.find((f) => f.appProperties?.type === "game-folder" && f.appProperties?.gameId === gameId)?.id;
+    }
+    if (fid) await rmFile(fid);
     // Clean caches
+    folderIds.delete(`game:${gameId}`);
     for (const [k] of folderIds) { if (k.includes(gameId)) folderIds.delete(k); }
     for (const [k] of fileIds) { if (k.includes(gameId)) fileIds.delete(k); }
   };
@@ -369,7 +383,9 @@ export const createGoogleDriveStorage = (options = {}) => {
   const createLayout = async (gameId, name) => {
     const tf = await layoutsFolder(gameId);
     const tpl = defaultLayout();
-    const id = slugify(name) || `layout-${Date.now()}`;
+    // Random suffix like the indexedDB/S3 backends: a bare slug collides when
+    // two layouts share a name, and Drive folders happily hold duplicates.
+    const id = `${slugify(name) || "layout"}-${uid()}`;
     tpl.id = id;
     tpl.name = name;
     const fid = await mkFile(`${id}.json`, tpl, tf, { type: "layout", gameId, layoutId: id });
@@ -378,16 +394,24 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const deleteLayout = async (gameId, layoutId) => {
+    // Match the localFile/indexedDB backends: refuse to orphan collections.
+    const collections = await listCollections(gameId);
+    if (collections.some((c) => c.layoutId === layoutId)) {
+      throw new Error("Layout is in use by a collection");
+    }
     const key = `tpl:${gameId}:${layoutId}`;
-    const fid = fileIds.get(key);
-    if (fid) { await rmFile(fid); fileIds.delete(key); }
+    // The id cache may be cold (e.g. right after clearCache) — fall back to a
+    // Drive lookup instead of silently doing nothing.
+    const fid = fileIds.get(key) ?? await findFile(`${layoutId}.json`, await layoutsFolder(gameId));
+    if (fid) await rmFile(fid);
+    fileIds.delete(key);
   };
 
   const copyLayout = async (gameId, layoutId) => {
     const tpl = await getLayout(gameId, layoutId);
     const layouts = await listLayouts(gameId);
     const name = `Layout ${layouts.length + 1}`;
-    const id = slugify(name) || `layout-${Date.now()}`;
+    const id = `${slugify(name) || "layout"}-${uid()}`;
     const copy = { ...tpl, id, name };
     const tf = await layoutsFolder(gameId);
     const fid = await mkFile(`${id}.json`, copy, tf, { type: "layout", gameId, layoutId: id });
@@ -420,7 +444,9 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const createCollection = async (gameId, name, layoutId) => {
-    const id = slugify(name) || `col-${Date.now()}`;
+    // Random suffix like the indexedDB/S3 backends — a bare slug would reuse
+    // the existing folder for a same-named collection and merge their cards.
+    const id = `${slugify(name) || "col"}-${uid()}`;
     const col = { id, name, layoutId };
     const cf = await collectionFolder(gameId, id);
     await mkFile("collection.json", col, cf, { type: "collection", gameId, collectionId: id });
@@ -439,8 +465,13 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const deleteCollection = async (gameId, collectionId) => {
-    const fid = folderIds.get(`col:${gameId}:${collectionId}`);
-    if (fid) { await rmFile(fid); folderIds.delete(`col:${gameId}:${collectionId}`); }
+    let fid = folderIds.get(`col:${gameId}:${collectionId}`);
+    if (!fid) {
+      const folders = await foldersIn(await collectionsFolder(gameId));
+      fid = folders.find((f) => f.name === collectionId)?.id;
+    }
+    if (fid) await rmFile(fid);
+    folderIds.delete(`col:${gameId}:${collectionId}`);
   };
 
   // --- Cards ---
@@ -483,8 +514,9 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const deleteCard = async (gameId, collectionId, cardId) => {
     const key = `card:${gameId}:${collectionId}:${cardId}`;
-    const fid = fileIds.get(key);
-    if (fid) { await rmFile(fid); fileIds.delete(key); }
+    const fid = fileIds.get(key) ?? await findFile(`${cardId}.json`, await cardsFolder(gameId, collectionId));
+    if (fid) await rmFile(fid);
+    fileIds.delete(key);
   };
 
   const copyCard = async (gameId, collectionId, cardId) => {
@@ -518,10 +550,27 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const addGoogleFont = async (gameId, name, slotName) => {
-    // Store reference only — actual download requires server
+    // Download the woff2 in the browser (like the S3 backend) so the font
+    // actually renders — a manifest entry with file:"" never displays.
+    const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(name)}`;
+    const cssResp = await fetch(cssUrl);
+    if (!cssResp.ok) throw new Error(`Failed to fetch Google Font CSS for "${name}"`);
+    const css = await cssResp.text();
+    const match = css.match(/src:\s*url\((https:\/\/[^)]+\.woff2)\)\s*format\(['"]woff2['"]\)/);
+    if (!match) throw new Error(`No woff2 URL found in Google Font CSS for "${name}"`);
+    const fontResp = await fetch(match[1]);
+    if (!fontResp.ok) throw new Error(`Failed to download font binary for "${name}"`);
+    const buf = await fontResp.arrayBuffer();
+    const fileName = `${await hashArrayBuffer(buf)}.woff2`;
+
+    const folder = await gameFontsFolder(gameId);
+    await mkBinaryFile(fileName, "font/woff2", buf, folder, { type: "font", gameId });
+    listingCache.delete(`binaries:${folder}`);
+    await putAsset(`/api/games/${gameId}/fonts/${fileName}`, new Blob([buf], { type: "font/woff2" }), "font/woff2");
+
     const { fid, data } = await gameFontsManifest(gameId);
     const slot = slotName || name.toLowerCase().replace(/\s+/g, "-");
-    data[slot] = { name, file: "", source: "google" };
+    data[slot] = { name, file: fileName, source: "google" };
     await writeFile(fid, data);
     return { fonts: data };
   };
@@ -531,6 +580,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     const mimeType = file.type || "application/octet-stream";
     const arrayBuf = await file.arrayBuffer();
     await mkBinaryFile(file.name, mimeType, arrayBuf, folder, { type: "font", gameId });
+    listingCache.delete(`binaries:${folder}`);
     // Store in asset cache for SW to serve
     const urlPath = `/api/games/${gameId}/fonts/${file.name}`;
     await putAsset(urlPath, new Blob([arrayBuf], { type: mimeType }), mimeType);
@@ -543,6 +593,12 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const deleteFont = async (gameId, file) => {
+    // Remove the binary from Drive too — otherwise it leaks forever.
+    const folder = await gameFontsFolder(gameId);
+    const binaries = await binaryFilesInFolder(folder);
+    const entry = binaries.find((f) => f.name === file);
+    if (entry) await rmFile(entry.id);
+
     const { fid, data } = await gameFontsManifest(gameId);
     for (const [k, v] of Object.entries(data)) {
       if (v.file === file) delete data[k];

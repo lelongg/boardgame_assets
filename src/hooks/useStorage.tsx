@@ -13,6 +13,8 @@ function getStoragePromise() {
       resolvedStorage = s
       return s
     })
+    // Allow a later mount to retry instead of caching the failure forever.
+    storagePromise.catch(() => { storagePromise = null })
   }
   return storagePromise
 }
@@ -26,7 +28,9 @@ export function StorageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (resolvedStorage) { setStorage(resolvedStorage); return }
     let cancelled = false
-    getStoragePromise().then(s => { if (!cancelled) setStorage(s) })
+    getStoragePromise()
+      .then(s => { if (!cancelled) setStorage(s) })
+      .catch(err => { console.error('Storage initialization failed:', err) })
     return () => { cancelled = true }
   }, [])
 
