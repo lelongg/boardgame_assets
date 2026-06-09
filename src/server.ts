@@ -16,7 +16,12 @@ fs.mkdirSync(dataRoot, { recursive: true });
 
 const readJson = <T>(filePath: string, fallback: T): T => {
   if (!fs.existsSync(filePath)) return fallback;
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+  } catch {
+    // One corrupt JSON file must not take down every list endpoint.
+    return fallback;
+  }
 };
 
 const writeJson = (filePath: string, value: unknown) => {
@@ -90,7 +95,10 @@ const fetchGoogleFont = async (fontName: string): Promise<{ data: Buffer; name: 
 
 const embedLocalImages = (svg: string, gameId: string): string => {
   return svg.replace(/href="(\/api\/games\/[^/]+\/images\/([^"]+))"/g, (_match, _url, fileName) => {
-    const filePath = path.join(imagesDir(gameId), fileName);
+    const dir = imagesDir(gameId);
+    const filePath = path.join(dir, fileName);
+    // fileName comes from card data — keep it contained in the images dir.
+    if (path.relative(dir, filePath).startsWith("..")) return _match;
     if (!fs.existsSync(filePath)) return _match;
     const data = fs.readFileSync(filePath);
     const ext = path.extname(fileName).toLowerCase();
@@ -287,6 +295,26 @@ migrateGlobalFontsToGames();
 // --- App ---
 
 const app = express();
+
+// Every :gameId/:collectionId/:cardId/:file param is joined into filesystem
+// paths. Express 5 percent-decodes route params after segment matching, so
+// "..%2f.." style traversal must be rejected on the decoded segments.
+app.use((req, res, next) => {
+  for (const seg of req.path.split("/")) {
+    if (!seg) continue;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(seg);
+    } catch {
+      return res.status(400).json({ error: "Malformed URL" });
+    }
+    if (decoded === "." || decoded === ".." || /[/\\\0]/.test(decoded)) {
+      return res.status(400).json({ error: "Invalid path segment" });
+    }
+  }
+  next();
+});
+
 app.use(express.json());
 
 // Games
@@ -342,11 +370,13 @@ app.get("/api/games/:gameId", (req, res) => {
 
 app.put("/api/games/:gameId", (req, res) => {
   const gameId = req.params.gameId;
-  const name = req.body?.name?.trim();
-  if (!name) return res.status(400).json({ error: "Name required" });
+  const updates = req.body;
+  if (!updates || typeof updates !== "object") return res.status(400).json({ error: "Updates required" });
+  if ("name" in updates && !String(updates.name ?? "").trim()) return res.status(400).json({ error: "Name required" });
   const game = readJson<GameMeta | null>(gamePath(gameId), null);
   if (!game) return res.status(404).json({ error: "Not found" });
-  const updated = { ...game, name, updatedAt: new Date().toISOString() };
+  // Merge arbitrary updates like the other backends do; id stays fixed.
+  const updated = { ...game, ...updates, id: gameId, updatedAt: new Date().toISOString() };
   writeJson(gamePath(gameId), updated);
   res.json(updated);
 });
@@ -481,7 +511,9 @@ app.get("/api/games/:gameId/collections/:collectionId/cards/:cardId", (req, res)
     const layout = col ? loadLayout(gameId, col.layoutId) : null;
     if (!layout) return res.status(404).json({ error: "Layout not found" });
     const fontData = loadFontData(gameId);
-    let svg = renderCardSvg(card, layout, { fonts: fontData });
+    // fonts carries the binaries for @font-face; fontSlots maps slot → family
+    // name — without it the renderer falls back to sans-serif everywhere.
+    let svg = renderCardSvg(card, layout, { fonts: fontData, fontSlots: loadGameFonts(gameId) });
     svg = embedLocalImages(svg, gameId);
     return res.type("image/svg+xml").send(svg);
   }
@@ -523,10 +555,12 @@ app.post("/api/games/:gameId/render", (req, res) => {
   const body = req.body;
   const candidate = (body && "card" in body ? body.card : body) ?? {};
   const card = normalizeCard(candidate);
-  const layout = body?.layout ?? (body?.layoutId ? loadLayout(gameId, body.layoutId) : null);
+  // Inline layouts must go through the normalizer like stored ones do.
+  const layout = body?.layout ? normalizeLayout(body.layout)
+    : (body?.layoutId ? loadLayout(gameId, body.layoutId) : null);
   if (!layout) return res.status(400).json({ error: "Layout required (pass layout or layoutId)" });
   const fontData = loadFontData(gameId);
-  let svg = renderCardSvg(card, layout, { fonts: fontData });
+  let svg = renderCardSvg(card, layout, { fonts: fontData, fontSlots: loadGameFonts(gameId) });
   svg = embedLocalImages(svg, gameId);
   res.type("image/svg+xml").send(svg);
 });
@@ -640,7 +674,11 @@ app.post("/api/games/:gameId/tts/upload", express.raw({ type: "*/*", limit: "50m
   const gameId = req.params.gameId;
   const disposition = req.headers["content-disposition"] ?? "";
   const nameMatch = disposition.match(/filename="([^"]+)"/) || disposition.match(/filename=(\S+)/);
-  const fileName = nameMatch ? nameMatch[1] : `atlas-${Date.now()}.png`;
+  // The filename comes from a request header — strip any path components.
+  const requestedName = nameMatch ? path.basename(nameMatch[1]) : "";
+  const fileName = requestedName && requestedName !== "." && requestedName !== ".."
+    ? requestedName
+    : `atlas-${Date.now()}.png`;
   const data = Buffer.from(req.body);
   const dir = ttsDir(gameId);
   fs.mkdirSync(dir, { recursive: true });
