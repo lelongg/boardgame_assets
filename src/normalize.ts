@@ -67,10 +67,15 @@ const normalizeBindings = (obj: Record<string, unknown>): Record<string, Propert
     return Object.keys(result).length > 0 ? result : undefined;
 };
 
+// Counter so that several id-less nodes normalized in the same millisecond
+// still get distinct fallback ids (Date.now() alone collides within one pass).
+let fallbackIdCounter = 0;
+const fallbackId = (prefix: string): string => `${prefix}-${Date.now()}-${fallbackIdCounter++}`;
+
 const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): CardLayoutItem => {
     const obj = item && typeof item === "object" ? item as Record<string, unknown> : {};
     // Base properties
-    const id = safeString(obj.id, `item-${Date.now()}`);
+    const id = safeString(obj.id, fallbackId("item"));
     const name = safeString(obj.name, "New Item");
     const anchor = normalizeAnchorPoint(obj.anchor);
     const attach = obj.attach && typeof obj.attach === "object"
@@ -104,6 +109,7 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
         offsetX: obj.offsetX !== undefined && obj.offsetX !== null ? safeNumber(obj.offsetX, 0) : undefined,
         offsetY: obj.offsetY !== undefined && obj.offsetY !== null ? safeNumber(obj.offsetY, 0) : undefined,
         rotation: obj.rotation !== undefined && obj.rotation !== null ? safeNumber(obj.rotation, 0) : undefined,
+        visible: typeof obj.visible === "boolean" ? obj.visible : undefined,
     };
     if (type === "frame") {
         const frameItem: CardLayoutFrameItem = {
@@ -180,7 +186,7 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
  */
 const normalizeSection = (section: unknown, cardWidth: number, cardHeight: number): CardLayoutSection => {
     const obj = section && typeof section === "object" ? section as Record<string, unknown> : {};
-    const id = safeString(obj.id, `section-${Date.now()}`);
+    const id = safeString(obj.id, fallbackId("section"));
     const name = safeString(obj.name, "New Section");
     const layout = safeEnum(obj.layout, ["row", "column", "stack", "grid"] as const, "stack" as const);
     const columns = typeof obj.columns === 'number' && obj.columns >= 1 ? Math.round(obj.columns) : 2;
@@ -206,6 +212,7 @@ const normalizeSection = (section: unknown, cardWidth: number, cardHeight: numbe
         repeatOffsetY,
         sizePct,
         gap,
+        visible: typeof obj.visible === "boolean" ? obj.visible : undefined,
         children,
         items
     };

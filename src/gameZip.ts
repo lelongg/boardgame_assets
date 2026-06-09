@@ -44,34 +44,36 @@ export const exportGameZip = async (
   }
 
   log('Exporting images...')
-  // Scan card fields for image URLs and include them
+  // Collect every referenced image file. Matches all occurrences in a value
+  // (rich text can embed several images) and stops at quote/whitespace/markup
+  // delimiters so trailing text is not captured into the filename.
+  const IMAGE_URL_RE = /\/api\/games\/[^/]+\/images\/([^"'\s<>)]+)/g
   const imageFiles = new Set<string>()
+  const collectImageFiles = (val: unknown) => {
+    for (const m of String(val ?? '').matchAll(IMAGE_URL_RE)) imageFiles.add(m[1])
+  }
+  // Card field values
   for (const col of collections) {
     const cards = await storage.listCards(gameId, col.id)
     for (const card of cards) {
-      for (const val of Object.values(card.fields ?? {})) {
-        const match = String(val).match(/\/api\/games\/[^/]+\/images\/([^"]+)/)
-        if (match) imageFiles.add(match[1])
-      }
+      for (const val of Object.values(card.fields ?? {})) collectImageFiles(val)
     }
   }
-  // Also scan layout default values
+  // Layout item default values
   const scanItems = (section: any) => {
-    for (const item of section.items ?? []) {
-      const val = item.defaultValue ?? ''
-      const match = String(val).match(/\/api\/games\/[^/]+\/images\/([^"]+)/)
-      if (match) imageFiles.add(match[1])
-    }
+    for (const item of section.items ?? []) collectImageFiles(item.defaultValue)
     for (const child of section.children ?? []) scanItems(child)
   }
-  for (const tpl of layouts) scanItems(tpl.root)
-  // Also scan collection back images
-  for (const col of collections) {
-    if (col.back) {
-      const match = col.back.match(/\/api\/games\/[^/]+\/images\/([^"]+)/)
-      if (match) imageFiles.add(match[1])
+  for (const tpl of layouts) {
+    scanItems(tpl.root)
+    // Binding defaults and allowed values live at layout level in bindingMeta
+    for (const meta of Object.values(tpl.bindingMeta ?? {}) as any[]) {
+      collectImageFiles(meta?.default)
+      for (const v of meta?.values ?? []) collectImageFiles(v)
     }
   }
+  // Collection back images
+  for (const col of collections) collectImageFiles(col.back)
 
   for (const file of imageFiles) {
     try {

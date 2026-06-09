@@ -471,6 +471,7 @@ async function createFullTestGame(storage) {
   tpl.bindingMeta = {
     "defaultValue:name": { values: ["Warrior", "Mage", "Rogue"] },
     "emoji:faction": { default: "⚔️", values: ["⚔️", "🛡️", "🔮", "🏹"] },
+    "defaultValue:image": { default: imageUrl },
   };
   tpl.root = {
     id: "root", name: "Root", layout: "column", sizePct: 100, gap: 12, columns: 2,
@@ -485,7 +486,7 @@ async function createFullTestGame(storage) {
       ]},
       { id: "body", name: "Body", layout: "stack", sizePct: 70, gap: 0, columns: 2,
         children: [
-          { id: "grid-section", name: "Grid", layout: "grid", sizePct: 60, gap: 4, columns: 3, children: [], items: [
+          { id: "grid-section", name: "Grid", layout: "grid", sizePct: 60, gap: 4, columns: 3, visible: false, children: [], items: [
             { id: "art-item", name: "Artwork", type: "image", defaultValue: imageUrl,
               bindings: { defaultValue: { field: "image" } },
               fit: "cover", cornerRadius: 12,
@@ -496,7 +497,7 @@ async function createFullTestGame(storage) {
         items: [
           { id: "border-item", name: "Border", type: "frame",
             strokeWidth: 3, strokeColor: "#16213e", fillColor: "none", cornerRadius: 8,
-            rotation: -45,
+            rotation: -45, visible: false,
             anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } },
             widthMm: 95, heightMm: 95 },
           { id: "emoji-item", name: "Faction", type: "emoji", emoji: "⚔️",
@@ -578,6 +579,13 @@ async function verifyFullTestGame(storage, gameId) {
   assert.ok(border); assert.equal(border.type, "frame");
   assert.equal(border.strokeWidth, 3); assert.equal(border.cornerRadius, 8);
   assert.equal(border.rotation, -45);
+  assert.equal(border.visible, false, "static visible:false must survive the round trip");
+
+  // bindingMeta image default must survive and point at the (possibly new) game
+  assert.ok(
+    tpl.bindingMeta?.["defaultValue:image"]?.default?.includes(`/api/games/${gameId}/images/`),
+    "bindingMeta image default should reference the game"
+  );
 
   // Image item
   const art = items.find(i => i.id === "art-item");
@@ -609,6 +617,7 @@ async function verifyFullTestGame(storage, gameId) {
   const grid = tpl.root.children.find(c => c.children?.some(cc => cc.id === "grid-section"));
   const gridSection = grid?.children?.find(cc => cc.id === "grid-section") ?? tpl.root.children.flatMap(c => c.children || []).find(cc => cc.id === "grid-section");
   assert.ok(gridSection); assert.equal(gridSection.layout, "grid"); assert.equal(gridSection.columns, 3);
+  assert.equal(gridSection.visible, false, "section visible:false must survive the round trip");
 
   // Collections
   const cols = await storage.listCollections(gameId);
