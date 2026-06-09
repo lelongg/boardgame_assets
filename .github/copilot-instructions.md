@@ -2,173 +2,88 @@
 
 ## Project Overview
 
-This is a web-based boardgame asset editor that allows users to create and manage multiple games and card assets with SVG previews and print sheets. The editor can run as a static site with Google Drive storage (no backend required) or as a local development server with file-based storage.
+This is a web-based boardgame asset editor that allows users to create and manage multiple games and card assets with SVG previews and print sheets. The editor is a React SPA that talks to one of four interchangeable storage backends; it can run as a static site (browser/cloud storage, no backend required) or against a local development server with file-based storage.
+
+Also read `CLAUDE.md` at the repo root — it documents the round-trip-test and dual-renderer rules that every data-model change must follow.
 
 ## Tech Stack
 
-- **Language**: TypeScript (strict mode enabled)
+- **Language**: TypeScript (strict mode enabled); the storage backends are plain JS with `.d.ts` declarations
 - **Runtime**: Node.js 20
-- **Build Tool**: tsx (TypeScript Execute)
-- **Testing**: Node.js built-in test runner
-- **Module System**: ES2022 modules
-- **Frontend**: Vanilla JavaScript/HTML (no framework)
-- **SVG Rendering**: Custom SVG generation for card assets
-- **Storage Options**: 
-  - Local file system (development)
-  - Google Drive API (hosted editor)
+- **Frontend**: React 19 + react-router + @tanstack/react-query, Tailwind CSS, Radix UI
+- **Build Tool**: Vite (`npm run build`), tsx for the server and scripts
+- **Testing**: Node.js built-in test runner (`node --test --import tsx`)
+- **SVG Rendering**: Custom SVG generation for card assets (two deliberate implementations, see below)
+- **Storage Options**: localFile (dev server), indexedDB (browser), Google Drive, S3-compatible
 
 ## Project Structure
 
 - `src/` - Source code
-  - `src/build.ts` - Legacy SVG batch renderer
-  - `src/buildPages.ts` - Static site generator for GitHub Pages
-  - `src/server.ts` - Local development server
-  - `src/render/` - SVG rendering logic for cards
-  - `src/web/` - Web editor UI and storage providers
+  - `src/main.tsx`, `src/App.tsx`, `src/pages/`, `src/components/` - React app
+  - `src/hooks/useGameData.ts` - react-query layer over the storage backend (query keys, cache invalidation)
+  - `src/hooks/useStorage.tsx` - storage singleton + context
+  - `src/storage.ts` - backend registry/selection
+  - `src/storage/` - the four storage backends; `src/storage/backend.ts` defines the `StorageBackend` interface they all implement
+  - `src/render.ts` - SVG renderer used by the app (preview, print, export)
+  - `src/render/cardSvg.ts` - SVG renderer used by the server and tests
+  - `src/server.ts` - local development API server (Express)
+  - `src/normalize.ts` - data normalizer (whitelist-based: new fields MUST be added here or they are silently dropped)
+  - `src/gameZip.ts` - game export/import as zip
   - `src/types.ts` - TypeScript type definitions
-  - `src/theme.ts` - Theme configuration
-- `games/` - Game data storage (local development)
-  - `games/<game-id>/game.json` - Game metadata
-  - `games/<game-id>/cards/<card-id>.json` - Card data
+  - `src/build.ts` / `src/buildPages.ts` - legacy batch renderer / GitHub Pages site generator
+- `games/` - Game data storage for the localFile backend (gitignored)
 - `test/` - Tests using Node.js test runner
 - `docs/` - Generated GitHub Pages output
-- `output/` - Generated SVG output (legacy build)
 
-## Coding Conventions
+## Critical Architecture Rules
 
-### TypeScript
-- Always use strict TypeScript mode
-- Define types explicitly for all public APIs
-- Use `type` for type aliases (e.g., `type CardData = {...}`)
-- Use discriminated unions for different entity types when appropriate
-- Prefer `Record<string, string>` for string key-value maps
+### Two renderers, kept in sync
+`src/render.ts` (app) and `src/render/cardSvg.ts` (server/tests) are intentionally separate implementations of the same feature set. Any rendering change must be applied to BOTH, and `test/rendererParity.test.js` pins the behaviors that previously drifted (defaults, escaping, binding resolution). A merge was attempted and reverted — do not merge them.
 
-### Code Style
-- Use ES2022 module syntax (`import`/`export`)
-- Use arrow functions for callbacks and functional patterns
-- Prefer `const` over `let`, avoid `var`
-- Use template literals for string interpolation
-- Keep functions focused and modular
+### Whitelist normalizer
+`src/normalize.ts` rebuilds items/sections from scratch; any field it doesn't copy is silently destroyed on the next save. When adding a field follow the checklist in `CLAUDE.md` (normalizer, gameZip export/import, `test/backendCompat.test.js` round trip, both renderers, ControlPanel/PropertyPanel).
 
-### File Organization
-- Place type definitions in `src/types.ts` or colocated with their usage
-- Keep web UI code separate in `src/web/`
-- Keep rendering logic in `src/render/`
+### Storage backends
+- All four backends implement `StorageBackend` (`src/storage/backend.ts`) — keep methods, return shapes and error behavior consistent across ALL of them (shared semantics are documented on the interface).
+- The Google Drive backend keeps internal content/listing caches (5 min TTL); every new write/delete path there must invalidate them. The other backends are stateless.
+- `clearCache()` powers the "reload from storage" button.
+- Tests for backends live in `test/storageCaching.test.js` (Drive, with an in-memory Drive mock), `test/backendCompat.test.js` (cross-backend round trips), and `test/serverSecurity.test.js` (spawns the real `src/server.ts`).
 
 ## Build and Development Commands
 
-### Setup
 ```bash
 npm install
-```
-
-### Development
-```bash
-npm run serve           # Start local development server (http://127.0.0.1:5173/)
-npm run serve:watch     # Start server with auto-reload
-npm run watch           # Watch mode for legacy build
-```
-
-### Building
-```bash
-npm run build           # Legacy SVG batch renderer (outputs to output/)
+npm run dev             # Vite dev server (http://localhost:5180/, proxies /api to :5174)
+npm run serve:api       # Local API server for the localFile backend (port 5174)
+npm run build           # tsc + vite build
 npm run build:pages     # Build static site for GitHub Pages (outputs to docs/)
+npm test                # Run all tests
 ```
 
-### Testing
-```bash
-npm test                # Run all tests using Node.js test runner
-```
+## Coding Conventions
 
-### Cleaning
-```bash
-npm run clean           # Clean generated files
-```
-
-## Key Features and Workflows
-
-### Local Development
-- Games and cards are stored as JSON files in `games/<game-id>/`
-- The development server (`npm run serve`) provides a web UI at `http://127.0.0.1:5173/`
-- Changes are saved to the local file system
-
-### GitHub Pages Deployment
-- Static site is built with `npm run build:pages`
-- Outputs to `docs/` directory
-- Includes both a gallery view and a copy of the editor at `docs/editor/`
-- Automatically deployed via GitHub Actions on push to `main` branch
-- Editor in hosted mode uses Google Drive for storage
-
-### Google Drive Integration
-- The hosted editor can save data to Google Drive without a backend
-- Requires OAuth client ID set via `GOOGLE_CLIENT_ID` environment variable
-- OAuth client ID is injected during `build:pages`
-- Storage provider is in `src/web/storage/googleDrive.js`
-- Optional folder ID can be configured in `src/web/config.js`
-- To swap storage providers, replace the storage module and update `src/web/storage.js`
-
-### Card Rendering
-- Cards are rendered as SVG using custom rendering logic
-- Templates define layout sections, items, and text fields
-- Supports multiple layout types: row, column, stack
-- Includes print sheet generation for physical card printing
+- Strict TypeScript; define types explicitly for public APIs; `type` aliases over interfaces for data shapes
+- ES2022 modules, arrow functions, `const` over `let`, template literals
+- React: function components, hooks for data access (never call storage directly from components when a `useGameData` hook exists)
 
 ## Testing Guidelines
 
-- Use Node.js built-in test runner (`node --test`)
-- Tests are in the `test/` directory
-- Import tsx for TypeScript support: `node --test --import tsx test`
-- Write focused unit tests for rendering and data transformation logic
-- Test files follow the pattern `*.test.js` (JavaScript files that can import TypeScript modules via tsx)
+- Node.js built-in test runner; test files are `test/*.test.js` importing TS modules via tsx
+- New backend behavior needs coverage in `test/storageCaching.test.js` or `test/backendCompat.test.js`
+- New rendering behavior needs coverage in `test/rendering.test.js` / `test/itemTypes.test.js`, and `test/rendererParity.test.js` if both renderers are involved
+- Server endpoints: `test/serverSecurity.test.js` shows how to spawn and exercise the real server
 
 ## CI/CD
 
-### Workflows
-- `.github/workflows/ci.yml` - Runs tests and builds on PRs and main branch
-- `.github/workflows/pages.yml` - Deploys to GitHub Pages on main branch pushes
-
-### CI Requirements
-- All tests must pass (`npm test`)
-- Build must succeed (`npm run build`)
-- Node.js 20 is used in CI
-
-## Important Notes
-
-### Storage Flexibility
-The architecture supports multiple storage backends. When adding or modifying storage features:
-- Keep storage logic isolated in `src/web/storage/`
-- Maintain a consistent interface that can be swapped out
-- Don't hardcode assumptions about storage location or mechanism
-
-### SVG Generation
-When working with card rendering:
-- SVG is generated programmatically, not from templates
-- Be mindful of coordinate systems and anchor points
-- Test rendering with various card configurations
-- Consider print requirements (bleed, radius, sizing)
-
-### Static Site Generation
-The project generates a static site that can run without a server:
-- All editor functionality must work client-side only
-- External dependencies must be loaded via CDN or bundled
-- Configuration (like OAuth client ID) is injected at build time
+- `.github/workflows/ci.yml` - tests + build on PRs and main
+- `.github/workflows/pages.yml` - GitHub Pages deploy on main (uses `npm run build:pages`; `GOOGLE_CLIENT_ID` is injected at build time)
 
 ## Common Tasks
 
-### Adding a New Card Field Type
-1. Update `CardTemplateItem` type in `src/types.ts`
-2. Add rendering logic in `src/render/cardSvg.ts`
-3. Update web UI in `src/web/` to support the new field
-4. Add tests for the new field type
+### Adding a new item/section property
+Follow the CLAUDE.md checklist: `src/types.ts` → `src/normalize.ts` → `getFieldMeta`/`getEditorType` in `ControlPanel.tsx` → `PropertyPanel.tsx` property list → BOTH renderers → `test/backendCompat.test.js` round trip.
 
-### Adding a New Storage Provider
-1. Create new provider in `src/web/storage/`
-2. Implement the same interface as existing providers
-3. Update `src/web/storage.js` to include new option
-4. Document configuration requirements
-
-### Modifying the Build Process
-1. Update relevant script in `src/build.ts`, `src/buildPages.ts`, or `src/server.ts`
-2. Test both local and pages builds
-3. Verify CI workflows still work
-4. Update documentation if commands change
+### Adding a new storage provider
+1. Create the provider in `src/storage/` implementing `StorageBackend` (`src/storage/backend.ts`)
+2. Register it in `src/storage.ts` (`providers` map + `BACKENDS` list)
+3. Add it to the cross-backend round-trip matrix in `test/backendCompat.test.js`

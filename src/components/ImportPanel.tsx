@@ -125,6 +125,7 @@ export default function ImportPanel({
   }
 
   const handleImport = async () => {
+    if (!storage) { setStatus('Storage is not ready.'); return }
     try {
       setStatus('Importing...')
       const colNameToId = new Map(collections.map(c => [c.name, c.id]))

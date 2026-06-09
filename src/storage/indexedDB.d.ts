@@ -1,14 +1,9 @@
 import type { CardLayout } from "../types";
+import type { StorageBackend } from "./backend";
 
 export interface IndexedDBStorageOptions {
   defaultLayout?: () => CardLayout;
   [key: string]: any;
 }
 
-export interface Storage {
-  init?: () => Promise<void>;
-  tryRestoreSession?: () => Promise<void>;
-  [key: string]: any;
-}
-
-export function createIndexedDBStorage(options?: IndexedDBStorageOptions): Storage;
+export function createIndexedDBStorage(options?: IndexedDBStorageOptions): StorageBackend;

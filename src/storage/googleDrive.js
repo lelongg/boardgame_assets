@@ -499,14 +499,17 @@ export const createGoogleDriveStorage = (options = {}) => {
   };
 
   const saveCard = async (gameId, collectionId, cardId, card) => {
-    const normalized = normalizeCard({ ...card, id: cardId });
+    // Generate an id like the other backends do — a null cardId would
+    // otherwise produce a literal "null.json" file.
+    const id = cardId || uid();
+    const normalized = normalizeCard({ ...card, id });
     const cf = await cardsFolder(gameId, collectionId);
-    const key = `card:${gameId}:${collectionId}:${cardId}`;
+    const key = `card:${gameId}:${collectionId}:${id}`;
     const cached = fileIds.get(key);
     if (cached) {
       await writeFile(cached, normalized);
     } else {
-      const fid = await mkFile(`${cardId}.json`, normalized, cf, { type: "card", gameId, collectionId, cardId });
+      const fid = await mkFile(`${id}.json`, normalized, cf, { type: "card", gameId, collectionId, cardId: id });
       fileIds.set(key, fid);
     }
     return normalized;

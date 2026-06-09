@@ -1,4 +1,5 @@
 import type { CardLayout } from "../types";
+import type { StorageBackend } from "./backend";
 
 export interface S3StorageOptions {
   defaultLayout?: () => CardLayout;
@@ -11,10 +12,4 @@ export interface S3StorageOptions {
   [key: string]: any;
 }
 
-export interface Storage {
-  init?: () => Promise<void>;
-  tryRestoreSession?: () => Promise<void>;
-  [key: string]: any;
-}
-
-export function createS3Storage(options?: S3StorageOptions): Storage;
+export function createS3Storage(options?: S3StorageOptions): StorageBackend;

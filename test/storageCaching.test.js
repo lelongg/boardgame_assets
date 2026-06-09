@@ -175,7 +175,7 @@ const createDriveMock = () => {
     return notFound;
   };
 
-  return { files };
+  return { files, mockLocalStorage };
 };
 
 const defaultLayout = () => ({
@@ -381,6 +381,47 @@ test("googleDrive: addGoogleFont downloads the binary; deleteFont removes it", a
 
   await storage.deleteFont(game.id, entry.file);
   assert.ok(![...files.values()].some(f => f.name === entry.file), "binary must be deleted from Drive, not leaked");
+});
+
+// ── Auth/session lifecycle (ported from the legacy src/web tests) ──────────
+
+const TOKEN_KEY = "boardgame_assets_google_token";
+
+test("googleDrive: signIn persists the token; signOut revokes and clears it", async () => {
+  const { mockLocalStorage } = createDriveMock();
+  const storage = await makeStorage();
+
+  assert.ok(storage.isAuthorized(), "authorized after signIn");
+  const stored = JSON.parse(mockLocalStorage.get(TOKEN_KEY));
+  assert.equal(stored.accessToken, "mock_access_token");
+  assert.ok(stored.tokenExpiry > Date.now(), "expiry must be in the future");
+
+  await storage.signOut();
+  assert.ok(!storage.isAuthorized(), "not authorized after signOut");
+  assert.ok(!mockLocalStorage.has(TOKEN_KEY), "token removed from localStorage");
+});
+
+test("googleDrive: tryRestoreSession honors a valid stored token, rejects an expired one", async () => {
+  const { mockLocalStorage } = createDriveMock();
+  const { createGoogleDriveStorage } = await import("../src/storage/googleDrive.js");
+
+  mockLocalStorage.set(TOKEN_KEY, JSON.stringify({ accessToken: "tok", tokenExpiry: Date.now() + 3600_000 }));
+  const fresh = createGoogleDriveStorage({ clientId: "test-client-id.apps.googleusercontent.com", defaultLayout });
+  assert.equal(await fresh.tryRestoreSession(), true);
+  assert.ok(fresh.isAuthorized());
+
+  mockLocalStorage.set(TOKEN_KEY, JSON.stringify({ accessToken: "tok", tokenExpiry: Date.now() - 3600_000 }));
+  const expired = createGoogleDriveStorage({ clientId: "test-client-id.apps.googleusercontent.com", defaultLayout });
+  assert.equal(await expired.tryRestoreSession(), false, "expired token must not restore (no silent refresh)");
+  assert.ok(!expired.isAuthorized());
+});
+
+test("googleDrive: signIn without configuration throws a helpful error", async () => {
+  createDriveMock();
+  const { createGoogleDriveStorage } = await import("../src/storage/googleDrive.js");
+  const storage = createGoogleDriveStorage({ clientId: "", defaultLayout });
+  await storage.init();
+  await assert.rejects(() => storage.signIn(), /not configured/);
 });
 
 // ── clearCache exists on every backend ─────────────────────────────────────

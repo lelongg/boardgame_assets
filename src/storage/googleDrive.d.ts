@@ -1,4 +1,5 @@
 import type { CardLayout } from "../types";
+import type { StorageBackend } from "./backend";
 
 export interface StorageOptions {
   clientId?: string;
@@ -7,10 +8,4 @@ export interface StorageOptions {
   defaultLayout?: () => CardLayout;
 }
 
-export interface Storage {
-  init?: () => Promise<void>;
-  tryRestoreSession?: () => Promise<void>;
-  [key: string]: any;
-}
-
-export function createGoogleDriveStorage(options?: StorageOptions): Storage;
+export function createGoogleDriveStorage(options?: StorageOptions): StorageBackend;

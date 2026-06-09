@@ -6,6 +6,9 @@ import { createLocalFileStorage } from "./storage/localFile";
 import { createIndexedDBStorage } from "./storage/indexedDB";
 import { createS3Storage } from "./storage/s3";
 import { seedIfEmpty } from "./seedDefaultGame";
+import type { StorageBackend } from "./storage/backend";
+
+export type { StorageBackend } from "./storage/backend";
 
 export const BACKENDS = [
   { key: 'localFile', name: 'Local Disk', description: 'Requires the dev server running', icon: HardDrive },
@@ -16,7 +19,7 @@ export const BACKENDS = [
 
 export type BackendKey = (typeof BACKENDS)[number]['key'];
 
-const providers: Record<string, Function> = {
+const providers: Record<string, (options?: Record<string, unknown>) => StorageBackend> = {
   googleDrive: createGoogleDriveStorage,
   localFile: createLocalFileStorage,
   indexedDB: createIndexedDBStorage,
@@ -37,7 +40,7 @@ export const getProvider = (): string =>
 export const setProvider = (provider: string) =>
   localStorage.setItem(PROVIDER_KEY, provider);
 
-export const createStorageFor = async (providerKey: string) => {
+export const createStorageFor = async (providerKey: string): Promise<StorageBackend> => {
   const factory = providers[providerKey];
   if (!factory) {
     throw new Error(`Unknown storage provider: ${providerKey}`);
@@ -60,7 +63,7 @@ export const createStorageFor = async (providerKey: string) => {
   return storage;
 };
 
-let pendingStorage: Promise<any> | null = null;
+let pendingStorage: Promise<StorageBackend> | null = null;
 
 export const createStorage = () => {
   if (!pendingStorage) {

@@ -400,6 +400,7 @@ export default function CollectionsPage() {
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Clone collection" onClick={async () => {
+                    if (!gameId || !storage) return
                     try {
                       setStatus('Cloning collection...')
                       const newCol = await storage.createCollection(gameId, `${col.name} (copy)`, col.layoutId)

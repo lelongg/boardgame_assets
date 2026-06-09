@@ -25,7 +25,7 @@ export const queryKeys = {
 // ── Query hooks ─────────────────────────────────────────────────────
 
 export function useGames() {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<any[]>({
     queryKey: queryKeys.games(),
     queryFn: () => storage.listGames(),
@@ -37,7 +37,7 @@ export function useGames() {
 }
 
 export function useGame(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<any>({
     queryKey: queryKeys.game(gameId!),
     queryFn: () => storage.getGame(gameId!),
@@ -49,7 +49,7 @@ export function useGame(gameId: string | undefined) {
 }
 
 export function useCollections(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<any[]>({
     queryKey: queryKeys.collections(gameId!),
     queryFn: () => storage.listCollections(gameId!),
@@ -61,7 +61,7 @@ export function useCollections(gameId: string | undefined) {
 }
 
 export function useCollection(gameId: string | undefined, collectionId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<any>({
     queryKey: queryKeys.collection(gameId!, collectionId!),
     queryFn: () => storage.getCollection(gameId!, collectionId!),
@@ -73,7 +73,7 @@ export function useCollection(gameId: string | undefined, collectionId: string |
 }
 
 export function useLayouts(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<any[]>({
     queryKey: queryKeys.layouts(gameId!),
     queryFn: () => storage.listLayouts(gameId!),
@@ -85,7 +85,7 @@ export function useLayouts(gameId: string | undefined) {
 }
 
 export function useLayout(gameId: string | undefined, layoutId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<any>({
     queryKey: queryKeys.layout(gameId!, layoutId!),
     queryFn: () => storage.getLayout(gameId!, layoutId!),
@@ -100,7 +100,7 @@ export function useLayout(gameId: string | undefined, layoutId: string | undefin
 }
 
 export function useCards(gameId: string | undefined, collectionId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<any[]>({
     queryKey: queryKeys.cards(gameId!, collectionId!),
     queryFn: () => storage.listCards(gameId!, collectionId!),
@@ -112,7 +112,7 @@ export function useCards(gameId: string | undefined, collectionId: string | unde
 }
 
 export function useFonts(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<Record<string, { name: string; file: string; source: 'upload' | 'google' }>>({
     queryKey: queryKeys.fonts(gameId!),
     queryFn: () => storage.listFonts(gameId!),
@@ -124,7 +124,7 @@ export function useFonts(gameId: string | undefined) {
 }
 
 export function useImages(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   return useQuery<{ file: string; url: string; name: string }[]>({
     queryKey: queryKeys.images(gameId!),
     queryFn: () => storage.listImages?.(gameId!) ?? [],
@@ -138,7 +138,7 @@ export function useImages(gameId: string | undefined) {
 // ── Mutation hooks ──────────────────────────────────────────────────
 
 export function useCreateGame() {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (name: string) => storage.createGame(name),
@@ -147,7 +147,7 @@ export function useCreateGame() {
 }
 
 export function useUpdateGame(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, Record<string, any>>({
     mutationFn: (updates: Record<string, any>) => storage.updateGame(gameId!, updates),
@@ -159,7 +159,7 @@ export function useUpdateGame(gameId: string | undefined) {
 }
 
 export function useDeleteGame() {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (gameId: string) => storage.deleteGame(gameId),
@@ -168,7 +168,7 @@ export function useDeleteGame() {
 }
 
 export function useCreateCollection(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, { name: string; layoutId: string }>({
     mutationFn: ({ name, layoutId }) =>
@@ -178,7 +178,7 @@ export function useCreateCollection(gameId: string | undefined) {
 }
 
 export function useUpdateCollection(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, { collectionId: string; updates: Record<string, any> }>({
     mutationFn: ({ collectionId, updates }) =>
@@ -194,7 +194,7 @@ export function useUpdateCollection(gameId: string | undefined) {
 }
 
 export function useDeleteCollection(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (collectionId: string) => storage.deleteCollection(gameId!, collectionId),
@@ -203,7 +203,7 @@ export function useDeleteCollection(gameId: string | undefined) {
 }
 
 export function useCreateLayout(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (name: string) => storage.createLayout(gameId!, name),
@@ -212,7 +212,7 @@ export function useCreateLayout(gameId: string | undefined) {
 }
 
 export function useSaveLayout(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, { layoutId: string; layout: any }>({
     mutationFn: ({ layoutId, layout }) =>
@@ -228,7 +228,7 @@ export function useSaveLayout(gameId: string | undefined) {
 }
 
 export function useCopyLayout(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (layoutId: string) => storage.copyLayout(gameId!, layoutId),
@@ -237,7 +237,7 @@ export function useCopyLayout(gameId: string | undefined) {
 }
 
 export function useDeleteLayout(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (layoutId: string) => storage.deleteLayout(gameId!, layoutId),
@@ -246,7 +246,7 @@ export function useDeleteLayout(gameId: string | undefined) {
 }
 
 export function useSaveCard(gameId: string | undefined, collectionId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, { cardId: string; card: any }>({
     mutationFn: ({ cardId, card }) =>
@@ -256,7 +256,7 @@ export function useSaveCard(gameId: string | undefined, collectionId: string | u
 }
 
 export function useCopyCard(gameId: string | undefined, collectionId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (cardId: string) => storage.copyCard(gameId!, collectionId!, cardId),
@@ -265,7 +265,7 @@ export function useCopyCard(gameId: string | undefined, collectionId: string | u
 }
 
 export function useDeleteCard(gameId: string | undefined, collectionId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (cardId: string) => storage.deleteCard(gameId!, collectionId!, cardId),
@@ -274,7 +274,7 @@ export function useDeleteCard(gameId: string | undefined, collectionId: string |
 }
 
 export function useAddGoogleFont(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (fontName: string) => storage.addGoogleFont(gameId!, fontName),
@@ -283,7 +283,7 @@ export function useAddGoogleFont(gameId: string | undefined) {
 }
 
 export function useUploadFont(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, File>({
     mutationFn: (file: File) => storage.uploadFont(gameId!, file),
@@ -292,7 +292,7 @@ export function useUploadFont(gameId: string | undefined) {
 }
 
 export function useDeleteFont(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (filename: string) => storage.deleteFont(gameId!, filename),
@@ -301,7 +301,7 @@ export function useDeleteFont(gameId: string | undefined) {
 }
 
 export function useUploadImage(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<string, Error, File>({
     mutationFn: (file: File) => storage.uploadImage(gameId!, file),
@@ -310,7 +310,7 @@ export function useUploadImage(gameId: string | undefined) {
 }
 
 export function useDeleteImage(gameId: string | undefined) {
-  const storage = useStorageInstance()
+  const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (filename: string) => storage.deleteImage(gameId!, filename),
