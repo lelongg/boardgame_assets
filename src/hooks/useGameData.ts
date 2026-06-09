@@ -329,5 +329,10 @@ export function useInvalidateGame(gameId: string | undefined) {
     qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId) })
     qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId) })
     qc.invalidateQueries({ queryKey: queryKeys.images(gameId) })
+    // Prefix-match the per-id queries; these include the layout query, which
+    // has staleTime: Infinity and is otherwise never refetched.
+    qc.invalidateQueries({ queryKey: ['collection', gameId] })
+    qc.invalidateQueries({ queryKey: ['layout', gameId] })
+    qc.invalidateQueries({ queryKey: ['cards', gameId] })
   }
 }

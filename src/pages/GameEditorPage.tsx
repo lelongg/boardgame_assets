@@ -820,7 +820,7 @@ export default function GameEditorPage() {
     return false
   }, [gameId, collectionId, cards, selectedCard, savedCardJson])
 
-  const reloadCardsFromStorage = () => {
+  const reloadCardsFromStorage = async () => {
     if (!gameId || !collectionId) return
     // Remove all localStorage drafts for this collection so re-seeding uses clean storage data.
     for (const card of cards) {
@@ -831,8 +831,12 @@ export default function GameEditorPage() {
     setSavedCardJson('')
     // Allow the next query result to re-seed the cards state.
     cardsInitialized.current = false
-    // Force a fresh fetch from the storage backend.
-    queryClient.invalidateQueries({ queryKey: queryKeys.cards(gameId, collectionId) })
+    // Drop backend-internal caches (e.g. Google Drive keeps 5-min listing and
+    // content caches that would otherwise serve the refetch below stale data).
+    try { await storage?.clearCache?.() } catch (err) { console.error('Failed to clear storage cache:', err) }
+    // Force a fresh fetch of everything for this game — cards, collection,
+    // layout (staleTime: Infinity), fonts and images — from the backend.
+    invalidateGame()
     setShowReloadDialog(false)
   }
 

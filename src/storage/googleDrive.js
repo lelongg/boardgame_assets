@@ -3,7 +3,7 @@ const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
 import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
-import { putAsset, deleteAsset, listAssets } from "./assetCache.js";
+import { getAsset, putAsset, deleteAsset } from "./assetCache.js";
 
 const loadGoogleScript = () =>
   new Promise((resolve, reject) => {
@@ -202,6 +202,9 @@ export const createGoogleDriveStorage = (options = {}) => {
   const rmFile = async (fid) => {
     await drv(`${DRIVE_API}/files/${fid}`, { method: "DELETE" });
     invalidateCache(fid);
+    // Folder listings still reference the deleted file; a later list would
+    // re-read it and fail (or resurrect the item) for up to CACHE_TTL.
+    listingCache.clear();
   };
 
   const mkBinaryFile = async (name, mimeType, data, parentId, props = {}) => {
@@ -551,14 +554,84 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   // --- Images ---
 
+  // Binary (non-JSON) files in a folder, cached like the JSON listings.
+  const binaryFilesInFolder = async (fid) => {
+    const key = `binaries:${fid}`;
+    const cached = getCachedListing(key);
+    if (cached) return cached;
+    const q = `'${escQ(fid)}' in parents and trashed=false and mimeType != 'application/json' and mimeType != 'application/vnd.google-apps.folder'`;
+    const files = (await drvJson(`${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,appProperties)`)).files ?? [];
+    setCachedListing(key, files);
+    return files;
+  };
+
+  /** Download a Drive binary into the asset cache so the SW/useAssetUrl can serve it. */
+  const ensureCachedBinary = async (fid, assetPath, fallbackMime) => {
+    try {
+      if (await getAsset(assetPath)) return;
+      const r = await drv(`${DRIVE_API}/files/${fid}?alt=media`);
+      const blob = await r.blob();
+      const mime = blob.type || fallbackMime;
+      await putAsset(assetPath, blob, mime);
+    } catch { /* download failed — will retry next time */ }
+  };
+
+  const findImageFile = async (gameId, file) => {
+    const imgFolder = await imagesFolder(gameId);
+    const files = await binaryFilesInFolder(imgFolder);
+    return { folderId: imgFolder, entry: files.find(f => f.name === file) ?? null };
+  };
+
   const uploadImage = async (gameId, file) => {
     const imgFolder = await imagesFolder(gameId);
     const mimeType = file.type || "application/octet-stream";
     const arrayBuf = await file.arrayBuffer();
-    await mkBinaryFile(file.name, mimeType, arrayBuf, imgFolder, { type: "image", gameId });
+    const displayName = file.name.includes(".") ? file.name.slice(0, file.name.lastIndexOf(".")) : file.name;
+    await mkBinaryFile(file.name, mimeType, arrayBuf, imgFolder, { type: "image", gameId, displayName });
+    listingCache.delete(`binaries:${imgFolder}`);
     const urlPath = `/api/games/${gameId}/images/${file.name}`;
     await putAsset(urlPath, new Blob([arrayBuf], { type: mimeType }), mimeType);
     return urlPath;
+  };
+
+  const listImages = async (gameId) => {
+    const imgFolder = await imagesFolder(gameId);
+    const files = await binaryFilesInFolder(imgFolder);
+    const results = files.map(f => ({
+      file: f.name,
+      url: `/api/games/${gameId}/images/${f.name}`,
+      name: f.appProperties?.displayName || f.name.replace(/\.[^.]+$/, ""),
+    }));
+    // Prefetch binaries into the asset cache in the background.
+    for (const f of files) {
+      ensureCachedBinary(f.id, `/api/games/${gameId}/images/${f.name}`, "image/png");
+    }
+    return results;
+  };
+
+  const deleteImage = async (gameId, file) => {
+    const { entry } = await findImageFile(gameId, file);
+    if (entry) await rmFile(entry.id);
+    await deleteAsset(`/api/games/${gameId}/images/${file}`);
+  };
+
+  const renameImage = async (gameId, file, newName) => {
+    const { folderId, entry } = await findImageFile(gameId, file);
+    if (!entry) throw new Error("Image not found.");
+    await drv(`${DRIVE_API}/files/${entry.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ appProperties: { displayName: newName } }),
+    });
+    listingCache.delete(`binaries:${folderId}`);
+  };
+
+  /** Drop all internal caches so the next read hits Drive (used by "reload from storage"). */
+  const clearCache = () => {
+    contentCache.clear();
+    listingCache.clear();
+    fileIds.clear();
+    folderIds.clear();
   };
 
   return {
@@ -568,6 +641,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     listCollections, getCollection, createCollection, updateCollection, deleteCollection,
     listCards, getCard, saveCard, deleteCard, copyCard,
     listFonts, addGoogleFont, uploadFont, deleteFont,
-    uploadImage,
+    uploadImage, listImages, deleteImage, renameImage,
+    clearCache,
   };
 };

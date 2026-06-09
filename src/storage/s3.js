@@ -224,6 +224,8 @@ export const createS3Storage = (options = {}) => {
     },
     async signIn() {},
     async signOut() {},
+    // No internal caches — every read hits S3.
+    clearCache() {},
 
     // ── Games ──────────────────────────────────────────────────────────────
 

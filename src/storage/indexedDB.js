@@ -195,6 +195,8 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
     isAuthorized() { return true; },
     async signIn() {},
     async signOut() {},
+    // No internal caches — every read hits IndexedDB.
+    clearCache() {},
 
     // ── Games ──────────────────────────────────────────────────────────────
 

@@ -12,6 +12,8 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
     isAuthorized() { return true; },
     async signIn() {},
     async signOut() {},
+    // No internal caches — every read hits the server.
+    clearCache() {},
 
     // Games
     async listGames() {
