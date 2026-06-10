@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2, RefreshCw, FolderInput } from 'lucide-react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -35,11 +35,12 @@ import CardThumbnail from '@/components/CardThumbnail'
 import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
 import {
-  useGame, useCollection, useLayout, useFonts, useImages, useLayouts, useCards,
+  useGame, useCollection, useCollections, useLayout, useFonts, useImages, useLayouts, useCards,
   useUpdateGame, useUpdateCollection, useSaveLayout,
-  useCopyCard, useDeleteCard, useUploadImage,
+  useCopyCard, useDeleteCard, useTransferCard, useUploadImage,
   useInvalidateGame, queryKeys,
 } from '../hooks/useGameData'
+import TransferCardDialog from '@/components/TransferCardDialog'
 import FilesPanel from '@/components/FilesPanel'
 import useFontStyles from '../hooks/useFontStyles'
 import ImportPanel from '@/components/ImportPanel'
@@ -505,6 +506,7 @@ export default function GameEditorPage() {
   // ── Query hooks (data loading) ──────────────────────────────────
   const { data: gameData } = useGame(gameId)
   const { data: collection } = useCollection(gameId, collectionId)
+  const { data: allCollections = [] } = useCollections(gameId)
   const { data: gameFonts = {} } = useFonts(gameId)
   const { data: gameImages = [] } = useImages(gameId)
   const { data: allLayouts = [] } = useLayouts(gameId)
@@ -517,6 +519,7 @@ export default function GameEditorPage() {
   const saveLayoutMut = useSaveLayout(gameId)
   const copyCardMut = useCopyCard(gameId, collectionId)
   const deleteCardMut = useDeleteCard(gameId, collectionId)
+  const transferCardMut = useTransferCard(gameId)
   const uploadImageMut = useUploadImage(gameId)
   const invalidateGame = useInvalidateGame(gameId)
 
@@ -581,6 +584,7 @@ export default function GameEditorPage() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newCardName, setNewCardName] = useState('')
   const [showReloadDialog, setShowReloadDialog] = useState(false)
+  const [showTransferDialog, setShowTransferDialog] = useState(false)
   const cardEditor = useCollapsible()
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
@@ -795,6 +799,28 @@ export default function GameEditorPage() {
     }
   }
 
+  const handleTransferCard = async (targetCollectionId: string, mode: 'copy' | 'move') => {
+    if (!gameId || !collectionId || !selectedCard) return
+    const movingId = selectedCard.id
+    const idx = cards.findIndex(c => c.id === movingId)
+    try {
+      await transferCardMut.mutateAsync({ sourceCollectionId: collectionId, targetCollectionId, card: selectedCard, mode })
+      if (mode === 'move') {
+        // Drop it from this collection's local state and pick a neighbour.
+        try { localStorage.removeItem(cardDraftKey(gameId, collectionId, movingId)) } catch { /* ignore */ }
+        const remaining = cards.filter(c => c.id !== movingId)
+        setCards(remaining)
+        if (remaining.length > 0) setSelectedCardId(remaining[Math.min(idx, remaining.length - 1)].id)
+        else { setSelectedCardId(null); setCardPreview('') }
+        setStatus('Card moved.')
+      } else {
+        setStatus('Card copied.')
+      }
+    } catch {
+      setStatus(mode === 'move' ? 'Error moving card.' : 'Error copying card.')
+    }
+  }
+
   const updateCard = (fn: (card: any) => any) => {
     if (!selectedCardId) return
     setCards(prev => prev.map(c => c.id === selectedCardId ? fn(c) : c))
@@ -979,6 +1005,9 @@ export default function GameEditorPage() {
                     } catch { setStatus('Error copying card.') }
                   }}>
                     <Copy className="h-4 w-4" />
+                  </button>
+                  <button className="rounded p-1 text-muted-foreground hover:text-primary transition-colors" title="Move or copy to another collection" onClick={() => setShowTransferDialog(true)}>
+                    <FolderInput className="h-4 w-4" />
                   </button>
                   <ConfirmButton iconOnly onConfirm={handleDeleteCard} />
                 </>)}
@@ -1284,6 +1313,13 @@ export default function GameEditorPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <TransferCardDialog
+          open={showTransferDialog}
+          onOpenChange={setShowTransferDialog}
+          cardName={selectedCard?.name ?? ''}
+          targets={allCollections.filter((c: any) => c.id !== collectionId).map((c: any) => ({ id: c.id, name: c.name }))}
+          onTransfer={handleTransferCard}
+        />
     </PageLayout>
   )
 }

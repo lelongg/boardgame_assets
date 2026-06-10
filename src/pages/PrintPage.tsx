@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Download, ChevronLeft, ChevronRight, Home } from 'lucide-react'
+import { ArrowLeft, Download, ChevronLeft, ChevronRight, Home, SlidersHorizontal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
@@ -119,7 +119,10 @@ export default function PrintPage() {
   const [svgs, setSvgs] = useState<string[]>([])
   const [status, setStatus] = useState('Loading...')
   const [exporting, setExporting] = useState(false)
-  const [showOptions, setShowOptions] = useState(true)
+  // Open by default on desktop; on mobile the settings start as a closed
+  // bottom-sheet so the preview gets the whole screen.
+  const [showOptions, setShowOptions] = useState(() =>
+    typeof window === 'undefined' ? true : window.matchMedia('(min-width: 768px)').matches)
   const [currentPage, setCurrentPage] = useState(0)
   const [config, setConfig] = useState<PrintConfig>(() => {
     try {
@@ -584,11 +587,25 @@ export default function PrintPage() {
           </div>
         </div>
 
-        {/* Config panel */}
-        <div className={`border-l shrink-0 flex flex-col transition-all duration-200 ${showOptions ? 'w-64' : 'w-10'}`}>
+        {/* Mobile backdrop behind the settings sheet */}
+        {showOptions && (
+          <div className="md:hidden fixed inset-0 z-30 bg-black/40" onClick={() => setShowOptions(false)} />
+        )}
+        {/* Config panel — inline sidebar on desktop, bottom-sheet on mobile */}
+        <div className={`flex flex-col bg-card shrink-0
+          fixed inset-x-0 bottom-0 z-40 max-h-[80vh] rounded-t-2xl border-t shadow-2xl transition-transform duration-200 ${showOptions ? 'translate-y-0' : 'translate-y-full'}
+          md:static md:z-auto md:max-h-none md:rounded-none md:border-t-0 md:border-l md:shadow-none md:translate-y-0 md:transition-[width] ${showOptions ? 'md:w-64' : 'md:w-10'}`}>
+          {/* Mobile sheet header */}
+          <div className="flex items-center justify-between h-11 px-4 border-b md:hidden">
+            <span className="text-sm font-semibold">Settings</span>
+            <button onClick={() => setShowOptions(false)} aria-label="Close settings" className="rounded p-1 text-muted-foreground hover:text-foreground">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          {/* Desktop collapse toggle */}
           <button
             onClick={() => setShowOptions(!showOptions)}
-            className="flex items-center gap-1 h-8 px-2 border-b bg-card shrink-0 select-none hover:bg-accent/30 transition-colors"
+            className="hidden md:flex items-center gap-1 h-8 px-2 border-b bg-card shrink-0 select-none hover:bg-accent/30 transition-colors"
           >
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${showOptions ? '' : 'rotate-180'}`} />
             <span className={`text-sm font-semibold whitespace-nowrap ${showOptions ? '' : 'hidden'}`}>Settings</span>
@@ -725,6 +742,16 @@ export default function PrintPage() {
           </div>
         </div>
       </div>
+
+      {/* Mobile: open the settings sheet */}
+      {!showOptions && (
+        <button
+          onClick={() => setShowOptions(true)}
+          className="md:hidden fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-lg active:scale-95 transition-transform"
+        >
+          <SlidersHorizontal className="h-4 w-4" /> Options
+        </button>
+      )}
     </div>
   )
 }
