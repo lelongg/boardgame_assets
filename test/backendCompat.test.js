@@ -239,6 +239,50 @@ async function startServer() {
     writeJson(cardPath(c.req.param("gid"), c.req.param("cid"), copy.id), copy); return c.json(copy, 201);
   });
 
+  // Checkpoints
+  const chkDir = (gid, cid) => path.join(colDir(gid, cid), "checkpoints");
+  const chkPath = (gid, cid, id) => path.join(chkDir(gid, cid), `${id}.json`);
+  const listCardsFor = (gid, cid) => {
+    const dir = cardsDir(gid, cid);
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir).filter(f => f.endsWith(".json")).map(f => readJson(path.join(dir, f), null)).filter(Boolean);
+  };
+  app.get("/api/games/:gid/collections/:cid/checkpoints", (c) => {
+    const dir = chkDir(c.req.param("gid"), c.req.param("cid"));
+    if (!fs.existsSync(dir)) return c.json([]);
+    return c.json(fs.readdirSync(dir).filter(f => f.endsWith(".json"))
+      .map(f => readJson(path.join(dir, f), null)).filter(Boolean)
+      .map(cp => ({ id: cp.id, name: cp.name, createdAt: cp.createdAt }))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
+  });
+  app.post("/api/games/:gid/collections/:cid/checkpoints", async (c) => {
+    const gid = c.req.param("gid"), cid = c.req.param("cid");
+    const col = readJson(colPath(gid, cid), null);
+    if (!col) return c.json({ error: "Collection not found" }, 404);
+    const { name } = await c.req.json();
+    const id = uid();
+    const createdAt = new Date().toISOString();
+    const checkpoint = { id, name: name || "Checkpoint", createdAt, collection: { name: col.name, layoutId: col.layoutId, back: col.back, backFit: col.backFit }, cards: listCardsFor(gid, cid) };
+    writeJson(chkPath(gid, cid, id), checkpoint);
+    return c.json({ id, name: checkpoint.name, createdAt }, 201);
+  });
+  app.post("/api/games/:gid/collections/:cid/checkpoints/:chk/restore", (c) => {
+    const gid = c.req.param("gid"), cid = c.req.param("cid");
+    const checkpoint = readJson(chkPath(gid, cid, c.req.param("chk")), null);
+    if (!checkpoint) return c.json({ error: "Checkpoint not found" }, 404);
+    const cdir = cardsDir(gid, cid);
+    if (fs.existsSync(cdir)) fs.rmSync(cdir, { recursive: true, force: true });
+    fs.mkdirSync(cdir, { recursive: true });
+    for (const card of checkpoint.cards ?? []) writeJson(cardPath(gid, cid, card.id), card);
+    const col = readJson(colPath(gid, cid), {});
+    writeJson(colPath(gid, cid), { ...col, layoutId: checkpoint.collection.layoutId, back: checkpoint.collection.back, backFit: checkpoint.collection.backFit });
+    return c.body(null, 204);
+  });
+  app.delete("/api/games/:gid/collections/:cid/checkpoints/:chk", (c) => {
+    fs.rmSync(chkPath(c.req.param("gid"), c.req.param("cid"), c.req.param("chk")), { force: true });
+    return c.body(null, 204);
+  });
+
   // Fonts
   app.get("/api/games/:gid/fonts", (c) => c.json(readJson(fontsManifest(c.req.param("gid")), {})));
   app.post("/api/games/:gid/fonts/google", async (c) => {
@@ -851,4 +895,57 @@ describe("round-trip: cross-backend", () => {
     assert.equal(card.fields.emoji, "⚔️🛡️");
     assert.equal(card.fields.html, "<b>Bold</b>");
   });
+});
+
+// ── Collection checkpoints (named, restorable snapshots) ───────────────────
+
+function checkpointSuite(name, makeStorage) {
+  it(`${name}: checkpoint captures cards + layout, restore reverts later changes`, async () => {
+    const s = await makeStorage();
+    const game = await s.createGame("Checkpoint Test");
+    const colId = (await s.listCollections(game.id))[0].id;
+
+    await s.saveCard(game.id, colId, "c1", { id: "c1", name: "Alpha", fields: { hp: "1" } });
+    await s.saveCard(game.id, colId, "c2", { id: "c2", name: "Beta", fields: { hp: "2" } });
+
+    const cp = await s.createCheckpoint(game.id, colId, "v1");
+    assert.ok(cp.id, "checkpoint has an id");
+    assert.equal(cp.name, "v1");
+    assert.ok(cp.createdAt, "checkpoint has createdAt");
+
+    const list = await s.listCheckpoints(game.id, colId);
+    assert.equal(list.length, 1, "one checkpoint listed");
+    assert.equal(list[0].name, "v1");
+
+    // Mutate after the checkpoint: delete c1, edit c2, add c3.
+    await s.deleteCard(game.id, colId, "c1");
+    await s.saveCard(game.id, colId, "c2", { id: "c2", name: "Beta EDITED", fields: { hp: "99" } });
+    await s.saveCard(game.id, colId, "c3", { id: "c3", name: "Gamma", fields: {} });
+    assert.equal((await s.listCards(game.id, colId)).length, 2, "2 cards before restore");
+
+    await s.restoreCheckpoint(game.id, colId, cp.id);
+    const cards = await s.listCards(game.id, colId);
+    const byId = Object.fromEntries(cards.map((c) => [c.id, c]));
+    assert.equal(cards.length, 2, `expected 2 cards after restore, got ${cards.map((c) => c.id).join(",")}`);
+    assert.equal(byId.c1?.name, "Alpha", "deleted card restored");
+    assert.equal(byId.c2?.name, "Beta", "edited card reverted to snapshot");
+    assert.equal(byId.c2?.fields.hp, "2");
+    assert.ok(!byId.c3, "card added after checkpoint is removed by restore");
+
+    // Collection layout is part of the snapshot.
+    const l2 = await s.createLayout(game.id, "Second Layout");
+    await s.updateCollection(game.id, colId, { layoutId: l2.id });
+    assert.equal((await s.getCollection(game.id, colId)).layoutId, l2.id);
+    await s.restoreCheckpoint(game.id, colId, cp.id);
+    assert.equal((await s.getCollection(game.id, colId)).layoutId, "default", "layoutId reverted to snapshot");
+
+    await s.deleteCheckpoint(game.id, colId, cp.id);
+    assert.equal((await s.listCheckpoints(game.id, colId)).length, 0, "checkpoint deleted");
+  });
+}
+
+describe("collection checkpoints", () => {
+  checkpointSuite("localFile", async () => createLocalFileStorage({ defaultLayout }));
+  checkpointSuite("indexedDB", async () => createIndexedDBStorage({ defaultLayout }));
+  checkpointSuite("s3", async () => createTestS3());
 });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2, RefreshCw, FolderInput } from 'lucide-react'
+import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, GripVertical, RotateCcw, X, Loader2, RefreshCw, FolderInput, History } from 'lucide-react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
@@ -38,9 +38,11 @@ import {
   useGame, useCollection, useCollections, useLayout, useFonts, useImages, useLayouts, useCards,
   useUpdateGame, useUpdateCollection, useSaveLayout,
   useCopyCard, useDeleteCard, useTransferCard, useUploadImage,
+  useCheckpoints, useCreateCheckpoint, useRestoreCheckpoint, useDeleteCheckpoint,
   useInvalidateGame, queryKeys,
 } from '../hooks/useGameData'
 import TransferCardDialog from '@/components/TransferCardDialog'
+import CheckpointsDialog from '@/components/CheckpointsDialog'
 import FilesPanel from '@/components/FilesPanel'
 import useFontStyles from '../hooks/useFontStyles'
 import ImportPanel from '@/components/ImportPanel'
@@ -521,6 +523,10 @@ export default function GameEditorPage() {
   const deleteCardMut = useDeleteCard(gameId, collectionId)
   const transferCardMut = useTransferCard(gameId)
   const uploadImageMut = useUploadImage(gameId)
+  const { data: checkpoints = [], isLoading: checkpointsLoading } = useCheckpoints(gameId, collectionId)
+  const createCheckpointMut = useCreateCheckpoint(gameId, collectionId)
+  const restoreCheckpointMut = useRestoreCheckpoint(gameId, collectionId)
+  const deleteCheckpointMut = useDeleteCheckpoint(gameId, collectionId)
   const invalidateGame = useInvalidateGame(gameId)
 
   // Game with layout merged (for rendering)
@@ -585,6 +591,8 @@ export default function GameEditorPage() {
   const [newCardName, setNewCardName] = useState('')
   const [showReloadDialog, setShowReloadDialog] = useState(false)
   const [showTransferDialog, setShowTransferDialog] = useState(false)
+  const [showCheckpointsDialog, setShowCheckpointsDialog] = useState(false)
+  const [checkpointBusy, setCheckpointBusy] = useState(false)
   const cardEditor = useCollapsible()
   const lsKey = (suffix: string) => `editor:${gameId}:${collectionId}:${suffix}`
   const loadSet = (suffix: string) => { try { const v = localStorage.getItem(lsKey(suffix)); return v ? new Set<string>(JSON.parse(v)) : new Set<string>() } catch { return new Set<string>() } }
@@ -886,6 +894,56 @@ export default function GameEditorPage() {
     }
   }
 
+  // Re-seed the editor's local card state from storage (shared by reload + restore).
+  const resyncFromStorage = async () => {
+    if (!gameId || !collectionId) return
+    for (const card of cards) {
+      try { localStorage.removeItem(cardDraftKey(gameId, collectionId, card.id)) } catch { /* ignore */ }
+    }
+    setSelectedCardId(null)
+    setSavedCardJson('')
+    cardsInitialized.current = false
+    try { await storage?.clearCache?.() } catch { /* ignore */ }
+    invalidateGame()
+  }
+
+  const handleCreateCheckpoint = async (name: string) => {
+    setCheckpointBusy(true)
+    try {
+      // Persist any pending card edit first so the snapshot is current.
+      flushSave()
+      await createCheckpointMut.mutateAsync(name)
+      setStatus('Checkpoint saved.')
+    } catch (err) {
+      setError('Could not save checkpoint.', err)
+    } finally {
+      setCheckpointBusy(false)
+    }
+  }
+
+  const handleRestoreCheckpoint = async (checkpointId: string) => {
+    setCheckpointBusy(true)
+    try {
+      // Safety net: snapshot the current state before overwriting it.
+      try { await createCheckpointMut.mutateAsync(`Before restore — ${new Date().toLocaleString()}`) } catch { /* non-fatal */ }
+      await restoreCheckpointMut.mutateAsync(checkpointId)
+      await resyncFromStorage()
+      setShowCheckpointsDialog(false)
+      setStatus('Checkpoint restored.')
+    } catch (err) {
+      setError('Could not restore checkpoint.', err)
+    } finally {
+      setCheckpointBusy(false)
+    }
+  }
+
+  const handleDeleteCheckpoint = async (checkpointId: string) => {
+    setCheckpointBusy(true)
+    try { await deleteCheckpointMut.mutateAsync(checkpointId) }
+    catch (err) { setError('Could not delete checkpoint.', err) }
+    finally { setCheckpointBusy(false) }
+  }
+
   if (!game) {
     return (
       <PageLayout
@@ -960,11 +1018,14 @@ export default function GameEditorPage() {
         ))}
       </>}
       status={status}
-      storageActions={
+      storageActions={<>
+        <Button size="sm" variant="ghost" onClick={() => setShowCheckpointsDialog(true)} title="Checkpoints">
+          <History className="h-4 w-4" />
+        </Button>
         <Button size="sm" variant="ghost" onClick={handleReloadClick} title="Reload from storage">
           <RefreshCw className="h-4 w-4" />
         </Button>
-      }
+      </>}
       errorDetail={errorDetail}
       onDismissError={clearError}
     >
@@ -1319,6 +1380,16 @@ export default function GameEditorPage() {
           cardName={selectedCard?.name ?? ''}
           targets={allCollections.filter((c: any) => c.id !== collectionId).map((c: any) => ({ id: c.id, name: c.name }))}
           onTransfer={handleTransferCard}
+        />
+        <CheckpointsDialog
+          open={showCheckpointsDialog}
+          onOpenChange={setShowCheckpointsDialog}
+          checkpoints={checkpoints}
+          loading={checkpointsLoading}
+          busy={checkpointBusy}
+          onCreate={handleCreateCheckpoint}
+          onRestore={handleRestoreCheckpoint}
+          onDelete={handleDeleteCheckpoint}
         />
     </PageLayout>
   )

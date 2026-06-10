@@ -20,6 +20,7 @@ export const queryKeys = {
   cards: (gameId: string, collectionId: string) => ['cards', gameId, collectionId] as const,
   fonts: (gameId: string) => ['fonts', gameId] as const,
   images: (gameId: string) => ['images', gameId] as const,
+  checkpoints: (gameId: string, collectionId: string) => ['checkpoints', gameId, collectionId] as const,
 }
 
 // ── Query hooks ─────────────────────────────────────────────────────
@@ -294,6 +295,50 @@ export function useTransferCard(gameId: string | undefined) {
       qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, sourceCollectionId) })
       qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, targetCollectionId) })
     },
+  })
+}
+
+// ── Checkpoints ─────────────────────────────────────────────────────
+
+export function useCheckpoints(gameId: string | undefined, collectionId: string | undefined) {
+  const storage = useStorageInstance()!
+  return useQuery<{ id: string; name: string; createdAt: string }[]>({
+    queryKey: queryKeys.checkpoints(gameId!, collectionId!),
+    queryFn: () => storage.listCheckpoints(gameId!, collectionId!),
+    enabled: !!storage && !!gameId && !!collectionId,
+    staleTime: staleTime(),
+    gcTime: gcTime(),
+  })
+}
+
+export function useCreateCheckpoint(gameId: string | undefined, collectionId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, string>({
+    mutationFn: (name: string) => storage.createCheckpoint(gameId!, collectionId!, name),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.checkpoints(gameId!, collectionId!) }) },
+  })
+}
+
+export function useRestoreCheckpoint(gameId: string | undefined, collectionId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, string>({
+    mutationFn: (checkpointId: string) => storage.restoreCheckpoint(gameId!, collectionId!, checkpointId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, collectionId!) })
+      qc.invalidateQueries({ queryKey: queryKeys.collection(gameId!, collectionId!) })
+      qc.invalidateQueries({ queryKey: queryKeys.checkpoints(gameId!, collectionId!) })
+    },
+  })
+}
+
+export function useDeleteCheckpoint(gameId: string | undefined, collectionId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, string>({
+    mutationFn: (checkpointId: string) => storage.deleteCheckpoint(gameId!, collectionId!, checkpointId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.checkpoints(gameId!, collectionId!) }) },
   })
 }
 

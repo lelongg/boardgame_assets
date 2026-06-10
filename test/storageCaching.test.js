@@ -424,6 +424,36 @@ test("googleDrive: signIn without configuration throws a helpful error", async (
   await assert.rejects(() => storage.signIn(), /not configured/);
 });
 
+// ── Checkpoints ────────────────────────────────────────────────────────────
+
+test("googleDrive: checkpoint captures cards + layout and restore reverts changes", async () => {
+  createDriveMock();
+  const storage = await makeStorage();
+  const game = await storage.createGame("Checkpoint Game");
+
+  await storage.saveCard(game.id, "default", "c1", { id: "c1", name: "Alpha", fields: { hp: "1" } });
+  await storage.saveCard(game.id, "default", "c2", { id: "c2", name: "Beta", fields: { hp: "2" } });
+
+  const cp = await storage.createCheckpoint(game.id, "default", "v1");
+  assert.ok(cp.id && cp.name === "v1" && cp.createdAt);
+  assert.equal((await storage.listCheckpoints(game.id, "default")).length, 1);
+
+  await storage.deleteCard(game.id, "default", "c1");
+  await storage.saveCard(game.id, "default", "c2", { id: "c2", name: "Beta EDITED", fields: { hp: "99" } });
+  await storage.saveCard(game.id, "default", "c3", { id: "c3", name: "Gamma", fields: {} });
+
+  await storage.restoreCheckpoint(game.id, "default", cp.id);
+  const cards = await storage.listCards(game.id, "default");
+  const byId = Object.fromEntries(cards.map((c) => [c.id, c]));
+  assert.equal(cards.length, 2, `expected 2 after restore, got ${cards.map((c) => c.id).join(",")}`);
+  assert.equal(byId.c1?.name, "Alpha", "deleted card restored");
+  assert.equal(byId.c2?.fields.hp, "2", "edited card reverted");
+  assert.ok(!byId.c3, "card added after checkpoint removed");
+
+  await storage.deleteCheckpoint(game.id, "default", cp.id);
+  assert.equal((await storage.listCheckpoints(game.id, "default")).length, 0);
+});
+
 // ── clearCache exists on every backend ─────────────────────────────────────
 
 test("all backends expose clearCache for reload-from-storage", async () => {

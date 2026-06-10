@@ -26,7 +26,7 @@ const hashArrayBuffer = async (buf) => {
 // ── Database ───────────────────────────────────────────────────────────────
 
 const DB_NAME = "boardgame-assets";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -50,6 +50,9 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains("assets")) {
         db.createObjectStore("assets");
+      }
+      if (!db.objectStoreNames.contains("checkpoints")) {
+        db.createObjectStore("checkpoints");
       }
 
       // Migrate v2 "templates" → "layouts" and rename templateId in collections
@@ -509,6 +512,74 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       const db = await openDB();
       try {
         await idbDelete(db, "cards", [gameId, collectionId, cardId]);
+      } finally {
+        db.close();
+      }
+    },
+
+    // ── Checkpoints ──────────────────────────────────────────────────────────
+
+    async listCheckpoints(gameId, collectionId) {
+      const db = await openDB();
+      try {
+        const entries = await idbGetAllByPrefix(db, "checkpoints", [gameId, collectionId]);
+        return entries
+          .map((e) => ({ id: e.value.id, name: e.value.name, createdAt: e.value.createdAt }))
+          .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      } finally {
+        db.close();
+      }
+    },
+
+    async createCheckpoint(gameId, collectionId, name) {
+      const db = await openDB();
+      try {
+        const col = await idbGet(db, "collections", [gameId, collectionId]);
+        if (!col) throw new Error(`Collection not found: ${collectionId}`);
+        const cards = (await idbGetAllByPrefix(db, "cards", [gameId, collectionId])).map((e) => e.value);
+        const id = uid();
+        const createdAt = now();
+        const checkpoint = {
+          id, name, createdAt,
+          collection: { name: col.name, layoutId: col.layoutId, back: col.back, backFit: col.backFit },
+          cards,
+        };
+        await idbPut(db, "checkpoints", [gameId, collectionId, id], checkpoint);
+        return { id, name, createdAt };
+      } finally {
+        db.close();
+      }
+    },
+
+    async restoreCheckpoint(gameId, collectionId, checkpointId) {
+      const db = await openDB();
+      try {
+        const checkpoint = await idbGet(db, "checkpoints", [gameId, collectionId, checkpointId]);
+        if (!checkpoint) throw new Error(`Checkpoint not found: ${checkpointId}`);
+        // Replace the collection's current cards with the snapshot's.
+        await idbDeleteByPrefix(db, "cards", [gameId, collectionId]);
+        for (const card of checkpoint.cards ?? []) {
+          const normalized = normalizeCard(card);
+          await idbPut(db, "cards", [gameId, collectionId, normalized.id], normalized);
+        }
+        // Restore collection metadata (layout + back), keep id/name.
+        const col = (await idbGet(db, "collections", [gameId, collectionId])) ?? { id: collectionId, name: collectionId };
+        await idbPut(db, "collections", [gameId, collectionId], {
+          ...col,
+          layoutId: checkpoint.collection.layoutId,
+          back: checkpoint.collection.back,
+          backFit: checkpoint.collection.backFit,
+          updatedAt: now(),
+        });
+      } finally {
+        db.close();
+      }
+    },
+
+    async deleteCheckpoint(gameId, collectionId, checkpointId) {
+      const db = await openDB();
+      try {
+        await idbDelete(db, "checkpoints", [gameId, collectionId, checkpointId]);
       } finally {
         db.close();
       }

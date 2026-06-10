@@ -549,6 +549,70 @@ app.post("/api/games/:gameId/collections/:collectionId/cards/:cardId/copy", (req
   res.status(201).json(copy);
 });
 
+// Checkpoints (named, restorable snapshots of a collection)
+const checkpointsDir = (gameId: string, collectionId: string) => path.join(collectionDir(gameId, collectionId), "checkpoints");
+const checkpointPath = (gameId: string, collectionId: string, id: string) => path.join(checkpointsDir(gameId, collectionId), `${id}.json`);
+
+app.get("/api/games/:gameId/collections/:collectionId/checkpoints", (req, res) => {
+  const { gameId, collectionId } = req.params;
+  const dir = checkpointsDir(gameId, collectionId);
+  if (!fs.existsSync(dir)) return res.json([]);
+  const metas = fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => readJson<any>(path.join(dir, f), null))
+    .filter(Boolean)
+    .map((cp: any) => ({ id: cp.id, name: cp.name, createdAt: cp.createdAt }))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  res.json(metas);
+});
+
+app.post("/api/games/:gameId/collections/:collectionId/checkpoints", (req, res) => {
+  const { gameId, collectionId } = req.params;
+  const name = req.body?.name?.trim() || "Checkpoint";
+  const col = readJson<Collection | null>(collectionPath(gameId, collectionId), null);
+  if (!col) return res.status(404).json({ error: "Collection not found" });
+  const cards = listCollectionCards(gameId, collectionId);
+  const id = crypto.randomUUID().slice(0, 8);
+  const createdAt = new Date().toISOString();
+  const checkpoint = {
+    id, name, createdAt,
+    collection: { name: col.name, layoutId: col.layoutId, back: (col as any).back, backFit: (col as any).backFit },
+    cards,
+  };
+  writeJson(checkpointPath(gameId, collectionId, id), checkpoint);
+  res.status(201).json({ id, name, createdAt });
+});
+
+app.post("/api/games/:gameId/collections/:collectionId/checkpoints/:checkpointId/restore", (req, res) => {
+  const { gameId, collectionId, checkpointId } = req.params;
+  const checkpoint = readJson<any>(checkpointPath(gameId, collectionId, checkpointId), null);
+  if (!checkpoint) return res.status(404).json({ error: "Checkpoint not found" });
+  // Replace the collection's current cards with the snapshot's.
+  const cardsDir = collectionCardsDir(gameId, collectionId);
+  if (fs.existsSync(cardsDir)) fs.rmSync(cardsDir, { recursive: true, force: true });
+  fs.mkdirSync(cardsDir, { recursive: true });
+  for (const card of checkpoint.cards ?? []) {
+    const norm = normalizeCard(card);
+    writeJson(collectionCardPath(gameId, collectionId, norm.id), norm);
+  }
+  // Restore collection metadata (layout + back), keep id/name.
+  const col = readJson<any>(collectionPath(gameId, collectionId), {});
+  writeJson(collectionPath(gameId, collectionId), {
+    ...col,
+    layoutId: checkpoint.collection.layoutId,
+    back: checkpoint.collection.back,
+    backFit: checkpoint.collection.backFit,
+  });
+  touchGame(gameId);
+  res.status(204).end();
+});
+
+app.delete("/api/games/:gameId/collections/:collectionId/checkpoints/:checkpointId", (req, res) => {
+  const { gameId, collectionId, checkpointId } = req.params;
+  fs.rmSync(checkpointPath(gameId, collectionId, checkpointId), { force: true });
+  res.status(204).end();
+});
+
 // Render
 app.post("/api/games/:gameId/render", (req, res) => {
   const gameId = req.params.gameId;
