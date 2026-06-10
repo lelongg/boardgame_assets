@@ -693,6 +693,67 @@ export const createGoogleDriveStorage = (options = {}) => {
     folderIds.clear();
   };
 
+  // --- Checkpoints ---
+
+  const checkpointsFolder = async (gameId, colId) =>
+    ensureFolder(await collectionFolder(gameId, colId), "checkpoints", `chk:${gameId}:${colId}`);
+
+  const listCheckpoints = async (gameId, collectionId) => {
+    const folder = await checkpointsFolder(gameId, collectionId);
+    const files = await filesInFolder(folder);
+    const metas = [];
+    for (const f of files) {
+      if (!f.name.endsWith(".json")) continue;
+      const cp = await readFile(f.id);
+      if (cp?.id) {
+        metas.push({ id: cp.id, name: cp.name, createdAt: cp.createdAt });
+        fileIds.set(`chkfile:${gameId}:${collectionId}:${cp.id}`, f.id);
+      }
+    }
+    metas.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return metas;
+  };
+
+  const createCheckpoint = async (gameId, collectionId, name) => {
+    const col = await getCollection(gameId, collectionId);
+    const cards = await listCards(gameId, collectionId);
+    const id = uid();
+    const createdAt = now();
+    const checkpoint = {
+      id, name, createdAt,
+      collection: { name: col.name, layoutId: col.layoutId, back: col.back, backFit: col.backFit },
+      cards,
+    };
+    const folder = await checkpointsFolder(gameId, collectionId);
+    const fid = await mkFile(`${id}.json`, checkpoint, folder, { type: "checkpoint", gameId, collectionId });
+    fileIds.set(`chkfile:${gameId}:${collectionId}:${id}`, fid);
+    return { id, name, createdAt };
+  };
+
+  const restoreCheckpoint = async (gameId, collectionId, checkpointId) => {
+    const key = `chkfile:${gameId}:${collectionId}:${checkpointId}`;
+    const fid = fileIds.get(key) ?? await findFile(`${checkpointId}.json`, await checkpointsFolder(gameId, collectionId));
+    if (!fid) throw new Error("Checkpoint not found.");
+    const checkpoint = await readFile(fid);
+    // Replace the collection's current cards with the snapshot's.
+    const current = await listCards(gameId, collectionId);
+    for (const c of current) await deleteCard(gameId, collectionId, c.id);
+    for (const card of checkpoint.cards ?? []) await saveCard(gameId, collectionId, card.id, card);
+    // Restore collection metadata (layout + back), keep id/name.
+    await updateCollection(gameId, collectionId, {
+      layoutId: checkpoint.collection.layoutId,
+      back: checkpoint.collection.back,
+      backFit: checkpoint.collection.backFit,
+    });
+  };
+
+  const deleteCheckpoint = async (gameId, collectionId, checkpointId) => {
+    const key = `chkfile:${gameId}:${collectionId}:${checkpointId}`;
+    const fid = fileIds.get(key) ?? await findFile(`${checkpointId}.json`, await checkpointsFolder(gameId, collectionId));
+    if (fid) await rmFile(fid);
+    fileIds.delete(key);
+  };
+
   return {
     init, signIn, signOut, tryRestoreSession, isAuthorized,
     listGames, getGame, createGame, updateGame, deleteGame,
@@ -701,6 +762,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     listCards, getCard, saveCard, deleteCard, copyCard,
     listFonts, addGoogleFont, uploadFont, deleteFont,
     uploadImage, listImages, deleteImage, renameImage,
+    listCheckpoints, createCheckpoint, restoreCheckpoint, deleteCheckpoint,
     clearCache,
   };
 };

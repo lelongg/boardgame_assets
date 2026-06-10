@@ -15,6 +15,14 @@ export type CardInput = Omit<CardData, "id"> & { id?: string | null };
 
 export type FontManifest = Record<string, FontSlot>;
 
+export type CheckpointMeta = { id: string; name: string; createdAt: string };
+
+/** A named, restorable snapshot of a collection's cards + metadata. */
+export type Checkpoint = CheckpointMeta & {
+  collection: { name: string; layoutId: string; back?: string; backFit?: "cover" | "contain" | "fill" };
+  cards: CardData[];
+};
+
 /**
  * The contract every storage backend (localFile, indexedDB, s3, googleDrive)
  * implements. The implementations are plain JS — this interface is what the
@@ -73,4 +81,11 @@ export interface StorageBackend {
   listImages(gameId: string): Promise<ImageEntry[]>;
   deleteImage(gameId: string, file: string): Promise<void>;
   renameImage(gameId: string, file: string, newName: string): Promise<void>;
+
+  // Named, restorable snapshots of a collection (its cards + metadata).
+  // Each is stored as one self-contained document under the collection.
+  listCheckpoints(gameId: string, collectionId: string): Promise<CheckpointMeta[]>;
+  createCheckpoint(gameId: string, collectionId: string, name: string): Promise<CheckpointMeta>;
+  restoreCheckpoint(gameId: string, collectionId: string, checkpointId: string): Promise<void>;
+  deleteCheckpoint(gameId: string, collectionId: string, checkpointId: string): Promise<void>;
 }

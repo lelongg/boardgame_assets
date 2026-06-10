@@ -259,6 +259,33 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
         body: JSON.stringify({ newName }),
       });
       if (!response.ok) throw new Error("Failed to rename image");
+    },
+
+    // Checkpoints
+    async listCheckpoints(gameId, collectionId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/checkpoints`);
+      if (!response.ok) throw new Error("Failed to list checkpoints");
+      return await response.json();
+    },
+
+    async createCheckpoint(gameId, collectionId, name) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/checkpoints`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) throw new Error("Failed to create checkpoint");
+      return await response.json();
+    },
+
+    async restoreCheckpoint(gameId, collectionId, checkpointId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/checkpoints/${checkpointId}/restore`, { method: "POST" });
+      if (!response.ok) throw new Error("Failed to restore checkpoint");
+    },
+
+    async deleteCheckpoint(gameId, collectionId, checkpointId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/checkpoints/${checkpointId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete checkpoint");
     }
   };
 };

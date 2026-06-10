@@ -195,6 +195,12 @@ export const createS3Storage = (options = {}) => {
     `${prefix}/${gameId}/collections/${collectionId}/collection.json`;
   const cardKey = (gameId, collectionId, cardId) =>
     `${prefix}/${gameId}/collections/${collectionId}/cards/${cardId}.json`;
+  const cardsPrefix = (gameId, collectionId) =>
+    `${prefix}/${gameId}/collections/${collectionId}/cards/`;
+  const checkpointKey = (gameId, collectionId, checkpointId) =>
+    `${prefix}/${gameId}/collections/${collectionId}/checkpoints/${checkpointId}.json`;
+  const checkpointsPrefix = (gameId, collectionId) =>
+    `${prefix}/${gameId}/collections/${collectionId}/checkpoints/`;
   const fontsManifestKey = (gameId) =>
     `${prefix}/${gameId}/fonts/fonts.json`;
 
@@ -621,6 +627,67 @@ export const createS3Storage = (options = {}) => {
       try { names = await getJson(namesKey); } catch {}
       names[file] = newName;
       await putJson(namesKey, names);
+    },
+
+    // ── Checkpoints ──────────────────────────────────────────────────────────
+
+    async listCheckpoints(gameId, collectionId) {
+      const keys = await listKeys(checkpointsPrefix(gameId, collectionId));
+      const metas = [];
+      for (const key of keys) {
+        if (!key.endsWith(".json")) continue;
+        try {
+          const cp = await getJson(key);
+          metas.push({ id: cp.id, name: cp.name, createdAt: cp.createdAt });
+        } catch { /* skip corrupt */ }
+      }
+      metas.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)); // newest first
+      return metas;
+    },
+
+    async createCheckpoint(gameId, collectionId, name) {
+      const col = await getJson(collectionKey(gameId, collectionId));
+      const cardKeys = await listKeys(cardsPrefix(gameId, collectionId));
+      const cards = [];
+      for (const key of cardKeys) {
+        if (!key.endsWith(".json")) continue;
+        try { cards.push(normalizeCard(await getJson(key))); } catch { /* skip */ }
+      }
+      const id = uid();
+      const createdAt = now();
+      const checkpoint = {
+        id, name, createdAt,
+        collection: { name: col.name, layoutId: col.layoutId, back: col.back, backFit: col.backFit },
+        cards,
+      };
+      await putJson(checkpointKey(gameId, collectionId, id), checkpoint);
+      return { id, name, createdAt };
+    },
+
+    async restoreCheckpoint(gameId, collectionId, checkpointId) {
+      const checkpoint = await getJson(checkpointKey(gameId, collectionId, checkpointId));
+      // Replace the collection's current cards with the snapshot's.
+      const currentKeys = await listKeys(cardsPrefix(gameId, collectionId));
+      for (const key of currentKeys) {
+        if (key.endsWith(".json")) await deleteObject(key);
+      }
+      for (const card of checkpoint.cards ?? []) {
+        const normalized = normalizeCard(card);
+        await putJson(cardKey(gameId, collectionId, normalized.id), normalized);
+      }
+      // Restore collection metadata (layout + back), keep id/name.
+      const col = await getJson(collectionKey(gameId, collectionId));
+      await putJson(collectionKey(gameId, collectionId), {
+        ...col,
+        layoutId: checkpoint.collection.layoutId,
+        back: checkpoint.collection.back,
+        backFit: checkpoint.collection.backFit,
+        updatedAt: now(),
+      });
+    },
+
+    async deleteCheckpoint(gameId, collectionId, checkpointId) {
+      await deleteObject(checkpointKey(gameId, collectionId, checkpointId));
     },
   };
 };
