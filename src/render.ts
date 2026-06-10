@@ -39,6 +39,13 @@ type RenderOptions = {
 
 
 
+/** 0-preserving numeric coercion: "" / null / undefined / NaN → default, 0 stays 0. */
+const num = (value: unknown, defaultValue: number): number => {
+  if (value === null || value === undefined || value === "") return defaultValue;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : defaultValue;
+};
+
 const escape = (value: unknown): string =>
   String(value)
     .replaceAll("&", "&amp;")
@@ -446,10 +453,11 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       if (itemType === "frame") {
         // Render frame item - type guard
         if (item.type !== "frame") return "";
-        const strokeWidth = item.strokeWidth ?? 2;
-        const strokeColor = escape(item.strokeColor ?? palette.ink);
-        const fillColor = escape(item.fillColor ?? "none");
-        const cornerRadius = item.cornerRadius ?? 0;
+        // Resolve bindings like the server renderer (src/render/cardSvg.ts) does.
+        const strokeWidth = num(resolve(item, "strokeWidth", card, layoutMm), 2);
+        const strokeColor = escape(String(resolve(item, "strokeColor", card, layoutMm) ?? palette.ink));
+        const fillColor = escape(String(resolve(item, "fillColor", card, layoutMm) ?? "none"));
+        const cornerRadius = num(resolve(item, "cornerRadius", card, layoutMm), 0);
         return wrapRotation(`<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="${cornerRadius}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`);
       }
 
@@ -458,8 +466,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
         if (item.type !== "image") return "";
         const value = String(resolve(item, "defaultValue", card, layoutMm) ?? "");
         if (!value) return "";
-        const cornerRadius = item.cornerRadius ?? 0;
-        const fit = item.fit ?? "cover";
+        const cornerRadius = num(resolve(item, "cornerRadius", card, layoutMm), 0);
+        const fit = String(resolve(item, "fit", card, layoutMm) ?? "cover");
 
         const clipId = `clip-${String(item.id).replace(/[^a-zA-Z0-9-_]/g, '')}`;
         const clipPath = cornerRadius > 0
@@ -474,7 +482,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       if (itemType === "emoji") {
         if (item.type !== "emoji") return "";
         const emoji = String(resolve(item, "emoji", card, layoutMm) ?? "⭐");
-        const fontSize = item.fontSize ?? 32;
+        const fontSize = num(resolve(item, "fontSize", card, layoutMm), 32);
         const textX = rect.x + rect.width / 2;
         const textY = rect.y + rect.height / 2;
         return wrapRotation(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
@@ -506,7 +514,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
           if (tType === "text" || tType === "numbers") {
             const v = String(resolve(t, "defaultValue", card, layoutMm) ?? "");
             if (!v) return;
-            const fs = Number(resolve(t, "fontSize", card, layoutMm)) || 20;
+            const fs = Number(resolve(t, "fontSize", card, layoutMm)) || 16;
             const al = String(resolve(t, "align", card, layoutMm) ?? "center");
             const va = String(resolve(t, "verticalAlign", card, layoutMm) ?? "middle");
             const co = escape(String(resolve(t, "color", card, layoutMm) ?? palette.ink));
@@ -519,13 +527,13 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
             parts.push(`<text x="${tx2}" y="${ty2}" text-anchor="${textAnchorFor(al)}" dominant-baseline="${baselineFor(va)}" font-family="${ff}" font-size="${fs}" fill="${co}"${tabAttr}>${escape(v)}</text>`);
           } else if (tType === "emoji") {
             const em = String(resolve(t, "emoji", card, layoutMm) ?? "⭐");
-            const fs = (t as any).fontSize ?? 32;
+            const fs = num(resolve(t, "fontSize", card, layoutMm), 32);
             parts.push(`<text x="${tRect.x + tRect.width / 2}" y="${tRect.y + tRect.height / 2}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" fill="#000000">${escape(em)}</text>`);
           } else if (tType === "frame") {
-            const sw = (t as any).strokeWidth ?? 2;
-            const sc = escape((t as any).strokeColor ?? palette.ink);
-            const fc = escape((t as any).fillColor ?? "none");
-            const cr = (t as any).cornerRadius ?? 0;
+            const sw = num(resolve(t, "strokeWidth", card, layoutMm), 2);
+            const sc = escape(String(resolve(t, "strokeColor", card, layoutMm) ?? palette.ink));
+            const fc = escape(String(resolve(t, "fillColor", card, layoutMm) ?? "none"));
+            const cr = num(resolve(t, "cornerRadius", card, layoutMm), 0);
             parts.push(`<rect x="${tRect.x}" y="${tRect.y}" width="${tRect.width}" height="${tRect.height}" rx="${cr}" fill="${fc}" stroke="${sc}" stroke-width="${sw}" />`);
           }
         });
@@ -542,7 +550,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       const slotName = fontKey && options.fonts?.[fontKey] ? fontKey : fontSlots[0];
       const fontSlot = options.fonts?.[slotName];
       const fontFamily = fontSlot ? `'${fontSlot.name}'` : "'sans-serif'";
-      const fontSize = Number(resolve(item, "fontSize", card, layoutMm)) || 20;
+      const fontSize = Number(resolve(item, "fontSize", card, layoutMm)) || 16;
       const align = String(resolve(item, "align", card, layoutMm) ?? "center");
       const vAlign = String(resolve(item, "verticalAlign", card, layoutMm) ?? "middle");
       const color = escape(String(resolve(item, "color", card, layoutMm) ?? palette.ink));
@@ -714,7 +722,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
         if (tType === "text" || tType === "numbers") {
           const v = String(resolve(t, "defaultValue", emptyCard, layoutMm) ?? "");
           if (!v) return;
-          const fs = Number(resolve(t, "fontSize", emptyCard, layoutMm)) || 20;
+          const fs = Number(resolve(t, "fontSize", emptyCard, layoutMm)) || 16;
           const al = String(resolve(t, "align", emptyCard, layoutMm) ?? "center");
           const va = String(resolve(t, "verticalAlign", emptyCard, layoutMm) ?? "middle");
           const co = escape(String(resolve(t, "color", emptyCard, layoutMm) ?? palette.ink));

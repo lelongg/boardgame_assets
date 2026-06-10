@@ -2,7 +2,8 @@ import type { CardData } from "./types";
 
 /** Escape a value for CSV (RFC 4180) */
 function escapeCsv(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+  // \r must be quoted too: the parser treats a bare CR as a row terminator.
+  if (value.includes(",") || value.includes('"') || value.includes("\n") || value.includes("\r")) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;

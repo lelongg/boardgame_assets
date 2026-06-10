@@ -100,6 +100,14 @@ const createDriveMock = () => {
     const method = options.method ?? "GET";
     const notFound = { ok: false, status: 404, text: async () => "Not found" };
 
+    // Google Fonts endpoints used by addGoogleFont
+    if (String(url).startsWith("https://fonts.googleapis.com/css2")) {
+      return { ok: true, text: async () => "src: url(https://fonts.gstatic.com/fake.woff2) format('woff2')" };
+    }
+    if (String(url).startsWith("https://fonts.gstatic.com/")) {
+      return { ok: true, arrayBuffer: async () => new TextEncoder().encode("WOFF2DATA").buffer };
+    }
+
     // Create folder (or metadata-only file)
     if (url.includes("/drive/v3/files?fields=id") && method === "POST") {
       const meta = JSON.parse(options.body);
@@ -167,7 +175,7 @@ const createDriveMock = () => {
     return notFound;
   };
 
-  return { files };
+  return { files, mockLocalStorage };
 };
 
 const defaultLayout = () => ({
@@ -217,11 +225,11 @@ test("googleDrive: deleted layout disappears from listLayouts immediately", asyn
   const storage = await makeStorage();
   const game = await storage.createGame("Cache Game");
 
-  await storage.createLayout(game.id, "Extra Layout");
+  const extra = await storage.createLayout(game.id, "Extra Layout");
   let layouts = await storage.listLayouts(game.id);
   assert.equal(layouts.length, 2);
 
-  await storage.deleteLayout(game.id, "extra-layout");
+  await storage.deleteLayout(game.id, extra.id);
   layouts = await storage.listLayouts(game.id);
   assert.deepEqual(layouts.map((l) => l.id), ["default"]);
 });
@@ -231,11 +239,11 @@ test("googleDrive: deleted collection disappears from listCollections immediatel
   const storage = await makeStorage();
   const game = await storage.createGame("Cache Game");
 
-  await storage.createCollection(game.id, "Extras", "default");
+  const extras = await storage.createCollection(game.id, "Extras", "default");
   let cols = await storage.listCollections(game.id);
-  assert.deepEqual(cols.map((c) => c.id).sort(), ["default", "extras"]);
+  assert.deepEqual(cols.map((c) => c.id).sort(), ["default", extras.id].sort());
 
-  await storage.deleteCollection(game.id, "extras");
+  await storage.deleteCollection(game.id, extras.id);
   cols = await storage.listCollections(game.id);
   assert.deepEqual(cols.map((c) => c.id), ["default"]);
 });
@@ -309,6 +317,111 @@ test("googleDrive: clearCache drops stale content so reload sees remote edits", 
 
   deviceA.clearCache();
   assert.equal((await deviceA.getCard(game.id, "default", "c1")).name, "New");
+});
+
+// ── Backend consistency (parity with indexedDB/S3/localFile) ───────────────
+
+test("googleDrive: same-named collections get distinct ids and card sets", async () => {
+  createDriveMock();
+  const storage = await makeStorage();
+  const game = await storage.createGame("Dup Game");
+
+  const a = await storage.createCollection(game.id, "Heroes", "default");
+  const b = await storage.createCollection(game.id, "Heroes", "default");
+  assert.notEqual(a.id, b.id, "duplicate names must not collide");
+
+  await storage.saveCard(game.id, a.id, "card-a", { id: "card-a", name: "A", fields: {} });
+  await storage.saveCard(game.id, b.id, "card-b", { id: "card-b", name: "B", fields: {} });
+  assert.deepEqual((await storage.listCards(game.id, a.id)).map(c => c.id), ["card-a"], "cards must not merge");
+  assert.deepEqual((await storage.listCards(game.id, b.id)).map(c => c.id), ["card-b"]);
+
+  const layoutA = await storage.createLayout(game.id, "Fancy");
+  const layoutB = await storage.createLayout(game.id, "Fancy");
+  assert.notEqual(layoutA.id, layoutB.id, "duplicate layout names must not collide");
+});
+
+test("googleDrive: deleteCard works with a cold id cache", async () => {
+  const { files } = createDriveMock();
+  const deviceA = await makeStorage();
+  const game = await deviceA.createGame("Cold Game");
+  await deviceA.saveCard(game.id, "default", "c1", { id: "c1", name: "C", fields: {} });
+
+  // Fresh instance: no fileIds warmed by a prior list.
+  const deviceB = await makeStorage();
+  await deviceB.deleteCard(game.id, "default", "c1");
+  const remaining = [...files.values()].filter(f => f.name === "c1.json");
+  assert.equal(remaining.length, 0, "delete must resolve the file id via Drive, not silently no-op");
+});
+
+test("googleDrive: deleteLayout refuses when a collection uses it", async () => {
+  createDriveMock();
+  const storage = await makeStorage();
+  const game = await storage.createGame("Guard Game");
+
+  await assert.rejects(
+    () => storage.deleteLayout(game.id, "default"),
+    /in use/,
+    "deleting the default collection's layout must fail like on localFile/indexedDB"
+  );
+
+  const extra = await storage.createLayout(game.id, "Unused");
+  await storage.deleteLayout(game.id, extra.id);
+  assert.deepEqual((await storage.listLayouts(game.id)).map(l => l.id), ["default"]);
+});
+
+test("googleDrive: addGoogleFont downloads the binary; deleteFont removes it", async () => {
+  const { files } = createDriveMock();
+  const storage = await makeStorage();
+  const game = await storage.createGame("Font Game");
+
+  const { fonts } = await storage.addGoogleFont(game.id, "Space Grotesk");
+  const entry = Object.values(fonts).find(f => f.name === "Space Grotesk");
+  assert.ok(entry?.file, "manifest entry must reference a real file (was file:'' — font never rendered)");
+  assert.ok([...files.values()].some(f => f.name === entry.file), "woff2 binary must be uploaded to Drive");
+
+  await storage.deleteFont(game.id, entry.file);
+  assert.ok(![...files.values()].some(f => f.name === entry.file), "binary must be deleted from Drive, not leaked");
+});
+
+// ── Auth/session lifecycle (ported from the legacy src/web tests) ──────────
+
+const TOKEN_KEY = "boardgame_assets_google_token";
+
+test("googleDrive: signIn persists the token; signOut revokes and clears it", async () => {
+  const { mockLocalStorage } = createDriveMock();
+  const storage = await makeStorage();
+
+  assert.ok(storage.isAuthorized(), "authorized after signIn");
+  const stored = JSON.parse(mockLocalStorage.get(TOKEN_KEY));
+  assert.equal(stored.accessToken, "mock_access_token");
+  assert.ok(stored.tokenExpiry > Date.now(), "expiry must be in the future");
+
+  await storage.signOut();
+  assert.ok(!storage.isAuthorized(), "not authorized after signOut");
+  assert.ok(!mockLocalStorage.has(TOKEN_KEY), "token removed from localStorage");
+});
+
+test("googleDrive: tryRestoreSession honors a valid stored token, rejects an expired one", async () => {
+  const { mockLocalStorage } = createDriveMock();
+  const { createGoogleDriveStorage } = await import("../src/storage/googleDrive.js");
+
+  mockLocalStorage.set(TOKEN_KEY, JSON.stringify({ accessToken: "tok", tokenExpiry: Date.now() + 3600_000 }));
+  const fresh = createGoogleDriveStorage({ clientId: "test-client-id.apps.googleusercontent.com", defaultLayout });
+  assert.equal(await fresh.tryRestoreSession(), true);
+  assert.ok(fresh.isAuthorized());
+
+  mockLocalStorage.set(TOKEN_KEY, JSON.stringify({ accessToken: "tok", tokenExpiry: Date.now() - 3600_000 }));
+  const expired = createGoogleDriveStorage({ clientId: "test-client-id.apps.googleusercontent.com", defaultLayout });
+  assert.equal(await expired.tryRestoreSession(), false, "expired token must not restore (no silent refresh)");
+  assert.ok(!expired.isAuthorized());
+});
+
+test("googleDrive: signIn without configuration throws a helpful error", async () => {
+  createDriveMock();
+  const { createGoogleDriveStorage } = await import("../src/storage/googleDrive.js");
+  const storage = createGoogleDriveStorage({ clientId: "", defaultLayout });
+  await storage.init();
+  await assert.rejects(() => storage.signIn(), /not configured/);
 });
 
 // ── clearCache exists on every backend ─────────────────────────────────────

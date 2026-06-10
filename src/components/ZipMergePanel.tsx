@@ -148,7 +148,7 @@ export default function ZipMergePanel({ gameId, layouts, collections, gameFonts,
   }
 
   const handleMerge = async () => {
-    if (!zipData || !diff) return
+    if (!zipData || !diff || !storage) return
     setImporting(true)
     try {
       let count = 0

@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, createContext, useContext, type ReactNode } from 'react'
-import { createStorage } from '../storage'
+import { createStorage, type StorageBackend } from '../storage'
 
 // ── Shared storage singleton ────────────────────────────────────────
 // Resolved once, shared across all hooks via module scope.
 // This avoids re-initializing per hook instance.
-let resolvedStorage: any = null
-let storagePromise: Promise<any> | null = null
+let resolvedStorage: StorageBackend | null = null
+let storagePromise: Promise<StorageBackend> | null = null
 
 function getStoragePromise() {
   if (!storagePromise) {
@@ -13,20 +13,24 @@ function getStoragePromise() {
       resolvedStorage = s
       return s
     })
+    // Allow a later mount to retry instead of caching the failure forever.
+    storagePromise.catch(() => { storagePromise = null })
   }
   return storagePromise
 }
 
 // ── Context for per-page status/error ───────────────────────────────
-const StorageInstanceContext = createContext<any>(null)
+const StorageInstanceContext = createContext<StorageBackend | null>(null)
 
 export function StorageProvider({ children }: { children: ReactNode }) {
-  const [storage, setStorage] = useState<any>(resolvedStorage)
+  const [storage, setStorage] = useState<StorageBackend | null>(resolvedStorage)
 
   useEffect(() => {
     if (resolvedStorage) { setStorage(resolvedStorage); return }
     let cancelled = false
-    getStoragePromise().then(s => { if (!cancelled) setStorage(s) })
+    getStoragePromise()
+      .then(s => { if (!cancelled) setStorage(s) })
+      .catch(err => { console.error('Storage initialization failed:', err) })
     return () => { cancelled = true }
   }, [])
 
@@ -38,7 +42,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
 }
 
 /** Returns the shared storage instance (null while initializing). */
-export function useStorageInstance() {
+export function useStorageInstance(): StorageBackend | null {
   return useContext(StorageInstanceContext)
 }
 
