@@ -499,7 +499,7 @@ export default function GameEditorPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get('tab') || 'cards'
-  const { storage, status, setStatus, errorDetail, clearError } = useStorage()
+  const { storage, status, setStatus, setError, errorDetail, clearError } = useStorage()
   const queryClient = useQueryClient()
 
   // ── Query hooks (data loading) ──────────────────────────────────
@@ -595,10 +595,12 @@ export default function GameEditorPage() {
   const saveLayoutMutRef = useRef(saveLayoutMut)
   const cardSaveQueuesRef = useRef(new Map<string, ReturnType<typeof createLatestSaveQueue<any>>>())
   const layoutSaveQueuesRef = useRef(new Map<string, ReturnType<typeof createLatestSaveQueue<any>>>())
+  const gameRef = useRef(game)
   selectedCardRef.current = selectedCard
   savedCardJsonRef.current = savedCardJson
   storageRef.current = storage
   saveLayoutMutRef.current = saveLayoutMut
+  gameRef.current = game
 
   const enqueueCardSave = useCallback((card: any) => {
     if (!gameId || !collectionId) return Promise.reject(new Error('Missing game or collection.'))
@@ -804,11 +806,21 @@ export default function GameEditorPage() {
   // (300–600ms after the last edit) during which the user navigating away
   // would silently drop the change. Persisting synchronously also means that
   // the unmount safety-net flushes are no longer required for layout edits.
-  const handleLayoutSave = (updatedLayout: any) => {
-    if (!gameId || !game) return
+  // Stable identity: LayoutEditorPanel flushes pending edits in a cleanup keyed
+  // on onSave, so a fresh function each render would fire spurious duplicate
+  // saves — which on slow backends (S3/R2) can interleave and let a stale write
+  // overwrite a newer one. Keeping it stable means one save per edit.
+  const handleLayoutSave = useCallback((updatedLayout: any) => {
+    if (!gameId || !gameRef.current) return
     queryClient.setQueryData(queryKeys.layout(gameId, updatedLayout.id), updatedLayout)
-    enqueueLayoutSave(updatedLayout).catch(() => setStatus('Error saving layout.'))
-  }
+    enqueueLayoutSave(updatedLayout).catch((err: unknown) => {
+      // The optimistic setQueryData above made the edit look applied. The save
+      // failed, so revert the cache to whatever storage actually holds (instead
+      // of silently lying until the next reload) and surface the real reason.
+      queryClient.invalidateQueries({ queryKey: queryKeys.layout(gameId, updatedLayout.id) })
+      setError('Layout not saved — your change was reverted.', err)
+    })
+  }, [gameId, queryClient, enqueueLayoutSave, setError])
 
   /** True when there are unsaved local card edits (localStorage drafts or current card pending write). */
   const hasLocalCardChanges = useMemo(() => {
