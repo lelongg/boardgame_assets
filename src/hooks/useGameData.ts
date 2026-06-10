@@ -273,6 +273,30 @@ export function useDeleteCard(gameId: string | undefined, collectionId: string |
   })
 }
 
+/**
+ * Copy or move a card to another collection. Composed from saveCard/deleteCard
+ * so no backend changes are needed; both collections' card lists are invalidated.
+ * Copy generates a fresh id (so duplicating twice never clobbers); move keeps the
+ * id and is best-effort atomic — if the source delete fails after the write, the
+ * card exists in both collections (recoverable, never lost).
+ */
+export function useTransferCard(gameId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, { sourceCollectionId: string; targetCollectionId: string; card: any; mode: 'copy' | 'move' }>({
+    mutationFn: async ({ sourceCollectionId, targetCollectionId, card, mode }) => {
+      const targetId = mode === 'move' ? card.id : null
+      const saved = await storage.saveCard(gameId!, targetCollectionId, targetId, { ...card, id: targetId ?? undefined })
+      if (mode === 'move') await storage.deleteCard(gameId!, sourceCollectionId, card.id)
+      return saved
+    },
+    onSuccess: (_data, { sourceCollectionId, targetCollectionId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, sourceCollectionId) })
+      qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, targetCollectionId) })
+    },
+  })
+}
+
 export function useAddGoogleFont(gameId: string | undefined) {
   const storage = useStorageInstance()!
   const qc = useQueryClient()
