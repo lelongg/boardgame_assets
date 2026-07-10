@@ -22,6 +22,7 @@ export const queryKeys = {
   images: (gameId: string) => ['images', gameId] as const,
   checkpoints: (gameId: string, collectionId: string) => ['checkpoints', gameId, collectionId] as const,
   checkpoint: (gameId: string, collectionId: string, checkpointId: string) => ['checkpoint', gameId, collectionId, checkpointId] as const,
+  layoutCheckpoints: (gameId: string, layoutId: string) => ['layoutCheckpoints', gameId, layoutId] as const,
 }
 
 // ── Query hooks ─────────────────────────────────────────────────────
@@ -372,6 +373,52 @@ export function useDeleteCheckpoint(gameId: string | undefined, collectionId: st
   return useMutation<any, Error, string>({
     mutationFn: (checkpointId: string) => storage.deleteCheckpoint(gameId!, collectionId!, checkpointId),
     onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.checkpoints(gameId!, collectionId!) }) },
+  })
+}
+
+// ── Layout checkpoints ──────────────────────────────────────────────
+
+export function useLayoutCheckpoints(gameId: string | undefined, layoutId: string | undefined) {
+  const storage = useStorageInstance()!
+  return useQuery<{ id: string; name: string; createdAt: string }[]>({
+    queryKey: queryKeys.layoutCheckpoints(gameId!, layoutId!),
+    queryFn: () => storage.listLayoutCheckpoints(gameId!, layoutId!),
+    enabled: !!storage && !!gameId && !!layoutId,
+    staleTime: staleTime(),
+    gcTime: gcTime(),
+  })
+}
+
+export function useCreateLayoutCheckpoint(gameId: string | undefined, layoutId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, string>({
+    mutationFn: (name: string) => storage.createLayoutCheckpoint(gameId!, layoutId!, name),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.layoutCheckpoints(gameId!, layoutId!) }) },
+  })
+}
+
+export function useRestoreLayoutCheckpoint(gameId: string | undefined, layoutId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, string>({
+    mutationFn: (checkpointId: string) => storage.restoreLayoutCheckpoint(gameId!, layoutId!, checkpointId),
+    onSuccess: () => {
+      // The per-id layout query has staleTime: Infinity, so an explicit
+      // invalidation is the only way it ever refetches.
+      qc.invalidateQueries({ queryKey: queryKeys.layout(gameId!, layoutId!) })
+      qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId!) })
+      qc.invalidateQueries({ queryKey: queryKeys.layoutCheckpoints(gameId!, layoutId!) })
+    },
+  })
+}
+
+export function useDeleteLayoutCheckpoint(gameId: string | undefined, layoutId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, string>({
+    mutationFn: (checkpointId: string) => storage.deleteLayoutCheckpoint(gameId!, layoutId!, checkpointId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.layoutCheckpoints(gameId!, layoutId!) }) },
   })
 }
 

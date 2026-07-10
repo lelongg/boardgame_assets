@@ -23,6 +23,11 @@ export type Checkpoint = CheckpointMeta & {
   cards: CardData[];
 };
 
+/** A named, restorable snapshot of a layout. */
+export type LayoutCheckpoint = CheckpointMeta & {
+  layout: CardLayout;
+};
+
 /**
  * The contract every storage backend (localFile, indexedDB, s3, googleDrive)
  * implements. The implementations are plain JS — this interface is what the
@@ -92,4 +97,12 @@ export interface StorageBackend {
   createCheckpoint(gameId: string, collectionId: string, name: string): Promise<CheckpointMeta>;
   restoreCheckpoint(gameId: string, collectionId: string, checkpointId: string): Promise<void>;
   deleteCheckpoint(gameId: string, collectionId: string, checkpointId: string): Promise<void>;
+
+  // Named, restorable snapshots of a layout. Restore replaces the layout's
+  // content with the snapshot but keeps the current id and name (mirroring
+  // how collection restore keeps the collection's id/name).
+  listLayoutCheckpoints(gameId: string, layoutId: string): Promise<CheckpointMeta[]>;
+  createLayoutCheckpoint(gameId: string, layoutId: string, name: string): Promise<CheckpointMeta>;
+  restoreLayoutCheckpoint(gameId: string, layoutId: string, checkpointId: string): Promise<void>;
+  deleteLayoutCheckpoint(gameId: string, layoutId: string, checkpointId: string): Promise<void>;
 }

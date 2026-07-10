@@ -4,8 +4,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, Pencil, Copy, Plus, Check, Layers, Loader2, ImageOff } from 'lucide-react'
+import { ArrowLeft, Pencil, Copy, Plus, Check, History, Layers, Loader2, ImageOff } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
+import CheckpointsDialog from '@/components/CheckpointsDialog'
 import ListItem from '@/components/ListItem'
 import { ValueItemEditor } from '@/components/layout/ControlPanel'
 import LayoutEditorPanel from '@/components/layout/LayoutEditorPanel'
@@ -23,6 +24,8 @@ import {
   useCreateLayout, useSaveLayout, useCopyLayout, useDeleteLayout,
   useSaveCard, useCopyCard, useDeleteCard,
   useUpdateGame, useUploadImage, useDeleteImage, useRenameImage,
+  useCheckpoints, useCreateCheckpoint, useRestoreCheckpoint, useDeleteCheckpoint,
+  useLayoutCheckpoints, useCreateLayoutCheckpoint, useRestoreLayoutCheckpoint, useDeleteLayoutCheckpoint,
   useInvalidateGame, queryKeys,
 } from '../hooks/useGameData'
 import FilesPanel from '@/components/FilesPanel'
@@ -159,6 +162,9 @@ export default function CollectionsPage() {
   const [newLayoutName, setNewLayoutName] = useState('')
   const [showCreateCollCard, setShowCreateCollCard] = useState(false)
   const [newCollCardName, setNewCollCardName] = useState('')
+  const [showCollectionVersions, setShowCollectionVersions] = useState(false)
+  const [showLayoutVersions, setShowLayoutVersions] = useState(false)
+  const [versionsBusy, setVersionsBusy] = useState(false)
 
   const [editingImage, setEditingImage] = useState(false)
 
@@ -178,6 +184,16 @@ export default function CollectionsPage() {
   const deleteImageMut = useDeleteImage(gameId)
   const renameImageMut = useRenameImage(gameId)
   const invalidateGame = useInvalidateGame(gameId)
+
+  // Versions (checkpoints) of the selected collection / layout
+  const { data: collectionCheckpoints = [], isLoading: collectionCheckpointsLoading } = useCheckpoints(gameId, expandedCollection ?? undefined)
+  const createCheckpointMut = useCreateCheckpoint(gameId, expandedCollection ?? undefined)
+  const restoreCheckpointMut = useRestoreCheckpoint(gameId, expandedCollection ?? undefined)
+  const deleteCheckpointMut = useDeleteCheckpoint(gameId, expandedCollection ?? undefined)
+  const { data: layoutCheckpoints = [], isLoading: layoutCheckpointsLoading } = useLayoutCheckpoints(gameId, selectedLayoutId ?? undefined)
+  const createLayoutCheckpointMut = useCreateLayoutCheckpoint(gameId, selectedLayoutId ?? undefined)
+  const restoreLayoutCheckpointMut = useRestoreLayoutCheckpoint(gameId, selectedLayoutId ?? undefined)
+  const deleteLayoutCheckpointMut = useDeleteLayoutCheckpoint(gameId, selectedLayoutId ?? undefined)
 
   const [layoutPreviewCards, setLayoutPreviewCards] = useState<any[]>([])
 
@@ -337,6 +353,64 @@ export default function CollectionsPage() {
     }
   }
 
+  // --- Version (checkpoint) handlers ---
+
+  const handleCreateCollectionVersion = async (name: string) => {
+    setVersionsBusy(true)
+    try {
+      await createCheckpointMut.mutateAsync(name)
+      setStatus('Version saved.')
+    } catch { setStatus('Error saving version.') }
+    finally { setVersionsBusy(false) }
+  }
+
+  const handleRestoreCollectionVersion = async (checkpointId: string) => {
+    setVersionsBusy(true)
+    try {
+      // Safety net: snapshot the current state before overwriting it.
+      try { await createCheckpointMut.mutateAsync(`Before restore — ${new Date().toLocaleString()}`) } catch { /* non-fatal */ }
+      await restoreCheckpointMut.mutateAsync(checkpointId)
+      setShowCollectionVersions(false)
+      setStatus('Version restored.')
+    } catch { setStatus('Error restoring version.') }
+    finally { setVersionsBusy(false) }
+  }
+
+  const handleDeleteCollectionVersion = async (checkpointId: string) => {
+    setVersionsBusy(true)
+    try { await deleteCheckpointMut.mutateAsync(checkpointId) }
+    catch { setStatus('Error deleting version.') }
+    finally { setVersionsBusy(false) }
+  }
+
+  const handleCreateLayoutVersion = async (name: string) => {
+    setVersionsBusy(true)
+    try {
+      await createLayoutCheckpointMut.mutateAsync(name)
+      setStatus('Layout version saved.')
+    } catch { setStatus('Error saving layout version.') }
+    finally { setVersionsBusy(false) }
+  }
+
+  const handleRestoreLayoutVersion = async (checkpointId: string) => {
+    setVersionsBusy(true)
+    try {
+      // Safety net: snapshot the current state before overwriting it.
+      try { await createLayoutCheckpointMut.mutateAsync(`Before restore — ${new Date().toLocaleString()}`) } catch { /* non-fatal */ }
+      await restoreLayoutCheckpointMut.mutateAsync(checkpointId)
+      setShowLayoutVersions(false)
+      setStatus('Layout version restored.')
+    } catch { setStatus('Error restoring layout version.') }
+    finally { setVersionsBusy(false) }
+  }
+
+  const handleDeleteLayoutVersion = async (checkpointId: string) => {
+    setVersionsBusy(true)
+    try { await deleteLayoutCheckpointMut.mutateAsync(checkpointId) }
+    catch { setStatus('Error deleting layout version.') }
+    finally { setVersionsBusy(false) }
+  }
+
 
   if (!game) {
     return (
@@ -447,6 +521,9 @@ export default function CollectionsPage() {
                     setSearchParams({ tab: 'layouts' }, { replace: true })
                   }} title="Edit layout">
                     <Layers className="h-4 w-4" />
+                  </button>
+                  <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" onClick={() => setShowCollectionVersions(true)} title="Versions">
+                    <History className="h-4 w-4" />
                   </button>
                   <ConfirmButton iconOnly onConfirm={async () => {
                     try {
@@ -638,6 +715,9 @@ export default function CollectionsPage() {
                       } catch { setStatus('Error copying layout.') }
                     }}>
                       <Copy className="h-4 w-4" />
+                    </button>
+                    <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" onClick={() => setShowLayoutVersions(true)} title="Versions">
+                      <History className="h-4 w-4" />
                     </button>
                     <ConfirmButton iconOnly onConfirm={async () => {
                       try {
@@ -877,6 +957,27 @@ export default function CollectionsPage() {
             <GameFilesPanel gameId={gameId!} game={game} layouts={layouts} collections={collections} gameFonts={gameFonts} onStatusChange={setStatus} />
           </TabsContent>
         </Tabs>
+        <CheckpointsDialog
+          open={showCollectionVersions && !!expandedCollection}
+          onOpenChange={setShowCollectionVersions}
+          checkpoints={collectionCheckpoints}
+          loading={collectionCheckpointsLoading}
+          busy={versionsBusy}
+          onCreate={handleCreateCollectionVersion}
+          onRestore={handleRestoreCollectionVersion}
+          onDelete={handleDeleteCollectionVersion}
+        />
+        <CheckpointsDialog
+          open={showLayoutVersions && !!selectedLayoutId}
+          onOpenChange={setShowLayoutVersions}
+          checkpoints={layoutCheckpoints}
+          loading={layoutCheckpointsLoading}
+          busy={versionsBusy}
+          onCreate={handleCreateLayoutVersion}
+          onRestore={handleRestoreLayoutVersion}
+          onDelete={handleDeleteLayoutVersion}
+          description="Save a version of this layout, and restore it later."
+        />
     </PageLayout>
   )
 }

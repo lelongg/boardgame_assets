@@ -201,6 +201,11 @@ export const createS3Storage = (options = {}) => {
     `${prefix}/${gameId}/collections/${collectionId}/checkpoints/${checkpointId}.json`;
   const checkpointsPrefix = (gameId, collectionId) =>
     `${prefix}/${gameId}/collections/${collectionId}/checkpoints/`;
+  // Outside layouts/ so listLayouts (which sweeps that prefix) never sees them.
+  const layoutCheckpointKey = (gameId, layoutId, checkpointId) =>
+    `${prefix}/${gameId}/layout-checkpoints/${layoutId}/${checkpointId}.json`;
+  const layoutCheckpointsPrefix = (gameId, layoutId) =>
+    `${prefix}/${gameId}/layout-checkpoints/${layoutId}/`;
   const fontsManifestKey = (gameId) =>
     `${prefix}/${gameId}/fonts/fonts.json`;
 
@@ -356,6 +361,7 @@ export const createS3Storage = (options = {}) => {
         throw new Error("Layout is in use by a collection");
       }
       await deleteObject(layoutKey(gameId, layoutId));
+      await deleteAllWithPrefix(layoutCheckpointsPrefix(gameId, layoutId));
     },
 
     // ── Collections ────────────────────────────────────────────────────────
@@ -699,6 +705,44 @@ export const createS3Storage = (options = {}) => {
 
     async deleteCheckpoint(gameId, collectionId, checkpointId) {
       await deleteObject(checkpointKey(gameId, collectionId, checkpointId));
+    },
+
+    // ── Layout checkpoints ───────────────────────────────────────────────────
+
+    async listLayoutCheckpoints(gameId, layoutId) {
+      const keys = await listKeys(layoutCheckpointsPrefix(gameId, layoutId));
+      const metas = [];
+      for (const key of keys) {
+        if (!key.endsWith(".json")) continue;
+        try {
+          const cp = await getJson(key);
+          metas.push({ id: cp.id, name: cp.name, createdAt: cp.createdAt });
+        } catch { /* skip corrupt */ }
+      }
+      metas.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)); // newest first
+      return metas;
+    },
+
+    async createLayoutCheckpoint(gameId, layoutId, name) {
+      const layout = await getJson(layoutKey(gameId, layoutId));
+      const id = uid();
+      const createdAt = now();
+      const checkpoint = { id, name, createdAt, layout: normalizeLayout({ ...layout, id: layoutId }) };
+      await putJson(layoutCheckpointKey(gameId, layoutId, id), checkpoint);
+      return { id, name, createdAt };
+    },
+
+    async restoreLayoutCheckpoint(gameId, layoutId, checkpointId) {
+      const checkpoint = await getJson(layoutCheckpointKey(gameId, layoutId, checkpointId));
+      // Restore the layout's content but keep the current id and name.
+      let currentName;
+      try { currentName = (await getJson(layoutKey(gameId, layoutId)))?.name; } catch { /* layout missing */ }
+      const restored = normalizeLayout({ ...checkpoint.layout, id: layoutId, name: currentName ?? checkpoint.layout.name });
+      await putJson(layoutKey(gameId, layoutId), restored);
+    },
+
+    async deleteLayoutCheckpoint(gameId, layoutId, checkpointId) {
+      await deleteObject(layoutCheckpointKey(gameId, layoutId, checkpointId));
     },
   };
 };

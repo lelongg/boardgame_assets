@@ -405,6 +405,15 @@ export const createGoogleDriveStorage = (options = {}) => {
     const fid = fileIds.get(key) ?? await findFile(`${layoutId}.json`, await layoutsFolder(gameId));
     if (fid) await rmFile(fid);
     fileIds.delete(key);
+    // Drop the layout's checkpoints folder along with it.
+    const chkParent = folderIds.get(`tplchk:${gameId}`)
+      ?? (await foldersIn(await gameFolder(gameId))).find((f) => f.name === "layout-checkpoints")?.id;
+    if (chkParent) {
+      const chkFolder = folderIds.get(`tplchk:${gameId}:${layoutId}`)
+        ?? (await foldersIn(chkParent)).find((f) => f.name === layoutId)?.id;
+      if (chkFolder) await rmFile(chkFolder);
+    }
+    folderIds.delete(`tplchk:${gameId}:${layoutId}`);
   };
 
   const copyLayout = async (gameId, layoutId) => {
@@ -769,6 +778,58 @@ export const createGoogleDriveStorage = (options = {}) => {
     fileIds.delete(key);
   };
 
+  // --- Layout checkpoints ---
+
+  const layoutCheckpointsFolder = async (gameId, layoutId) => {
+    const parent = await ensureFolder(await gameFolder(gameId), "layout-checkpoints", `tplchk:${gameId}`);
+    return ensureFolder(parent, layoutId, `tplchk:${gameId}:${layoutId}`);
+  };
+
+  const listLayoutCheckpoints = async (gameId, layoutId) => {
+    const folder = await layoutCheckpointsFolder(gameId, layoutId);
+    const files = await filesInFolder(folder);
+    const metas = [];
+    for (const f of files) {
+      if (!f.name.endsWith(".json")) continue;
+      const cp = await readFile(f.id);
+      if (cp?.id) {
+        metas.push({ id: cp.id, name: cp.name, createdAt: cp.createdAt });
+        fileIds.set(`tplchkfile:${gameId}:${layoutId}:${cp.id}`, f.id);
+      }
+    }
+    metas.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return metas;
+  };
+
+  const createLayoutCheckpoint = async (gameId, layoutId, name) => {
+    const layout = await getLayout(gameId, layoutId);
+    const id = uid();
+    const createdAt = now();
+    const checkpoint = { id, name, createdAt, layout };
+    const folder = await layoutCheckpointsFolder(gameId, layoutId);
+    const fid = await mkFile(`${id}.json`, checkpoint, folder, { type: "layout-checkpoint", gameId, layoutId });
+    fileIds.set(`tplchkfile:${gameId}:${layoutId}:${id}`, fid);
+    return { id, name, createdAt };
+  };
+
+  const restoreLayoutCheckpoint = async (gameId, layoutId, checkpointId) => {
+    const key = `tplchkfile:${gameId}:${layoutId}:${checkpointId}`;
+    const fid = fileIds.get(key) ?? await findFile(`${checkpointId}.json`, await layoutCheckpointsFolder(gameId, layoutId));
+    if (!fid) throw new Error("Checkpoint not found.");
+    const checkpoint = await readFile(fid);
+    // Restore the layout's content but keep the current id and name.
+    const current = await getLayout(gameId, layoutId);
+    const restored = normalizeLayout({ ...checkpoint.layout, id: layoutId, name: current?.name ?? checkpoint.layout.name });
+    await saveLayout(gameId, layoutId, restored);
+  };
+
+  const deleteLayoutCheckpoint = async (gameId, layoutId, checkpointId) => {
+    const key = `tplchkfile:${gameId}:${layoutId}:${checkpointId}`;
+    const fid = fileIds.get(key) ?? await findFile(`${checkpointId}.json`, await layoutCheckpointsFolder(gameId, layoutId));
+    if (fid) await rmFile(fid);
+    fileIds.delete(key);
+  };
+
   return {
     init, signIn, signOut, tryRestoreSession, isAuthorized,
     listGames, getGame, createGame, updateGame, deleteGame,
@@ -778,6 +839,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     listFonts, addGoogleFont, uploadFont, deleteFont, renameFont,
     uploadImage, listImages, deleteImage, renameImage,
     listCheckpoints, getCheckpoint, createCheckpoint, restoreCheckpoint, deleteCheckpoint,
+    listLayoutCheckpoints, createLayoutCheckpoint, restoreLayoutCheckpoint, deleteLayoutCheckpoint,
     clearCache,
   };
 };
