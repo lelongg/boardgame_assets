@@ -28,6 +28,7 @@ import {
 } from '../hooks/useGameData'
 import FilesPanel from '@/components/FilesPanel'
 import useAssetUrl from '../hooks/useAssetUrl'
+import useAssetUsage from '../hooks/useAssetUsage'
 import useFontStyles from '../hooks/useFontStyles'
 const LazyImageEditor = lazy(() => import('@/components/ImageEditor'))
 
@@ -150,6 +151,7 @@ export default function CollectionsPage() {
   const [selectedImage, setSelectedImage_] = useState<string | null>(() => { try { return localStorage.getItem(`game:${gameId}:selectedImage`) } catch { return null } })
   const setSelectedImage = (v: string | null) => { setSelectedImage_(v); try { if (v) localStorage.setItem(`game:${gameId}:selectedImage`, v); else localStorage.removeItem(`game:${gameId}:selectedImage`) } catch {} }
   const [showImageUpload, setShowImageUpload] = useState(false)
+  const [showUnusedImagesOnly, setShowUnusedImagesOnly] = useState(false)
   const [showCreateCollection, setShowCreateCollection] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
   const [newCollectionLayout, setNewCollectionLayout] = useState('')
@@ -180,6 +182,23 @@ export default function CollectionsPage() {
   const [layoutPreviewCards, setLayoutPreviewCards] = useState<any[]>([])
 
   const selectedLayout = selectedLayoutId ? layouts.find(t => t.id === selectedLayoutId) : null
+
+  // Unused-asset detection (scans all layouts, collections and cards)
+  const { isLoading: usageLoading, unusedImageFiles, unusedFontSlots } = useAssetUsage(gameId)
+  const unusedImages = usageLoading ? [] : gameImages.filter(img => unusedImageFiles.has(img.file))
+
+  const handleDeleteUnusedImages = async () => {
+    if (!unusedImages.length) return
+    setStatus(`Deleting ${unusedImages.length} unused image${unusedImages.length === 1 ? '' : 's'}...`)
+    try {
+      for (const img of unusedImages) await deleteImageMut.mutateAsync(img.file)
+      if (selectedImage && unusedImageFiles.has(selectedImage)) setSelectedImage(null)
+      setShowUnusedImagesOnly(false)
+      setStatus(`Deleted ${unusedImages.length} unused image${unusedImages.length === 1 ? '' : 's'}.`)
+    } catch {
+      setStatus('Error deleting unused images.')
+    }
+  }
 
   // Auto-select first collection when data loads
   useEffect(() => {
@@ -707,6 +726,7 @@ export default function CollectionsPage() {
                 selectedFont={selectedFont}
                 onSelectFont={setSelectedFont}
                 isLoading={fontsLoading}
+                unusedSlots={usageLoading ? undefined : unusedFontSlots}
               />
 
               <FontPreviewEditor previewText={fontPreviewText} onChangePreviewText={setFontPreviewText} />
@@ -750,7 +770,7 @@ export default function CollectionsPage() {
             })() : (
               <FilterableList
                 title="Images"
-                items={gameImages}
+                items={showUnusedImagesOnly ? unusedImages : gameImages}
                 getKey={img => img.file}
                 getName={img => img.name}
                 viewMode={{ key: `game:${gameId}:imageViewMode`, default: 'gallery' }}
@@ -764,7 +784,10 @@ export default function CollectionsPage() {
                 }}
                 empty={imagesLoading
                   ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-                  : <p className="text-sm text-muted-foreground">No images yet.</p>}
+                  : <p className="text-sm text-muted-foreground">{showUnusedImagesOnly ? 'No unused images.' : 'No images yet.'}</p>}
+                subheader={showUnusedImagesOnly ? (
+                  <span className="text-xs text-muted-foreground">Not referenced by any layout, card or collection. Checkpoints are not scanned.</span>
+                ) : undefined}
                 actions={selectedImage ? (<>
                   <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit image"
                     onClick={() => setEditingImage(true)}>
@@ -785,11 +808,28 @@ export default function CollectionsPage() {
                     } catch { setStatus('Error deleting image.') }
                   }} />
                 </>) : undefined}
-                toolbar={
+                toolbar={<>
+                  {(unusedImages.length > 0 || showUnusedImagesOnly) && (
+                    <Button
+                      size="sm"
+                      variant={showUnusedImagesOnly ? 'secondary' : 'ghost'}
+                      onClick={() => setShowUnusedImagesOnly(v => !v)}
+                      title={showUnusedImagesOnly ? 'Show all images' : 'Show only unused images'}
+                    >
+                      {unusedImages.length} unused
+                    </Button>
+                  )}
+                  {unusedImages.length > 0 && (
+                    <ConfirmButton
+                      variant="ghost"
+                      title={`Delete ${unusedImages.length} unused image${unusedImages.length === 1 ? '' : 's'} (checkpoints are not scanned)`}
+                      onConfirm={handleDeleteUnusedImages}
+                    />
+                  )}
                   <Button size="sm" variant="ghost" onClick={() => setShowImageUpload(v => !v)} title={showImageUpload ? 'Cancel' : 'Upload image'}>
                     <Plus className={`h-4 w-4 transition-transform ${showImageUpload ? 'rotate-45' : ''}`} />
                   </Button>
-                }
+                </>}
                 drawer={showImageUpload ? (
                   <div className="px-3 py-2 border-b">
                     <ValueItemEditor
@@ -800,23 +840,30 @@ export default function CollectionsPage() {
                     />
                   </div>
                 ) : undefined}
-                renderItem={(img, vm, selected) => vm === 'gallery' ? (
-                  <CardThumbnail
-                    src={img.url} name={img.name} aspectRatio="1"
-                    selected={selected}
-                  />
-                ) : (
-                  <ListItem selected={selected}>
-                    <div className={vm === 'detailed' ? 'flex items-center gap-3' : ''}>
-                      {vm === 'detailed' && (
-                        <div className="h-10 w-10 shrink-0 rounded border overflow-hidden" style={{ backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '8px 8px' }}>
-                          <LoadingImg src={img.url} alt={img.name} className="w-full h-full object-contain" wrapperClassName="w-full h-full" />
-                        </div>
-                      )}
-                      <span className="text-sm font-medium truncate">{img.name}</span>
-                    </div>
-                  </ListItem>
-                )}
+                renderItem={(img, vm, selected) => {
+                  const unusedBadge = !usageLoading && unusedImageFiles.has(img.file) ? (
+                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">unused</span>
+                  ) : undefined
+                  return vm === 'gallery' ? (
+                    <CardThumbnail
+                      src={img.url} name={img.name} aspectRatio="1"
+                      selected={selected}
+                      badge={unusedBadge}
+                    />
+                  ) : (
+                    <ListItem selected={selected}>
+                      <div className={vm === 'detailed' ? 'flex items-center gap-3' : 'flex items-center gap-2'}>
+                        {vm === 'detailed' && (
+                          <div className="h-10 w-10 shrink-0 rounded border overflow-hidden" style={{ backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '8px 8px' }}>
+                            <LoadingImg src={img.url} alt={img.name} className="w-full h-full object-contain" wrapperClassName="w-full h-full" />
+                          </div>
+                        )}
+                        <span className="text-sm font-medium truncate">{img.name}</span>
+                        {unusedBadge}
+                      </div>
+                    </ListItem>
+                  )
+                }}
               />
             )}
           </TabsContent>
