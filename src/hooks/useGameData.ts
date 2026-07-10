@@ -140,12 +140,24 @@ export function useImages(gameId: string | undefined) {
 
 // ── Mutation hooks ──────────────────────────────────────────────────
 
+// Mutations update the query caches in place with what the backend returned
+// instead of invalidating: on slow backends (S3) a refetch takes seconds during
+// which the UI keeps showing pre-mutation data, making every action look like
+// it did nothing. Invalidation stays as a fallback when a backend returns
+// nothing usable.
+
 export function useCreateGame() {
   const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (name: string) => storage.createGame(name),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.games() }) },
+    onSuccess: (created) => {
+      if (created?.id) {
+        qc.setQueryData<any[]>(queryKeys.games(), (old) => old ? [...old, created] : old)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.games() })
+      }
+    },
   })
 }
 
@@ -176,7 +188,11 @@ export function useDeleteGame() {
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (gameId: string) => storage.deleteGame(gameId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.games() }) },
+    onSuccess: (_res, gameId) => {
+      qc.setQueryData<any[]>(queryKeys.games(), (old) =>
+        old ? old.filter((g: any) => g.id !== gameId) : old)
+      qc.removeQueries({ queryKey: queryKeys.game(gameId) })
+    },
   })
 }
 
@@ -186,7 +202,14 @@ export function useCreateCollection(gameId: string | undefined) {
   return useMutation<any, Error, { name: string; layoutId: string }>({
     mutationFn: ({ name, layoutId }) =>
       storage.createCollection(gameId!, name, layoutId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.collections(gameId!) }) },
+    onSuccess: (created) => {
+      if (created?.id) {
+        qc.setQueryData<any[]>(queryKeys.collections(gameId!), (old) => old ? [...old, created] : old)
+        qc.setQueryData(queryKeys.collection(gameId!, created.id), created)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.collections(gameId!) })
+      }
+    },
   })
 }
 
@@ -218,7 +241,12 @@ export function useDeleteCollection(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (collectionId: string) => storage.deleteCollection(gameId!, collectionId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.collections(gameId!) }) },
+    onSuccess: (_res, collectionId) => {
+      qc.setQueryData<any[]>(queryKeys.collections(gameId!), (old) =>
+        old ? old.filter((c: any) => c.id !== collectionId) : old)
+      qc.removeQueries({ queryKey: queryKeys.collection(gameId!, collectionId) })
+      qc.removeQueries({ queryKey: queryKeys.cards(gameId!, collectionId) })
+    },
   })
 }
 
@@ -227,7 +255,14 @@ export function useCreateLayout(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (name: string) => storage.createLayout(gameId!, name),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId!) }) },
+    onSuccess: (created) => {
+      if (created?.id) {
+        qc.setQueryData<any[]>(queryKeys.layouts(gameId!), (old) => old ? [...old, created] : old)
+        qc.setQueryData(queryKeys.layout(gameId!, created.id), created)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId!) })
+      }
+    },
   })
 }
 
@@ -254,7 +289,14 @@ export function useCopyLayout(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (layoutId: string) => storage.copyLayout(gameId!, layoutId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId!) }) },
+    onSuccess: (copy) => {
+      if (copy?.id) {
+        qc.setQueryData<any[]>(queryKeys.layouts(gameId!), (old) => old ? [...old, copy] : old)
+        qc.setQueryData(queryKeys.layout(gameId!, copy.id), copy)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId!) })
+      }
+    },
   })
 }
 
@@ -263,7 +305,11 @@ export function useDeleteLayout(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (layoutId: string) => storage.deleteLayout(gameId!, layoutId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId!) }) },
+    onSuccess: (_res, layoutId) => {
+      qc.setQueryData<any[]>(queryKeys.layouts(gameId!), (old) =>
+        old ? old.filter((l: any) => l.id !== layoutId) : old)
+      qc.removeQueries({ queryKey: queryKeys.layout(gameId!, layoutId) })
+    },
   })
 }
 
@@ -295,7 +341,13 @@ export function useCopyCard(gameId: string | undefined, collectionId: string | u
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (cardId: string) => storage.copyCard(gameId!, collectionId!, cardId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, collectionId!) }) },
+    onSuccess: (copy) => {
+      if (copy?.id) {
+        qc.setQueryData<any[]>(queryKeys.cards(gameId!, collectionId!), (old) => old ? [...old, copy] : old)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, collectionId!) })
+      }
+    },
   })
 }
 
@@ -304,16 +356,19 @@ export function useDeleteCard(gameId: string | undefined, collectionId: string |
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (cardId: string) => storage.deleteCard(gameId!, collectionId!, cardId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, collectionId!) }) },
+    onSuccess: (_res, cardId) => {
+      qc.setQueryData<any[]>(queryKeys.cards(gameId!, collectionId!), (old) =>
+        old ? old.filter((c: any) => c.id !== cardId) : old)
+    },
   })
 }
 
 /**
  * Copy or move a card to another collection. Composed from saveCard/deleteCard
- * so no backend changes are needed; both collections' card lists are invalidated.
- * Copy generates a fresh id (so duplicating twice never clobbers); move keeps the
- * id and is best-effort atomic — if the source delete fails after the write, the
- * card exists in both collections (recoverable, never lost).
+ * so no backend changes are needed; both collections' card caches are updated
+ * in place. Copy generates a fresh id (so duplicating twice never clobbers);
+ * move keeps the id and is best-effort atomic — if the source delete fails
+ * after the write, the card exists in both collections (recoverable, never lost).
  */
 export function useTransferCard(gameId: string | undefined) {
   const storage = useStorageInstance()!
@@ -325,9 +380,21 @@ export function useTransferCard(gameId: string | undefined) {
       if (mode === 'move') await storage.deleteCard(gameId!, sourceCollectionId, card.id)
       return saved
     },
-    onSuccess: (_data, { sourceCollectionId, targetCollectionId }) => {
-      qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, sourceCollectionId) })
-      qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, targetCollectionId) })
+    onSuccess: (saved, { sourceCollectionId, targetCollectionId, card, mode }) => {
+      if (mode === 'move') {
+        qc.setQueryData<any[]>(queryKeys.cards(gameId!, sourceCollectionId), (old) =>
+          old ? old.filter((c: any) => c.id !== card.id) : old)
+      }
+      if (saved?.id) {
+        qc.setQueryData<any[]>(queryKeys.cards(gameId!, targetCollectionId), (old) => {
+          if (!old) return old
+          return old.some((c: any) => c.id === saved.id)
+            ? old.map((c: any) => c.id === saved.id ? saved : c)
+            : [...old, saved]
+        })
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, targetCollectionId) })
+      }
     },
   })
 }
@@ -350,7 +417,15 @@ export function useCreateCheckpoint(gameId: string | undefined, collectionId: st
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (name: string) => storage.createCheckpoint(gameId!, collectionId!, name),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.checkpoints(gameId!, collectionId!) }) },
+    onSuccess: (meta) => {
+      if (meta?.id) {
+        // Checkpoint listings are newest-first.
+        qc.setQueryData<any[]>(queryKeys.checkpoints(gameId!, collectionId!), (old) =>
+          old ? [meta, ...old] : old)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.checkpoints(gameId!, collectionId!) })
+      }
+    },
   })
 }
 
@@ -372,7 +447,10 @@ export function useDeleteCheckpoint(gameId: string | undefined, collectionId: st
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (checkpointId: string) => storage.deleteCheckpoint(gameId!, collectionId!, checkpointId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.checkpoints(gameId!, collectionId!) }) },
+    onSuccess: (_res, checkpointId) => {
+      qc.setQueryData<any[]>(queryKeys.checkpoints(gameId!, collectionId!), (old) =>
+        old ? old.filter((cp: any) => cp.id !== checkpointId) : old)
+    },
   })
 }
 
@@ -394,7 +472,14 @@ export function useCreateLayoutCheckpoint(gameId: string | undefined, layoutId: 
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (name: string) => storage.createLayoutCheckpoint(gameId!, layoutId!, name),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.layoutCheckpoints(gameId!, layoutId!) }) },
+    onSuccess: (meta) => {
+      if (meta?.id) {
+        qc.setQueryData<any[]>(queryKeys.layoutCheckpoints(gameId!, layoutId!), (old) =>
+          old ? [meta, ...old] : old)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.layoutCheckpoints(gameId!, layoutId!) })
+      }
+    },
   })
 }
 
@@ -418,7 +503,10 @@ export function useDeleteLayoutCheckpoint(gameId: string | undefined, layoutId: 
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (checkpointId: string) => storage.deleteLayoutCheckpoint(gameId!, layoutId!, checkpointId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.layoutCheckpoints(gameId!, layoutId!) }) },
+    onSuccess: (_res, checkpointId) => {
+      qc.setQueryData<any[]>(queryKeys.layoutCheckpoints(gameId!, layoutId!), (old) =>
+        old ? old.filter((cp: any) => cp.id !== checkpointId) : old)
+    },
   })
 }
 
@@ -427,7 +515,11 @@ export function useAddGoogleFont(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (fontName: string) => storage.addGoogleFont(gameId!, fontName),
-    onSuccess: () => { invalidateFontCache(gameId!); qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) }) },
+    onSuccess: (result) => {
+      invalidateFontCache(gameId!)
+      if (result?.fonts) qc.setQueryData(queryKeys.fonts(gameId!), result.fonts)
+      else qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) })
+    },
   })
 }
 
@@ -436,7 +528,11 @@ export function useUploadFont(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, File>({
     mutationFn: (file: File) => storage.uploadFont(gameId!, file),
-    onSuccess: () => { invalidateFontCache(gameId!); qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) }) },
+    onSuccess: (result) => {
+      invalidateFontCache(gameId!)
+      if (result?.fonts) qc.setQueryData(queryKeys.fonts(gameId!), result.fonts)
+      else qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) })
+    },
   })
 }
 
@@ -445,7 +541,11 @@ export function useDeleteFont(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (filename: string) => storage.deleteFont(gameId!, filename),
-    onSuccess: () => { invalidateFontCache(gameId!); qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) }) },
+    onSuccess: (result) => {
+      invalidateFontCache(gameId!)
+      if (result?.fonts) qc.setQueryData(queryKeys.fonts(gameId!), result.fonts)
+      else qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) })
+    },
   })
 }
 
@@ -468,7 +568,23 @@ export function useUploadImage(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<string, Error, File>({
     mutationFn: (file: File) => storage.uploadImage(gameId!, file),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.images(gameId!) }) },
+    onSuccess: (url, file) => {
+      // uploadImage only returns the URL — derive the listing entry like the
+      // backends do (hash filename from the URL, display name from the
+      // original filename). Re-uploads of identical content keep their entry.
+      const fileName = url?.split('/').pop()
+      if (url && fileName) {
+        const dot = file.name.lastIndexOf('.')
+        const displayName = (dot > 0 ? file.name.slice(0, dot) : file.name) || fileName
+        qc.setQueryData<any[]>(queryKeys.images(gameId!), (old) => {
+          if (!old) return old
+          if (old.some((img: any) => img.file === fileName)) return old
+          return [...old, { file: fileName, url, name: displayName }]
+        })
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.images(gameId!) })
+      }
+    },
   })
 }
 
@@ -492,7 +608,10 @@ export function useDeleteImage(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, string>({
     mutationFn: (filename: string) => storage.deleteImage(gameId!, filename),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.images(gameId!) }) },
+    onSuccess: (_res, filename) => {
+      qc.setQueryData<any[]>(queryKeys.images(gameId!), (old) =>
+        old ? old.filter((img: any) => img.file !== filename) : old)
+    },
   })
 }
 

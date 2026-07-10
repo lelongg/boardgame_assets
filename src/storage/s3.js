@@ -61,11 +61,19 @@ export const createS3Storage = (options = {}) => {
       ? { accessKeyId, secretAccessKey }
       : undefined,
     ...(normalizedEndpoint ? { endpoint: normalizedEndpoint, forcePathStyle: true } : {}),
-    // Disable automatic redirect following so that any unexpected redirect
-    // (e.g. path normalisation, bucket relocation) surfaces as an error
-    // instead of silently converting a PUT into a GET.
+    // - redirect "error": any unexpected redirect (path normalisation, bucket
+    //   relocation) surfaces as an error instead of silently converting a PUT
+    //   into a GET.
+    // - cache "no-store": S3 GET responses carry Last-Modified but no
+    //   Cache-Control, so browsers apply heuristic freshness (~10% of the
+    //   object's age). For objects last modified weeks ago that means a page
+    //   reload can serve day-old cached JSON — edits look like they vanished
+    //   even though the PUT persisted. (The PUT does not invalidate the
+    //   cached GET either: the SDK's x-id query param makes them distinct
+    //   URLs.) Bypass the HTTP cache entirely; this is a browser-side
+    //   directive and does not affect request signing.
     requestHandler: new FetchHttpHandler({
-      requestInit: () => ({ redirect: "error" }),
+      requestInit: () => ({ redirect: "error", cache: "no-store" }),
     }),
   });
 
