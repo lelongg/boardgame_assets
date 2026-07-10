@@ -204,11 +204,12 @@ function EditableCell({ value, onSave, bold, editorType, editorProps, allowedVal
   )
 }
 
-function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsChange, onStatusChange, isLoading, onCreateCard, onSaveCard }: {
+function DataSheet({ cards, gameId, collectionId, layout, backLayout, gameImages, onCardsChange, onStatusChange, isLoading, onCreateCard, onSaveCard }: {
   cards: any[]
   gameId: string
   collectionId: string
   layout?: any
+  backLayout?: any
   gameImages?: { file: string; url: string; name: string }[]
   onCardsChange: (cards: any[] | ((prev: any[]) => any[])) => void
   onStatusChange: (msg: string) => void
@@ -234,24 +235,33 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
   useEffect(() => { saveState('order', columnOrder) }, [columnOrder])
   useEffect(() => { saveState('sizing', columnSizing) }, [columnSizing])
 
-  // Build a map from field key (e.g. "defaultValue:suit") to item type (e.g. "image")
+  // Build a map from field key (e.g. "defaultValue:suit") to the item type
+  // (e.g. "image") and source layout that declared the binding. Back-layout
+  // bindings are card data too; the front layout wins on duplicate keys.
   const fieldItemTypes = useMemo(() => {
-    const map: Record<string, string> = {}
-    if (!layout?.root) return map
-    const collect = (section: any) => {
-      for (const [prop, binding] of Object.entries(section.bindings ?? {} as Record<string, { field: string }>)) {
-        map[`${prop}:${(binding as any).field}`] = 'section'
+    const map: Record<string, { itemType: string; srcLayout: any }> = {}
+    const collectFrom = (l: any, overwrite: boolean) => {
+      if (!l?.root) return
+      const set = (key: string, itemType: string) => {
+        if (overwrite || !map[key]) map[key] = { itemType, srcLayout: l }
       }
-      section.items?.forEach((item: any) => {
-        for (const [prop, binding] of Object.entries(item.bindings ?? {} as Record<string, { field: string }>)) {
-          map[`${prop}:${(binding as any).field}`] = item.type ?? 'text'
+      const collect = (section: any) => {
+        for (const [prop, binding] of Object.entries(section.bindings ?? {} as Record<string, { field: string }>)) {
+          set(`${prop}:${(binding as any).field}`, 'section')
         }
-      })
-      section.children?.forEach(collect)
+        section.items?.forEach((item: any) => {
+          for (const [prop, binding] of Object.entries(item.bindings ?? {} as Record<string, { field: string }>)) {
+            set(`${prop}:${(binding as any).field}`, item.type ?? 'text')
+          }
+        })
+        section.children?.forEach(collect)
+      }
+      collect(l.root)
     }
-    collect(layout.root)
+    collectFrom(layout, true)
+    collectFrom(backLayout, false)
     return map
-  }, [layout])
+  }, [layout, backLayout])
 
   // Field names are the union of fields used by any card and fields declared by
   // the layout's bindings, so columns appear even when no card has set a value.
@@ -289,13 +299,14 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
     },
     ...fieldNames.map(f => {
       const property = f.includes(':') ? f.split(':')[0] : f
-      const itemType = fieldItemTypes[f]
+      const itemType = fieldItemTypes[f]?.itemType
+      const srcLayout = fieldItemTypes[f]?.srcLayout ?? layout
       const edType = getEditorType(property, itemType)
       // Detect richtext: check if any card has HTML in this field
       const effectiveType = edType === 'text' && cards.some(c => /<(?:p|strong|em)[ >]/.test(c.fields?.[f] ?? ''))
         ? 'richtext' : edType
       const hasSpecialEditor = effectiveType !== 'text' && effectiveType !== 'number' && effectiveType !== 'select'
-      const allowed = layout?.bindingMeta?.[f]?.values as string[] | undefined
+      const allowed = srcLayout?.bindingMeta?.[f]?.values as string[] | undefined
       return {
         id: f,
         accessorFn: (row: any) => row.fields?.[f] ?? '',
@@ -307,7 +318,7 @@ function DataSheet({ cards, gameId, collectionId, layout, gameImages, onCardsCha
             onSave={v => { const c = row.original; saveCard(c.id, { ...c, fields: { ...c.fields, [f]: v } }) }}
             allowedValues={allowed}
             editorType={hasSpecialEditor ? effectiveType : undefined}
-            editorProps={hasSpecialEditor ? { property, itemType, layout, gameImages } : undefined}
+            editorProps={hasSpecialEditor ? { property, itemType, layout: srcLayout, gameImages } : undefined}
             gameImages={gameImages}
           />
         ),
@@ -1181,40 +1192,49 @@ export default function GameEditorPage() {
                       />
 
                       {game?.layout?.root && (() => {
-                        const bm = game.layout.bindingMeta ?? {}
-                        const fieldMap = new Map<string, { field: string; property: string; itemType: string; itemId?: string; values?: string[] }>()
-                        const addBindings = (bindings: Record<string, { field: string }> | undefined, nodeType: string, nodeId?: string) => {
-                          if (!bindings) return
-                          for (const [prop, binding] of Object.entries(bindings)) {
-                            if (binding.field === 'name') continue
-                            const key = `${binding.field}\0${prop}`
-                            if (fieldMap.has(key)) continue
-                            fieldMap.set(key, {
-                              field: binding.field,
-                              property: prop,
-                              itemType: nodeType,
-                              itemId: nodeId,
-                              values: bm[`${prop}:${binding.field}`]?.values,
-                            })
+                        // Back-layout bindings are card data too: collect bound
+                        // fields from both the front and the back layout. Each
+                        // binding keeps its source layout so its bindingMeta
+                        // (allowed values, defaults) and item aspect ratios apply.
+                        const sources = [game.layout, resolvedBackLayout].filter(Boolean)
+                        const fieldMap = new Map<string, { field: string; property: string; itemType: string; itemId?: string; values?: string[]; srcLayout: any }>()
+                        for (const src of sources) {
+                          const bm = src.bindingMeta ?? {}
+                          const addBindings = (bindings: Record<string, { field: string }> | undefined, nodeType: string, nodeId?: string) => {
+                            if (!bindings) return
+                            for (const [prop, binding] of Object.entries(bindings)) {
+                              if (binding.field === 'name') continue
+                              const key = `${binding.field}\0${prop}`
+                              if (fieldMap.has(key)) continue
+                              fieldMap.set(key, {
+                                field: binding.field,
+                                property: prop,
+                                itemType: nodeType,
+                                itemId: nodeId,
+                                values: bm[`${prop}:${binding.field}`]?.values,
+                                srcLayout: src,
+                              })
+                            }
                           }
+                          const collectBindings = (section: any) => {
+                            addBindings(section.bindings, 'section', section.id)
+                            section.items?.forEach((item: any) => addBindings(item.bindings, item.type ?? 'text', item.id))
+                            section.children?.forEach(collectBindings)
+                          }
+                          collectBindings(src.root)
                         }
-                        const collectBindings = (section: any) => {
-                          addBindings(section.bindings, 'section', section.id)
-                          section.items?.forEach((item: any) => addBindings(item.bindings, item.type ?? 'text', item.id))
-                          section.children?.forEach(collectBindings)
-                        }
-                        collectBindings(game.layout.root)
                         if (fieldMap.size === 0) return null
 
                         const setField = (fieldKey: string, val: string) =>
                           updateCard(c => ({ ...c, fields: { ...c.fields, [fieldKey]: val } }))
 
                         const getField = (property: string, field: string) =>
-                          selectedCard.fields?.[`${property}:${field}`] ?? selectedCard.fields?.[field] ?? bm[`${property}:${field}`]?.default ?? ''
+                          selectedCard.fields?.[`${property}:${field}`] ?? selectedCard.fields?.[field]
+                            ?? sources.map(s => s.bindingMeta?.[`${property}:${field}`]?.default).find(v => v != null) ?? ''
 
                         return (
                           <div className="space-y-4">
-                            {[...fieldMap.entries()].map(([key, { field, property, itemType, itemId, values }]) => {
+                            {[...fieldMap.entries()].map(([key, { field, property, itemType, itemId, values, srcLayout }]) => {
                               const fieldKey = `${property}:${field}`
                               const val = getField(property, field)
                               const editorType = getEditorType(property, itemType)
@@ -1243,7 +1263,7 @@ export default function GameEditorPage() {
                                       itemId={itemId}
                                       value={val}
                                       onChange={(v) => setField(fieldKey, v)}
-                                      layout={game.layout}
+                                      layout={srcLayout}
                                       gameImages={gameImages}
                                       onUploadFile={async (file) => {
                                         return await uploadImageMut.mutateAsync(file)
@@ -1283,6 +1303,7 @@ export default function GameEditorPage() {
               gameId={gameId!}
               collectionId={collectionId!}
               layout={game?.layout}
+              backLayout={resolvedBackLayout}
               gameImages={gameImages}
               onCardsChange={setCards}
               onStatusChange={setStatus}
