@@ -406,8 +406,10 @@ export default function CollectionsPage() {
                 if (gameId) { if (key) localStorage.setItem(`game:${gameId}:selectedCollection`, key); else localStorage.removeItem(`game:${gameId}:selectedCollection`) }
               }}
               onRename={async (collectionId, name) => {
-                try { await updateCollectionMut.mutateAsync({ collectionId, updates: { name } }) }
-                catch { setStatus('Error renaming collection.') }
+                try {
+                  await updateCollectionMut.mutateAsync({ collectionId, updates: { name } })
+                  setStatus('Collection renamed.')
+                } catch { setStatus('Error renaming collection.') }
               }}
               empty={collectionsLoading
                 ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
@@ -509,8 +511,10 @@ export default function CollectionsPage() {
                   onRename={async (cardId, name) => {
                     const card = collectionCards.find((c: any) => c.id === cardId)
                     if (!card) return
-                    try { await saveCardMut.mutateAsync({ cardId, card: { ...card, name } }) }
-                    catch { setStatus('Error renaming card.') }
+                    try {
+                      await saveCardMut.mutateAsync({ cardId, card: { ...card, name } })
+                      setStatus('Card renamed.')
+                    } catch { setStatus('Error renaming card.') }
                   }}
                   actions={selectedCardId ? (<>
                     <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
@@ -610,10 +614,9 @@ export default function CollectionsPage() {
                   const tpl = layouts.find((t: any) => t.id === layoutId)
                   if (!tpl) return
                   try {
-                    const saved = await saveLayoutMut.mutateAsync({ layoutId, layout: { ...tpl, name } })
-                    // Keep the per-id layout cache (staleTime: Infinity) in sync,
-                    // matching the optimistic-update pattern used by the editor.
-                    queryClient.setQueryData(queryKeys.layout(gameId!, layoutId), saved)
+                    // useSaveLayout updates both layout caches in place.
+                    await saveLayoutMut.mutateAsync({ layoutId, layout: { ...tpl, name } })
+                    setStatus('Layout renamed.')
                   } catch { setStatus('Error renaming layout.') }
                 }}
                 empty={layoutsLoading
@@ -759,8 +762,10 @@ export default function CollectionsPage() {
                 selectedKey={selectedImage}
                 onSelect={setSelectedImage}
                 onRename={async (file, name) => {
-                  try { await renameImageMut.mutateAsync({ file, newName: name }) }
-                  catch { setStatus('Error renaming image.') }
+                  try {
+                    await renameImageMut.mutateAsync({ file, newName: name })
+                    setStatus('Image renamed.')
+                  } catch { setStatus('Error renaming image.') }
                 }}
                 empty={imagesLoading
                   ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>

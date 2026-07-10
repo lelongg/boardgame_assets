@@ -249,8 +249,12 @@ export default function GamesPage() {
             onRename={async (gameId, name) => {
               if (!storage) return
               try {
-                await storage.updateGame(gameId, { name })
-                queryClient.invalidateQueries({ queryKey: queryKeys.games() })
+                const updated = await storage.updateGame(gameId, { name })
+                // In-place cache update — a refetch on slow backends (S3) keeps
+                // showing the old name for seconds, as if the rename did nothing.
+                queryClient.setQueryData<any[]>(queryKeys.games(), (old) =>
+                  old ? old.map((g: any) => g.id === gameId ? { ...g, ...(updated ?? { name }) } : g) : old)
+                setStatus('Game renamed.')
               } catch (err) {
                 setError('Error renaming game', err)
               }
