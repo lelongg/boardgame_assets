@@ -15,10 +15,10 @@ const defaultVersionName = () => {
 }
 
 /**
- * Collection versions: named, restorable snapshots of a collection
+ * Versions: named, restorable snapshots of a collection or a layout
  * (called "checkpoints" in the storage layer). Creating saves the current
- * cards + layout assignment; restoring replaces the current cards with the
- * snapshot (the editor auto-saves a "Before restore" version first).
+ * state; restoring replaces the current state with the snapshot (callers
+ * auto-save a "Before restore" version first).
  */
 export default function CheckpointsDialog({
   open,
@@ -29,6 +29,7 @@ export default function CheckpointsDialog({
   onCreate,
   onRestore,
   onDelete,
+  description = 'Save a version of this collection’s cards and layout, and restore it later.',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -38,6 +39,7 @@ export default function CheckpointsDialog({
   onCreate: (name: string) => Promise<void> | void
   onRestore: (id: string) => Promise<void> | void
   onDelete: (id: string) => Promise<void> | void
+  description?: string
 }) {
   const [name, setName] = useState(defaultVersionName)
 
@@ -64,9 +66,7 @@ export default function CheckpointsDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><History className="h-4 w-4" /> Versions</DialogTitle>
-          <DialogDescription>
-            Save a version of this collection’s cards and layout, and restore it later.
-          </DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <form className="flex gap-2 py-1" onSubmit={(e) => { e.preventDefault(); submit() }}>

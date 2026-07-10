@@ -176,7 +176,9 @@ async function startServer() {
     return c.json(body);
   });
   app.delete("/api/games/:gid/layouts/:tid", (c) => {
-    fs.rmSync(tplPath(c.req.param("gid"), c.req.param("tid")), { force: true }); return c.json({});
+    fs.rmSync(tplPath(c.req.param("gid"), c.req.param("tid")), { force: true });
+    fs.rmSync(path.join(dataRoot, c.req.param("gid"), "layout-checkpoints", c.req.param("tid")), { recursive: true, force: true });
+    return c.json({});
   });
   app.post("/api/games/:gid/layouts/:tid/copy", (c) => {
     const orig = readJson(tplPath(c.req.param("gid"), c.req.param("tid")), null);
@@ -285,6 +287,40 @@ async function startServer() {
   });
   app.delete("/api/games/:gid/collections/:cid/checkpoints/:chk", (c) => {
     fs.rmSync(chkPath(c.req.param("gid"), c.req.param("cid"), c.req.param("chk")), { force: true });
+    return c.body(null, 204);
+  });
+
+  // Layout checkpoints
+  const tplChkDir = (gid, tid) => path.join(dataRoot, gid, "layout-checkpoints", tid);
+  const tplChkPath = (gid, tid, id) => path.join(tplChkDir(gid, tid), `${id}.json`);
+  app.get("/api/games/:gid/layouts/:tid/checkpoints", (c) => {
+    const dir = tplChkDir(c.req.param("gid"), c.req.param("tid"));
+    if (!fs.existsSync(dir)) return c.json([]);
+    return c.json(fs.readdirSync(dir).filter(f => f.endsWith(".json"))
+      .map(f => readJson(path.join(dir, f), null)).filter(Boolean)
+      .map(cp => ({ id: cp.id, name: cp.name, createdAt: cp.createdAt }))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
+  });
+  app.post("/api/games/:gid/layouts/:tid/checkpoints", async (c) => {
+    const gid = c.req.param("gid"), tid = c.req.param("tid");
+    const layout = readJson(tplPath(gid, tid), null);
+    if (!layout) return c.json({ error: "Layout not found" }, 404);
+    const { name } = await c.req.json();
+    const id = uid();
+    const createdAt = new Date().toISOString();
+    writeJson(tplChkPath(gid, tid, id), { id, name: name || "Version", createdAt, layout });
+    return c.json({ id, name: name || "Version", createdAt }, 201);
+  });
+  app.post("/api/games/:gid/layouts/:tid/checkpoints/:chk/restore", (c) => {
+    const gid = c.req.param("gid"), tid = c.req.param("tid");
+    const checkpoint = readJson(tplChkPath(gid, tid, c.req.param("chk")), null);
+    if (!checkpoint?.layout) return c.json({ error: "Checkpoint not found" }, 404);
+    const current = readJson(tplPath(gid, tid), null);
+    writeJson(tplPath(gid, tid), { ...checkpoint.layout, id: tid, name: current?.name ?? checkpoint.layout.name });
+    return c.body(null, 204);
+  });
+  app.delete("/api/games/:gid/layouts/:tid/checkpoints/:chk", (c) => {
+    fs.rmSync(tplChkPath(c.req.param("gid"), c.req.param("tid"), c.req.param("chk")), { force: true });
     return c.body(null, 204);
   });
 
@@ -962,4 +998,50 @@ describe("collection checkpoints", () => {
   checkpointSuite("localFile", async () => createLocalFileStorage({ defaultLayout }));
   checkpointSuite("indexedDB", async () => createIndexedDBStorage({ defaultLayout }));
   checkpointSuite("s3", async () => createTestS3());
+});
+
+// ── Layout checkpoints (named, restorable snapshots of a layout) ───────────
+
+function layoutCheckpointSuite(name, makeStorage) {
+  it(`${name}: layout checkpoint captures the layout, restore keeps current id/name`, async () => {
+    const s = await makeStorage();
+    const game = await s.createGame("Layout Checkpoint Test");
+    const tpl = (await s.listLayouts(game.id))[0];
+
+    // Give the layout a recognizable state and snapshot it.
+    await s.saveLayout(game.id, tpl.id, { ...tpl, width: 63, height: 88 });
+    const cp = await s.createLayoutCheckpoint(game.id, tpl.id, "v1");
+    assert.ok(cp.id, "checkpoint has an id");
+    assert.equal(cp.name, "v1");
+    assert.ok(cp.createdAt, "checkpoint has createdAt");
+
+    const list = await s.listLayoutCheckpoints(game.id, tpl.id);
+    assert.equal(list.length, 1, "one layout checkpoint listed");
+    assert.equal(list[0].name, "v1");
+
+    // Mutate after the checkpoint: resize and rename.
+    await s.saveLayout(game.id, tpl.id, { ...tpl, width: 100, height: 150, name: "Renamed" });
+
+    await s.restoreLayoutCheckpoint(game.id, tpl.id, cp.id);
+    const restored = await s.getLayout(game.id, tpl.id);
+    assert.equal(restored.width, 63, "width reverted to snapshot");
+    assert.equal(restored.height, 88, "height reverted to snapshot");
+    assert.equal(restored.id, tpl.id, "id unchanged by restore");
+    assert.equal(restored.name, "Renamed", "current name kept on restore");
+
+    await s.deleteLayoutCheckpoint(game.id, tpl.id, cp.id);
+    assert.equal((await s.listLayoutCheckpoints(game.id, tpl.id)).length, 0, "layout checkpoint deleted");
+
+    // Deleting a layout removes its checkpoints too.
+    const tpl2 = await s.createLayout(game.id, "Disposable");
+    await s.createLayoutCheckpoint(game.id, tpl2.id, "orphan?");
+    await s.deleteLayout(game.id, tpl2.id);
+    assert.equal((await s.listLayoutCheckpoints(game.id, tpl2.id)).length, 0, "checkpoints removed with layout");
+  });
+}
+
+describe("layout checkpoints", () => {
+  layoutCheckpointSuite("localFile", async () => createLocalFileStorage({ defaultLayout }));
+  layoutCheckpointSuite("indexedDB", async () => createIndexedDBStorage({ defaultLayout }));
+  layoutCheckpointSuite("s3", async () => createTestS3());
 });

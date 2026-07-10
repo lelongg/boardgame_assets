@@ -460,6 +460,36 @@ test("googleDrive: checkpoint captures cards + layout and restore reverts change
   assert.equal((await storage.listCheckpoints(game.id, "default")).length, 0);
 });
 
+test("googleDrive: layout checkpoint captures the layout and restore keeps current id/name", async () => {
+  createDriveMock();
+  const storage = await makeStorage();
+  const game = await storage.createGame("Layout Checkpoint Game");
+  const tpl = (await storage.listLayouts(game.id))[0];
+
+  await storage.saveLayout(game.id, tpl.id, { ...tpl, width: 63, height: 88 });
+  const cp = await storage.createLayoutCheckpoint(game.id, tpl.id, "v1");
+  assert.ok(cp.id && cp.name === "v1" && cp.createdAt);
+  assert.equal((await storage.listLayoutCheckpoints(game.id, tpl.id)).length, 1);
+
+  await storage.saveLayout(game.id, tpl.id, { ...tpl, width: 100, height: 150, name: "Renamed" });
+
+  await storage.restoreLayoutCheckpoint(game.id, tpl.id, cp.id);
+  const restored = await storage.getLayout(game.id, tpl.id);
+  assert.equal(restored.width, 63, "width reverted to snapshot");
+  assert.equal(restored.height, 88, "height reverted to snapshot");
+  assert.equal(restored.id, tpl.id, "id unchanged by restore");
+  assert.equal(restored.name, "Renamed", "current name kept on restore");
+
+  await storage.deleteLayoutCheckpoint(game.id, tpl.id, cp.id);
+  assert.equal((await storage.listLayoutCheckpoints(game.id, tpl.id)).length, 0);
+
+  // Deleting a layout removes its checkpoints too.
+  const tpl2 = await storage.createLayout(game.id, "Disposable");
+  await storage.createLayoutCheckpoint(game.id, tpl2.id, "orphan?");
+  await storage.deleteLayout(game.id, tpl2.id);
+  assert.equal((await storage.listLayoutCheckpoints(game.id, tpl2.id)).length, 0, "checkpoints removed with layout");
+});
+
 // ── clearCache exists on every backend ─────────────────────────────────────
 
 test("all backends expose clearCache for reload-from-storage", async () => {

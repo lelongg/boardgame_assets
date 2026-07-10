@@ -431,6 +431,7 @@ app.delete("/api/games/:gameId/layouts/:layoutId", (req, res) => {
   const collections = listCollections(gameId);
   if (collections.some((col) => col.layoutId === layoutId)) return res.status(400).json({ error: "Layout is in use by a collection" });
   fs.rmSync(layoutFilePath(gameId, layoutId), { force: true });
+  fs.rmSync(layoutCheckpointsDir(gameId, layoutId), { recursive: true, force: true });
   touchGame(gameId);
   res.status(204).end();
 });
@@ -625,6 +626,53 @@ app.post("/api/games/:gameId/collections/:collectionId/checkpoints/:checkpointId
 app.delete("/api/games/:gameId/collections/:collectionId/checkpoints/:checkpointId", (req, res) => {
   const { gameId, collectionId, checkpointId } = req.params;
   fs.rmSync(checkpointPath(gameId, collectionId, checkpointId), { force: true });
+  res.status(204).end();
+});
+
+// Layout checkpoints (named, restorable snapshots of a layout).
+// Stored outside layoutsDir so listLayouts never picks them up.
+const layoutCheckpointsDir = (gameId: string, layoutId: string) => path.join(dataRoot, gameId, "layout-checkpoints", layoutId);
+const layoutCheckpointPath = (gameId: string, layoutId: string, id: string) => path.join(layoutCheckpointsDir(gameId, layoutId), `${id}.json`);
+
+app.get("/api/games/:gameId/layouts/:layoutId/checkpoints", (req, res) => {
+  const { gameId, layoutId } = req.params;
+  const dir = layoutCheckpointsDir(gameId, layoutId);
+  if (!fs.existsSync(dir)) return res.json([]);
+  const metas = fs.readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => readJson<any>(path.join(dir, f), null))
+    .filter(Boolean)
+    .map((cp: any) => ({ id: cp.id, name: cp.name, createdAt: cp.createdAt }))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  res.json(metas);
+});
+
+app.post("/api/games/:gameId/layouts/:layoutId/checkpoints", (req, res) => {
+  const { gameId, layoutId } = req.params;
+  const name = req.body?.name?.trim() || "Version";
+  const layout = loadLayout(gameId, layoutId);
+  if (!layout) return res.status(404).json({ error: "Layout not found" });
+  const id = crypto.randomUUID().slice(0, 8);
+  const createdAt = new Date().toISOString();
+  writeJson(layoutCheckpointPath(gameId, layoutId, id), { id, name, createdAt, layout });
+  res.status(201).json({ id, name, createdAt });
+});
+
+app.post("/api/games/:gameId/layouts/:layoutId/checkpoints/:checkpointId/restore", (req, res) => {
+  const { gameId, layoutId, checkpointId } = req.params;
+  const checkpoint = readJson<any>(layoutCheckpointPath(gameId, layoutId, checkpointId), null);
+  if (!checkpoint?.layout) return res.status(404).json({ error: "Checkpoint not found" });
+  // Restore the layout's content but keep the current id and name.
+  const current = loadLayout(gameId, layoutId);
+  const restored = normalizeLayout({ ...checkpoint.layout, id: layoutId, name: current?.name ?? checkpoint.layout.name });
+  writeJson(layoutFilePath(gameId, layoutId), restored);
+  touchGame(gameId);
+  res.status(204).end();
+});
+
+app.delete("/api/games/:gameId/layouts/:layoutId/checkpoints/:checkpointId", (req, res) => {
+  const { gameId, layoutId, checkpointId } = req.params;
+  fs.rmSync(layoutCheckpointPath(gameId, layoutId, checkpointId), { force: true });
   res.status(204).end();
 });
 

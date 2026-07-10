@@ -302,6 +302,33 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
     async deleteCheckpoint(gameId, collectionId, checkpointId) {
       const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/checkpoints/${checkpointId}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to delete checkpoint");
+    },
+
+    // Layout checkpoints
+    async listLayoutCheckpoints(gameId, layoutId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts/${layoutId}/checkpoints`);
+      if (!response.ok) throw new Error("Failed to list layout checkpoints");
+      return await response.json();
+    },
+
+    async createLayoutCheckpoint(gameId, layoutId, name) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts/${layoutId}/checkpoints`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) throw new Error("Failed to create layout checkpoint");
+      return await response.json();
+    },
+
+    async restoreLayoutCheckpoint(gameId, layoutId, checkpointId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts/${layoutId}/checkpoints/${checkpointId}/restore`, { method: "POST" });
+      if (!response.ok) throw new Error("Failed to restore layout checkpoint");
+    },
+
+    async deleteLayoutCheckpoint(gameId, layoutId, checkpointId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/layouts/${layoutId}/checkpoints/${checkpointId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete layout checkpoint");
     }
   };
 };

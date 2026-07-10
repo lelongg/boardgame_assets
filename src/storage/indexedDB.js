@@ -26,7 +26,7 @@ const hashArrayBuffer = async (buf) => {
 // ── Database ───────────────────────────────────────────────────────────────
 
 const DB_NAME = "boardgame-assets";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -53,6 +53,9 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains("checkpoints")) {
         db.createObjectStore("checkpoints");
+      }
+      if (!db.objectStoreNames.contains("layoutCheckpoints")) {
+        db.createObjectStore("layoutCheckpoints");
       }
 
       // Migrate v2 "templates" → "layouts" and rename templateId in collections
@@ -300,10 +303,12 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
         await idbDelete(db, "games", gameId);
         await idbDelete(db, "games", fontsKey(gameId));
 
-        // Delete all layouts, collections, cards for this game
+        // Delete all layouts, collections, cards and checkpoints for this game
         await idbDeleteByPrefix(db, "layouts", [gameId]);
         await idbDeleteByPrefix(db, "collections", [gameId]);
         await idbDeleteByPrefix(db, "cards", [gameId]);
+        await idbDeleteByPrefix(db, "checkpoints", [gameId]);
+        await idbDeleteByPrefix(db, "layoutCheckpoints", [gameId]);
 
         // Delete all assets for this game
         const prefix = `/api/games/${gameId}/`;
@@ -390,6 +395,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
           throw new Error("Cannot delete layout that is in use by a collection");
         }
         await idbDelete(db, "layouts", [gameId, layoutId]);
+        await idbDeleteByPrefix(db, "layoutCheckpoints", [gameId, layoutId]);
       } finally {
         db.close();
       }
@@ -590,6 +596,58 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       const db = await openDB();
       try {
         await idbDelete(db, "checkpoints", [gameId, collectionId, checkpointId]);
+      } finally {
+        db.close();
+      }
+    },
+
+    // ── Layout checkpoints ───────────────────────────────────────────────────
+
+    async listLayoutCheckpoints(gameId, layoutId) {
+      const db = await openDB();
+      try {
+        const entries = await idbGetAllByPrefix(db, "layoutCheckpoints", [gameId, layoutId]);
+        return entries
+          .map((e) => ({ id: e.value.id, name: e.value.name, createdAt: e.value.createdAt }))
+          .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      } finally {
+        db.close();
+      }
+    },
+
+    async createLayoutCheckpoint(gameId, layoutId, name) {
+      const db = await openDB();
+      try {
+        const layout = await idbGet(db, "layouts", [gameId, layoutId]);
+        if (!layout) throw new Error(`Layout not found: ${layoutId}`);
+        const id = uid();
+        const createdAt = now();
+        const checkpoint = { id, name, createdAt, layout: normalizeLayout(layout) };
+        await idbPut(db, "layoutCheckpoints", [gameId, layoutId, id], checkpoint);
+        return { id, name, createdAt };
+      } finally {
+        db.close();
+      }
+    },
+
+    async restoreLayoutCheckpoint(gameId, layoutId, checkpointId) {
+      const db = await openDB();
+      try {
+        const checkpoint = await idbGet(db, "layoutCheckpoints", [gameId, layoutId, checkpointId]);
+        if (!checkpoint) throw new Error(`Checkpoint not found: ${checkpointId}`);
+        // Restore the layout's content but keep the current id and name.
+        const current = await idbGet(db, "layouts", [gameId, layoutId]);
+        const restored = normalizeLayout({ ...checkpoint.layout, id: layoutId, name: current?.name ?? checkpoint.layout.name });
+        await idbPut(db, "layouts", [gameId, layoutId], restored);
+      } finally {
+        db.close();
+      }
+    },
+
+    async deleteLayoutCheckpoint(gameId, layoutId, checkpointId) {
+      const db = await openDB();
+      try {
+        await idbDelete(db, "layoutCheckpoints", [gameId, layoutId, checkpointId]);
       } finally {
         db.close();
       }
