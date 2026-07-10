@@ -531,6 +531,17 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       }
     },
 
+    async getCheckpoint(gameId, collectionId, checkpointId) {
+      const db = await openDB();
+      try {
+        const checkpoint = await idbGet(db, "checkpoints", [gameId, collectionId, checkpointId]);
+        if (!checkpoint) throw new Error(`Checkpoint not found: ${checkpointId}`);
+        return checkpoint;
+      } finally {
+        db.close();
+      }
+    },
+
     async createCheckpoint(gameId, collectionId, name) {
       const db = await openDB();
       try {

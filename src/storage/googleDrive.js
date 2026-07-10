@@ -722,6 +722,14 @@ export const createGoogleDriveStorage = (options = {}) => {
     return metas;
   };
 
+  const getCheckpoint = async (gameId, collectionId, checkpointId) => {
+    const key = `chkfile:${gameId}:${collectionId}:${checkpointId}`;
+    const fid = fileIds.get(key) ?? await findFile(`${checkpointId}.json`, await checkpointsFolder(gameId, collectionId));
+    if (!fid) throw new Error("Checkpoint not found.");
+    fileIds.set(key, fid);
+    return await readFile(fid);
+  };
+
   const createCheckpoint = async (gameId, collectionId, name) => {
     const col = await getCollection(gameId, collectionId);
     const cards = await listCards(gameId, collectionId);
@@ -771,7 +779,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     listCards, getCard, saveCard, deleteCard, copyCard,
     listFonts, addGoogleFont, uploadFont, deleteFont, renameFont,
     uploadImage, listImages, deleteImage, renameImage,
-    listCheckpoints, createCheckpoint, restoreCheckpoint, deleteCheckpoint,
+    listCheckpoints, getCheckpoint, createCheckpoint, restoreCheckpoint, deleteCheckpoint,
     clearCache,
   };
 };

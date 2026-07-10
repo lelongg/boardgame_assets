@@ -438,6 +438,12 @@ test("googleDrive: checkpoint captures cards + layout and restore reverts change
   assert.ok(cp.id && cp.name === "v1" && cp.createdAt);
   assert.equal((await storage.listCheckpoints(game.id, "default")).length, 1);
 
+  // Full contents are readable without restoring (used by unused-asset scan).
+  const full = await storage.getCheckpoint(game.id, "default", cp.id);
+  assert.equal(full.id, cp.id);
+  assert.deepEqual(full.cards.map((c) => c.id).sort(), ["c1", "c2"]);
+  assert.ok(full.collection.layoutId, "collection snapshot included");
+
   await storage.deleteCard(game.id, "default", "c1");
   await storage.saveCard(game.id, "default", "c2", { id: "c2", name: "Beta EDITED", fields: { hp: "99" } });
   await storage.saveCard(game.id, "default", "c3", { id: "c3", name: "Gamma", fields: {} });

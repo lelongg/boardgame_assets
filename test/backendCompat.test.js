@@ -255,6 +255,11 @@ async function startServer() {
       .map(cp => ({ id: cp.id, name: cp.name, createdAt: cp.createdAt }))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
   });
+  app.get("/api/games/:gid/collections/:cid/checkpoints/:chk", (c) => {
+    const checkpoint = readJson(chkPath(c.req.param("gid"), c.req.param("cid"), c.req.param("chk")), null);
+    if (!checkpoint) return c.json({ error: "Checkpoint not found" }, 404);
+    return c.json(checkpoint);
+  });
   app.post("/api/games/:gid/collections/:cid/checkpoints", async (c) => {
     const gid = c.req.param("gid"), cid = c.req.param("cid");
     const col = readJson(colPath(gid, cid), null);
@@ -918,6 +923,15 @@ function checkpointSuite(name, makeStorage) {
     const list = await s.listCheckpoints(game.id, colId);
     assert.equal(list.length, 1, "one checkpoint listed");
     assert.equal(list[0].name, "v1");
+
+    // Full contents are readable without restoring (used by unused-asset scan).
+    const full = await s.getCheckpoint(game.id, colId, cp.id);
+    assert.equal(full.id, cp.id);
+    assert.equal(full.name, "v1");
+    assert.deepEqual(full.cards.map((c) => c.id).sort(), ["c1", "c2"], "checkpoint contents include the snapshotted cards");
+    assert.equal(full.cards.find((c) => c.id === "c2").fields.hp, "2");
+    assert.equal(full.collection.layoutId, "default", "collection snapshot included");
+    await assert.rejects(() => s.getCheckpoint(game.id, colId, "nope"), "missing checkpoint rejects");
 
     // Mutate after the checkpoint: delete c1, edit c2, add c3.
     await s.deleteCard(game.id, colId, "c1");

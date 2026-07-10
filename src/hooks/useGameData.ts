@@ -21,6 +21,7 @@ export const queryKeys = {
   fonts: (gameId: string) => ['fonts', gameId] as const,
   images: (gameId: string) => ['images', gameId] as const,
   checkpoints: (gameId: string, collectionId: string) => ['checkpoints', gameId, collectionId] as const,
+  checkpoint: (gameId: string, collectionId: string, checkpointId: string) => ['checkpoint', gameId, collectionId, checkpointId] as const,
 }
 
 // ── Query hooks ─────────────────────────────────────────────────────

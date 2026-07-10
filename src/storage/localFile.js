@@ -278,6 +278,12 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
       return await response.json();
     },
 
+    async getCheckpoint(gameId, collectionId, checkpointId) {
+      const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/checkpoints/${checkpointId}`);
+      if (!response.ok) throw new Error("Failed to get checkpoint");
+      return await response.json();
+    },
+
     async createCheckpoint(gameId, collectionId, name) {
       const response = await fetch(`${apiBase}/games/${gameId}/collections/${collectionId}/checkpoints`, {
         method: "POST",

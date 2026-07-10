@@ -7,7 +7,7 @@ import { collectUsedImageFiles, collectUsedFontSlots, findUnusedFontSlots } from
 export type AssetUsage = {
   /** True while any of the underlying game data is still loading. */
   isLoading: boolean
-  /** Image file names referenced by at least one layout, card or collection. */
+  /** Image file names referenced by at least one layout, card, collection or checkpoint. */
   usedImageFiles: Set<string>
   /** Image file names present in storage but referenced nowhere. */
   unusedImageFiles: Set<string>
@@ -16,10 +16,9 @@ export type AssetUsage = {
 }
 
 /**
- * Scans the whole game (all layouts, all collections, all cards) for asset
- * references and reports which uploaded images and fonts are unused.
- * Checkpoint snapshots cannot be read through the storage interface and are
- * not scanned.
+ * Scans the whole game (all layouts, all collections, all cards, and all
+ * checkpoint snapshots) for asset references and reports which uploaded
+ * images and fonts are unused.
  */
 export default function useAssetUsage(gameId: string | undefined): AssetUsage {
   const storage = useStorageInstance()!
@@ -38,12 +37,50 @@ export default function useAssetUsage(gameId: string | undefined): AssetUsage {
     })),
   })
 
-  const isLoading = layoutsLoading || collectionsLoading || fontsLoading || imagesLoading
+  const checkpointListQueries = useQueries({
+    queries: collections.map((col: any) => ({
+      queryKey: queryKeys.checkpoints(gameId!, col.id),
+      queryFn: () => storage.listCheckpoints(gameId!, col.id),
+      enabled: !!storage && !!gameId,
+      staleTime: staleTime(),
+      gcTime: gcTime(),
+    })),
+  })
+
+  const checkpointRefs = collections.flatMap((col: any, i: number) =>
+    ((checkpointListQueries[i]?.data as any[]) ?? []).map((cp: any) => ({
+      collectionId: col.id as string,
+      checkpointId: cp.id as string,
+    })),
+  )
+
+  const checkpointQueries = useQueries({
+    queries: checkpointRefs.map((ref) => ({
+      queryKey: queryKeys.checkpoint(gameId!, ref.collectionId, ref.checkpointId),
+      queryFn: () => storage.getCheckpoint(gameId!, ref.collectionId, ref.checkpointId),
+      enabled: !!storage && !!gameId,
+      // Checkpoint contents are immutable once created
+      staleTime: Infinity,
+      gcTime: gcTime(),
+    })),
+  })
+
+  // An errored query would silently drop its references and could flag a
+  // used asset as unused, so a failed scan reports nothing instead.
+  const hasError = cardQueries.some((q) => q.isError)
+    || checkpointListQueries.some((q) => q.isError)
+    || checkpointQueries.some((q) => q.isError)
+
+  const isLoading = hasError
+    || layoutsLoading || collectionsLoading || fontsLoading || imagesLoading
     || cardQueries.some((q) => q.isLoading)
+    || checkpointListQueries.some((q) => q.isLoading)
+    || checkpointQueries.some((q) => q.isLoading)
 
   // useQueries returns a fresh array every render; key the memo on the data
   // update timestamps so the scan only reruns when something actually changed.
   const cardsKey = cardQueries.map((q) => q.dataUpdatedAt).join(',')
+  const checkpointsKey = checkpointQueries.map((q) => q.dataUpdatedAt).join(',')
 
   return useMemo(() => {
     const empty = {
@@ -54,8 +91,15 @@ export default function useAssetUsage(gameId: string | undefined): AssetUsage {
     }
     if (isLoading) return empty
 
-    const allCards = cardQueries.flatMap((q) => (q.data as any[]) ?? [])
-    const usedImageFiles = collectUsedImageFiles(layouts, collections, allCards)
+    const checkpoints = checkpointQueries.map((q) => q.data as any).filter(Boolean)
+    const allCards = [
+      ...cardQueries.flatMap((q) => (q.data as any[]) ?? []),
+      ...checkpoints.flatMap((cp) => cp.cards ?? []),
+    ]
+    // A checkpoint's collection snapshot carries its own `back` image
+    const allCollections = [...collections, ...checkpoints.map((cp) => cp.collection).filter(Boolean)]
+
+    const usedImageFiles = collectUsedImageFiles(layouts, allCollections, allCards)
     const unusedImageFiles = new Set(
       images.map((img) => img.file).filter((file) => !usedImageFiles.has(file)),
     )
@@ -63,5 +107,5 @@ export default function useAssetUsage(gameId: string | undefined): AssetUsage {
     const unusedFontSlots = new Set(findUnusedFontSlots(fonts, usedFontSlots))
     return { isLoading, usedImageFiles, unusedImageFiles, unusedFontSlots }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, layouts, collections, fonts, images, cardsKey])
+  }, [isLoading, layouts, collections, fonts, images, cardsKey, checkpointsKey])
 }

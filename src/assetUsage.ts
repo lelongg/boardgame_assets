@@ -9,9 +9,9 @@
  * - Fonts are referenced by manifest slot key (`item.font`, font bindings,
  *   bindingMeta for `font:*`), never by URL.
  *
- * Checkpoints are self-contained snapshots whose contents are not readable
- * through the storage interface, so they are NOT scanned — callers should
- * surface that caveat when offering deletion.
+ * Checkpoint snapshots also keep assets alive: callers should feed each
+ * checkpoint's cards and collection snapshot (getCheckpoint) into the
+ * collectors alongside the live data, as useAssetUsage does.
  */
 
 // Matches all occurrences in a value (rich text can embed several images)

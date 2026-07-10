@@ -575,6 +575,13 @@ app.get("/api/games/:gameId/collections/:collectionId/checkpoints", (req, res) =
   res.json(metas);
 });
 
+app.get("/api/games/:gameId/collections/:collectionId/checkpoints/:checkpointId", (req, res) => {
+  const { gameId, collectionId, checkpointId } = req.params;
+  const checkpoint = readJson<any>(checkpointPath(gameId, collectionId, checkpointId), null);
+  if (!checkpoint) return res.status(404).json({ error: "Checkpoint not found" });
+  res.json(checkpoint);
+});
+
 app.post("/api/games/:gameId/collections/:collectionId/checkpoints", (req, res) => {
   const { gameId, collectionId } = req.params;
   const name = req.body?.name?.trim() || "Checkpoint";

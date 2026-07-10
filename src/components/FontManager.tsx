@@ -151,7 +151,7 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus, sh
               variant="ghost"
               disabled={loading}
               label={`${unusedCount} unused`}
-              title={`Delete ${unusedCount} unused font${unusedCount === 1 ? '' : 's'} (checkpoints are not scanned)`}
+              title={`Delete ${unusedCount} unused font${unusedCount === 1 ? '' : 's'}`}
               onConfirm={handleDeleteUnused}
             />
           )}
