@@ -152,9 +152,19 @@ export function useUpdateGame(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, Record<string, any>>({
     mutationFn: (updates: Record<string, any>) => storage.updateGame(gameId!, updates),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.game(gameId!) })
-      qc.invalidateQueries({ queryKey: queryKeys.games() })
+    onSuccess: (updated) => {
+      // Update caches in place with what the backend persisted instead of
+      // refetching: on slow backends (S3) the refetch takes seconds during
+      // which the UI keeps showing the pre-edit value, making the change look
+      // like it did nothing.
+      if (updated) {
+        qc.setQueryData(queryKeys.game(gameId!), updated)
+        qc.setQueryData<any[]>(queryKeys.games(), (old) =>
+          old ? old.map((g: any) => g.id === gameId ? { ...g, ...updated } : g) : old)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.game(gameId!) })
+        qc.invalidateQueries({ queryKey: queryKeys.games() })
+      }
     },
   })
 }
@@ -184,12 +194,19 @@ export function useUpdateCollection(gameId: string | undefined) {
   return useMutation<any, Error, { collectionId: string; updates: Record<string, any> }>({
     mutationFn: ({ collectionId, updates }) =>
       storage.updateCollection(gameId!, collectionId, updates),
-    onSuccess: (_data, { collectionId }) => {
-      // Immediately update the single-collection cache so dependents (e.g. the
-      // layout dropdown) react without waiting for a background refetch.
-      qc.setQueryData(queryKeys.collection(gameId!, collectionId), _data)
-      qc.invalidateQueries({ queryKey: queryKeys.collections(gameId!) })
-      qc.invalidateQueries({ queryKey: queryKeys.collection(gameId!, collectionId) })
+    onSuccess: (updated, { collectionId }) => {
+      // Immediately update the caches so dependents (e.g. the layout dropdown,
+      // the collections list) react without waiting for a refetch. On slow
+      // backends (S3) a refetch takes seconds and keeps showing pre-edit data,
+      // making the update look like it did nothing.
+      if (updated) {
+        qc.setQueryData(queryKeys.collection(gameId!, collectionId), updated)
+        qc.setQueryData<any[]>(queryKeys.collections(gameId!), (old) =>
+          old ? old.map((c: any) => c.id === collectionId ? updated : c) : old)
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.collections(gameId!) })
+        qc.invalidateQueries({ queryKey: queryKeys.collection(gameId!, collectionId) })
+      }
     },
   })
 }
@@ -218,12 +235,14 @@ export function useSaveLayout(gameId: string | undefined) {
   return useMutation<any, Error, { layoutId: string; layout: any }>({
     mutationFn: ({ layoutId, layout }) =>
       storage.saveLayout(gameId!, layoutId, layout),
-    onSuccess: (_data, vars) => {
-      // Don't invalidate the individual layout query — the optimistic update
-      // in handleLayoutSave already set the correct value. Refetching would
-      // cause a race that reverts edits (especially on slow backends like S3).
-      void vars
-      qc.invalidateQueries({ queryKey: queryKeys.layouts(gameId!) })
+    onSuccess: (saved, vars) => {
+      // Don't refetch — update both layout caches in place. Refetching would
+      // cause a race that reverts edits (especially on slow backends like S3,
+      // where the refetch takes seconds and serves pre-save data meanwhile).
+      const layout = saved ?? vars.layout
+      qc.setQueryData(queryKeys.layout(gameId!, vars.layoutId), layout)
+      qc.setQueryData<any[]>(queryKeys.layouts(gameId!), (old) =>
+        old ? old.map((l: any) => l.id === vars.layoutId ? layout : l) : old)
     },
   })
 }
@@ -252,7 +271,20 @@ export function useSaveCard(gameId: string | undefined, collectionId: string | u
   return useMutation<any, Error, { cardId: string; card: any }>({
     mutationFn: ({ cardId, card }) =>
       storage.saveCard(gameId!, collectionId!, cardId, card),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, collectionId!) }) },
+    onSuccess: (saved) => {
+      // In-place update (or append for a new card) instead of a refetch — see
+      // useSaveLayout for why refetching misbehaves on slow backends.
+      if (saved?.id) {
+        qc.setQueryData<any[]>(queryKeys.cards(gameId!, collectionId!), (old) => {
+          if (!old) return old
+          return old.some((c: any) => c.id === saved.id)
+            ? old.map((c: any) => c.id === saved.id ? saved : c)
+            : [...old, saved]
+        })
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.cards(gameId!, collectionId!) })
+      }
+    },
   })
 }
 
@@ -374,7 +406,12 @@ export function useRenameFont(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, { slot: string; newName: string }>({
     mutationFn: ({ slot, newName }) => storage.renameFont(gameId!, slot, newName),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) }) },
+    onSuccess: (result) => {
+      // Backends return the updated manifest — use it directly instead of
+      // refetching (slow backends serve pre-save data for a while).
+      if (result?.fonts) qc.setQueryData(queryKeys.fonts(gameId!), result.fonts)
+      else qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) })
+    },
   })
 }
 
@@ -392,7 +429,13 @@ export function useRenameImage(gameId: string | undefined) {
   const qc = useQueryClient()
   return useMutation<any, Error, { file: string; newName: string }>({
     mutationFn: ({ file, newName }) => storage.renameImage(gameId!, file, newName),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.images(gameId!) }) },
+    onSuccess: (_res, { file, newName }) => {
+      // Only the display name changes — update it in place rather than
+      // refetching the whole listing (slow on S3, and prone to serving the
+      // pre-rename sidecar for a while).
+      qc.setQueryData<any[]>(queryKeys.images(gameId!), (old) =>
+        old ? old.map((img: any) => img.file === file ? { ...img, name: newName } : img) : old)
+    },
   })
 }
 

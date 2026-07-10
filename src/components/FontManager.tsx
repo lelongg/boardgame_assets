@@ -138,8 +138,10 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus, sh
         onRename={async (slot, newName) => {
           onStatus('Renaming font...')
           try {
+            // useRenameFont updates the fonts cache in place — no
+            // onFontsChange() here, its invalidation would refetch and could
+            // briefly revert the name on slow backends.
             await renameFontMut.mutateAsync({ slot, newName })
-            onFontsChange()
             onStatus('Font renamed.')
           } catch (err: any) {
             onStatus(`Error: ${err.message}`)
