@@ -133,6 +133,9 @@ export type Collection = {
   id: string;
   name: string;
   layoutId: string;
+  // Card back: either a dedicated layout (rendered like the front) or a
+  // static image. backLayoutId takes precedence over back/backFit when set.
+  backLayoutId?: string;
   back?: string;
   backFit?: "cover" | "contain" | "fill";
 };

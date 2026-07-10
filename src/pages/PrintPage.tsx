@@ -103,7 +103,7 @@ function computePageLayout(config: PrintConfig, cardWidthMm: number, cardHeightM
 
 // --- Component ---
 
-type CardEntry = { card: CardData; layout: CardLayout; collectionName: string; back?: string; backFit?: string }
+type CardEntry = { card: CardData; layout: CardLayout; collectionName: string; back?: string; backFit?: string; backLayout?: CardLayout }
 
 export default function PrintPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId?: string }>()
@@ -117,6 +117,7 @@ export default function PrintPage() {
 
   const [entries, setEntries] = useState<CardEntry[]>([])
   const [svgs, setSvgs] = useState<string[]>([])
+  const [backSvgs, setBackSvgs] = useState<(string | null)[]>([])
   const [status, setStatus] = useState('Loading...')
   const [exporting, setExporting] = useState(false)
   // Open by default on desktop; on mobile the settings start as a closed
@@ -188,13 +189,14 @@ export default function PrintPage() {
 
         const all: CardEntry[] = []
         for (const col of collections) {
-          const [tpl, cards] = await Promise.all([
+          const [tpl, cards, backTpl] = await Promise.all([
             storage.getLayout(gameId, col.layoutId),
             storage.listCards(gameId, col.id),
+            col.backLayoutId ? storage.getLayout(gameId, col.backLayoutId).catch(() => null) : Promise.resolve(null),
           ])
           for (const card of cards) {
             if (cardIdSet && !cardIdSet.has(card.id)) continue
-            all.push({ card, layout: tpl, collectionName: col.name, back: col.back, backFit: col.backFit })
+            all.push({ card, layout: tpl, collectionName: col.name, back: col.back, backFit: col.backFit, backLayout: backTpl ?? undefined })
           }
         }
 
@@ -219,14 +221,23 @@ export default function PrintPage() {
     let cancelled = false
     ;(async () => {
       const rendered: string[] = []
-      for (const { card, layout } of entries) {
+      const renderedBacks: (string | null)[] = []
+      for (const { card, layout, backLayout } of entries) {
         if (cancelled) return
         let svg = renderCardSvg(card, layout, { fonts: gameFonts })
         svg = await embedFontsInSvg(svg, gameId!, gameFonts)
         svg = await embedImagesInSvg(svg)
         rendered.push(svg)
+        if (backLayout) {
+          let bsvg = renderCardSvg(card, backLayout, { fonts: gameFonts })
+          bsvg = await embedFontsInSvg(bsvg, gameId!, gameFonts)
+          bsvg = await embedImagesInSvg(bsvg)
+          renderedBacks.push(bsvg)
+        } else {
+          renderedBacks.push(null)
+        }
       }
-      if (!cancelled) setSvgs(rendered)
+      if (!cancelled) { setSvgs(rendered); setBackSvgs(renderedBacks) }
     })()
     return () => { cancelled = true }
   }, [entries])
@@ -289,6 +300,15 @@ export default function PrintPage() {
       const isDuplexPdf = config.printMode === 'duplex'
       const foldHPdf = isFoldPdf && (config.foldEdge === 'left' || config.foldEdge === 'right')
 
+      // Resolve a card's back: a layout-rendered SVG (rasterized) wins over
+      // the collection's static back image.
+      const backImageFor = async (idx: number): Promise<{ data: string; type: 'PNG' | 'JPEG' } | null> => {
+        const bsvg = backSvgs[idx]
+        if (bsvg) return { data: await rasterizeSvg(bsvg, baseCw, baseCh), type: 'PNG' }
+        const back = entries[idx]?.back
+        return back ? { data: back, type: 'JPEG' } : null
+      }
+
       const renderPage = async (startIdx: number, isBack: boolean) => {
         const pageCardSvgs = svgs.slice(startIdx, startIdx + perPage)
         for (let i = 0; i < pageCardSvgs.length; i++) {
@@ -297,7 +317,6 @@ export default function PrintPage() {
           const row = Math.floor(i / cols)
           const x = offsetX + col * (cw + config.gap)
           const y = offsetY + row * (ch + config.gap)
-          const entry = entries[startIdx + i]
 
           if (!isBack && (config.printMode === 'front' || isFoldPdf || isDuplexPdf)) {
             const fx = isFoldPdf ? (config.foldEdge === 'right' ? x : foldHPdf ? x + baseCw : x) : x
@@ -306,26 +325,26 @@ export default function PrintPage() {
             doc.addImage(png, 'PNG', fx, fy, baseCw, baseCh)
           }
 
-          if (isBack && entry?.back) {
-            doc.addImage(entry.back, 'JPEG', x, y, baseCw, baseCh)
+          if (isBack || config.printMode === 'back') {
+            const b = await backImageFor(startIdx + i)
+            if (b) doc.addImage(b.data, b.type, x, y, baseCw, baseCh)
           }
 
-          if (!isBack && config.printMode === 'back' && entry?.back) {
-            doc.addImage(entry.back, 'JPEG', x, y, baseCw, baseCh)
-          }
-
-          if (!isBack && isFoldPdf && entry?.back) {
-            const bx = config.foldEdge === 'right' ? x + baseCw : foldHPdf ? x : x
-            const by = config.foldEdge === 'bottom' ? y + baseCh : !foldHPdf ? y : y
-            doc.saveGraphicsState()
-            if (foldHPdf) {
-              doc.setCurrentTransformationMatrix(doc.Matrix(-1, 0, 0, 1, (bx + baseCw) * 2 / doc.internal.scaleFactor, 0))
-              doc.addImage(entry.back, 'JPEG', bx, by, baseCw, baseCh)
-            } else {
-              doc.setCurrentTransformationMatrix(doc.Matrix(1, 0, 0, -1, 0, (by + baseCh) * 2 / doc.internal.scaleFactor))
-              doc.addImage(entry.back, 'JPEG', bx, by, baseCw, baseCh)
+          if (!isBack && isFoldPdf) {
+            const b = await backImageFor(startIdx + i)
+            if (b) {
+              const bx = config.foldEdge === 'right' ? x + baseCw : foldHPdf ? x : x
+              const by = config.foldEdge === 'bottom' ? y + baseCh : !foldHPdf ? y : y
+              doc.saveGraphicsState()
+              if (foldHPdf) {
+                doc.setCurrentTransformationMatrix(doc.Matrix(-1, 0, 0, 1, (bx + baseCw) * 2 / doc.internal.scaleFactor, 0))
+                doc.addImage(b.data, b.type, bx, by, baseCw, baseCh)
+              } else {
+                doc.setCurrentTransformationMatrix(doc.Matrix(1, 0, 0, -1, 0, (by + baseCh) * 2 / doc.internal.scaleFactor))
+                doc.addImage(b.data, b.type, bx, by, baseCw, baseCh)
+              }
+              doc.restoreGraphicsState()
             }
-            doc.restoreGraphicsState()
           }
 
           if (config.cutMarks) {
@@ -521,18 +540,27 @@ export default function PrintPage() {
                           )}
                         </div>
                       )}
-                      {showBack && entry.back && (
+                      {showBack && (backSvgs[svgIdx] || entry.back) && (
                         <div style={config.printMode === 'back' ? { width: '100%', height: '100%' } : backStyle}>
-                          <img
-                            src={entry.back}
-                            alt="Back"
-                            className="w-full h-full pointer-events-none"
-                            style={{ objectFit: (entry.backFit as any) || 'cover' }}
-                            draggable={false}
-                          />
+                          {backSvgs[svgIdx] ? (
+                            <img
+                              src={`data:image/svg+xml,${encodeURIComponent(backSvgs[svgIdx]!)}`}
+                              alt="Back"
+                              className="w-full h-full pointer-events-none"
+                              draggable={false}
+                            />
+                          ) : (
+                            <img
+                              src={entry.back}
+                              alt="Back"
+                              className="w-full h-full pointer-events-none"
+                              style={{ objectFit: (entry.backFit as any) || 'cover' }}
+                              draggable={false}
+                            />
+                          )}
                         </div>
                       )}
-                      {showBack && !entry.back && config.printMode === 'back' && (
+                      {showBack && !backSvgs[svgIdx] && !entry.back && config.printMode === 'back' && (
                         <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No back</div>
                       )}
                       {isFold && (

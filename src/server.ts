@@ -585,7 +585,7 @@ app.post("/api/games/:gameId/collections/:collectionId/checkpoints", (req, res) 
   const createdAt = new Date().toISOString();
   const checkpoint = {
     id, name, createdAt,
-    collection: { name: col.name, layoutId: col.layoutId, back: (col as any).back, backFit: (col as any).backFit },
+    collection: { name: col.name, layoutId: col.layoutId, backLayoutId: (col as any).backLayoutId, back: (col as any).back, backFit: (col as any).backFit },
     cards,
   };
   writeJson(checkpointPath(gameId, collectionId, id), checkpoint);
@@ -609,6 +609,7 @@ app.post("/api/games/:gameId/collections/:collectionId/checkpoints/:checkpointId
   writeJson(collectionPath(gameId, collectionId), {
     ...col,
     layoutId: checkpoint.collection.layoutId,
+    backLayoutId: checkpoint.collection.backLayoutId,
     back: checkpoint.collection.back,
     backFit: checkpoint.collection.backFit,
   });

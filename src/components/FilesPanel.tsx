@@ -20,7 +20,7 @@ const svgToImage = (svg: string): Promise<HTMLImageElement> =>
     img.src = `data:image/svg+xml,${encodeURIComponent(svg)}`
   })
 
-export type FileCard = CardData & { collectionId?: string; collectionName?: string; collectionBack?: string; collectionBackFit?: string }
+export type FileCard = CardData & { collectionId?: string; collectionName?: string; collectionBack?: string; collectionBackFit?: string; collectionBackLayoutId?: string }
 
 type FilesPanelProps = {
   gameId: string
@@ -33,6 +33,8 @@ type FilesPanelProps = {
   storage?: any
   back?: string
   backFit?: "cover" | "contain" | "fill"
+  backLayoutId?: string
+  allLayouts?: CardLayout[]
   onStatusChange?: (msg: string) => void
   onCardsChange?: () => void
 }
@@ -40,7 +42,7 @@ type FilesPanelProps = {
 export default function FilesPanel({
   gameId, collectionId, gameName, collectionName,
   cards, layout, gameFonts,
-  back, backFit,
+  back, backFit, backLayoutId, allLayouts,
   onStatusChange,
 }: FilesPanelProps) {
   const navigate = useNavigate()
@@ -116,15 +118,15 @@ export default function FilesPanel({
         if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`)
       }
 
-      type DeckGroup = { name: string; cards: FileCard[]; back?: string; backFit?: string }
+      type DeckGroup = { name: string; cards: FileCard[]; back?: string; backFit?: string; backLayoutId?: string }
       let groups: DeckGroup[]
       if (collectionId) {
-        groups = [{ name: collectionName || 'deck', cards: selected, back, backFit }]
+        groups = [{ name: collectionName || 'deck', cards: selected, back, backFit, backLayoutId }]
       } else {
         const byCol = new Map<string, DeckGroup>()
         for (const card of selected) {
           const key = card.collectionName || 'deck'
-          if (!byCol.has(key)) byCol.set(key, { name: key, cards: [], back: card.collectionBack, backFit: card.collectionBackFit })
+          if (!byCol.has(key)) byCol.set(key, { name: key, cards: [], back: card.collectionBack, backFit: card.collectionBackFit, backLayoutId: card.collectionBackLayoutId })
           byCol.get(key)!.cards.push(card)
         }
         groups = [...byCol.values()]
@@ -181,7 +183,21 @@ export default function FilesPanel({
         backCanvas.height = cardH
         const backCtx = backCanvas.getContext('2d')!
 
-        if (group.back) {
+        // A TTS deck shares one back image, so a layout-based back is rendered
+        // once with an empty card (defaults only, no per-card bindings).
+        const backLayout = group.backLayoutId ? allLayouts?.find(l => l.id === group.backLayoutId) : undefined
+        if (backLayout) {
+          try {
+            let svg = renderCardSvg({ id: 'back', name: '', fields: {} }, backLayout, { fonts: gameFonts })
+            if (fontCss) svg = svg.replace(/(<svg[^>]*>)/, `$1<defs><style>${fontCss}</style></defs>`)
+            svg = await embedImagesInSvg(svg)
+            const backImg = await svgToImage(svg)
+            backCtx.drawImage(backImg, 0, 0, cardW, cardH)
+          } catch {
+            backCtx.fillStyle = '#1b1a17'
+            backCtx.fillRect(0, 0, cardW, cardH)
+          }
+        } else if (group.back) {
           try {
             const resp = await fetch(group.back)
             const backImg = await createImageBitmap(await resp.blob())
