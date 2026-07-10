@@ -152,8 +152,8 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus, sh
             <ConfirmButton
               variant="ghost"
               disabled={loading}
-              label={`${unusedCount} unused`}
-              title={`Delete ${unusedCount} unused font${unusedCount === 1 ? '' : 's'}`}
+              label={String(unusedCount)}
+              title={`Delete ${unusedCount} unused font${unusedCount === 1 ? '' : 's'} (not referenced by any layout, card or checkpoint)`}
               onConfirm={handleDeleteUnused}
             />
           )}
