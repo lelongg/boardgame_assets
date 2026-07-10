@@ -15,10 +15,9 @@ type LayoutEditorPanelProps = {
   gameImages?: { file: string; url: string; name: string }[]
   onUploadFile: (file: File) => Promise<string>
   cards?: PreviewCard[]
-  back?: string
 }
 
-export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, gameFonts, gameImages, onUploadFile, cards, back }: LayoutEditorPanelProps) {
+export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, gameFonts, gameImages, onUploadFile, cards }: LayoutEditorPanelProps) {
   // Local working copy for instant feedback; debounced save to backend
   const [workingLayout, setWorkingLayout] = useState(propLayout)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
@@ -220,7 +219,6 @@ export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, 
         layout={layout}
         gameId={gameId}
         cards={cards}
-        back={back}
         gameFonts={gameFonts}
         selectedNodeId={selectedNodeId}
         onNodeClick={handleNodeSelect}

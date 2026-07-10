@@ -737,7 +737,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     const createdAt = now();
     const checkpoint = {
       id, name, createdAt,
-      collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId, back: col.back, backFit: col.backFit },
+      collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId },
       cards,
     };
     const folder = await checkpointsFolder(gameId, collectionId);
@@ -755,12 +755,10 @@ export const createGoogleDriveStorage = (options = {}) => {
     const current = await listCards(gameId, collectionId);
     for (const c of current) await deleteCard(gameId, collectionId, c.id);
     for (const card of checkpoint.cards ?? []) await saveCard(gameId, collectionId, card.id, card);
-    // Restore collection metadata (layout + back), keep id/name.
+    // Restore collection metadata (layout + back layout), keep id/name.
     await updateCollection(gameId, collectionId, {
       layoutId: checkpoint.collection.layoutId,
       backLayoutId: checkpoint.collection.backLayoutId,
-      back: checkpoint.collection.back,
-      backFit: checkpoint.collection.backFit,
     });
   };
 

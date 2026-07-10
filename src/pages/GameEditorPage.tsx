@@ -4,7 +4,6 @@ import { ArrowLeft, Copy, Plus, Check, ArrowUpDown, ArrowUp, ArrowDown, ChevronL
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -36,7 +35,7 @@ import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
 import {
   useGame, useCollection, useCollections, useLayout, useFonts, useImages, useLayouts, useCards,
-  useUpdateGame, useUpdateCollection, useSaveLayout,
+  useUpdateGame, useUpdateCollection, useCreateLayout, useSaveLayout,
   useCopyCard, useDeleteCard, useTransferCard, useUploadImage,
   useCheckpoints, useCreateCheckpoint, useRestoreCheckpoint, useDeleteCheckpoint,
   useInvalidateGame, queryKeys,
@@ -519,6 +518,7 @@ export default function GameEditorPage() {
   // ── Mutation hooks ──────────────────────────────────────────────
   const updateGameMut = useUpdateGame(gameId)
   const updateCollectionMut = useUpdateCollection(gameId)
+  const createLayoutMut = useCreateLayout(gameId)
   const saveLayoutMut = useSaveLayout(gameId)
   const copyCardMut = useCopyCard(gameId, collectionId)
   const deleteCardMut = useDeleteCard(gameId, collectionId)
@@ -726,7 +726,7 @@ export default function GameEditorPage() {
       }
     }, 100)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [selectedCard, game?.layout, gameId, collection?.back])
+  }, [selectedCard, game?.layout, gameId])
 
   // Render the card back from its layout (when the collection uses one).
   // The back layout is rendered with the selected card's data so bound
@@ -880,6 +880,18 @@ export default function GameEditorPage() {
   // on onSave, so a fresh function each render would fire spurious duplicate
   // saves — which on slow backends (S3/R2) can interleave and let a stale write
   // overwrite a newer one. Keeping it stable means one save per edit.
+  // Create a fresh layout and assign it as the collection's front or back.
+  const handleCreateAndAssignLayout = async (target: 'front' | 'back') => {
+    if (!gameId || !collectionId) return
+    try {
+      const tpl = await createLayoutMut.mutateAsync(`${collection?.name ?? 'New'} ${target}`)
+      await updateCollectionMut.mutateAsync({
+        collectionId,
+        updates: target === 'front' ? { layoutId: tpl.id } : { backLayoutId: tpl.id },
+      })
+    } catch { setStatus('Error creating layout.') }
+  }
+
   const handleLayoutSave = useCallback((updatedLayout: any) => {
     if (!gameId || !gameRef.current) return
     queryClient.setQueryData(queryKeys.layout(gameId, updatedLayout.id), updatedLayout)
@@ -1069,7 +1081,7 @@ export default function GameEditorPage() {
           <TabsList className="mb-4">
             <TabsTrigger value="cards">Cards</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
-            <TabsTrigger value="layout">Layout</TabsTrigger>
+            <TabsTrigger value="layout">Front</TabsTrigger>
             <TabsTrigger value="back">Back</TabsTrigger>
             <TabsTrigger value="import">Import</TabsTrigger>
             <TabsTrigger value="export">Export</TabsTrigger>
@@ -1258,8 +1270,8 @@ export default function GameEditorPage() {
                 <ZoomablePreview
                   src={cardPreview}
                   alt="Card preview"
-                  backImage={resolvedBackLayout ? (backPreview || undefined) : collection?.back}
-                  backFit={resolvedBackLayout ? 'fill' : collection?.backFit}
+                  backImage={backPreview || undefined}
+                  backFit="fill"
                 />
               )}
             </div>
@@ -1289,6 +1301,7 @@ export default function GameEditorPage() {
                     onChange={async (e) => {
                       const newLayoutId = e.target.value
                       if (!gameId || !collectionId || newLayoutId === collection?.layoutId) return
+                      if (newLayoutId === '__new__') { await handleCreateAndAssignLayout('front'); return }
                       try {
                         await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { layoutId: newLayoutId } })
                       } catch {
@@ -1300,6 +1313,7 @@ export default function GameEditorPage() {
                     {allLayouts.map((l: any) => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
+                    <option value="__new__">+ New layout…</option>
                   </select>
                 </div>
               )}
@@ -1314,80 +1328,53 @@ export default function GameEditorPage() {
                     return await uploadImageMut.mutateAsync(file)
                   }}
                   cards={cards}
-                  back={collection?.back}
                 />
               )}
             </div>
           </TabsContent>
 
           <TabsContent value="back">
-            {resolvedBackLayout ? (
-              backPreview && <ZoomablePreview src={backPreview} alt="Back preview" maxImgHeight="30vh" />
-            ) : (
-              collection?.back && <ZoomablePreview src={collection.back} alt="Back preview" maxImgHeight="30vh" />
-            )}
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div className="space-y-2">
-                  <Label>Back Layout</Label>
-                  <select
-                    value={collection?.backLayoutId ?? ''}
-                    onChange={async (e) => {
-                      const v = e.target.value
-                      try { await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { backLayoutId: v || null } }) }
-                      catch { setStatus('Error saving back layout.') }
-                    }}
-                    className="w-full rounded-md border bg-background pl-3 pr-8 py-1.5 text-sm"
-                  >
-                    <option value="">None (use image)</option>
-                    {allLayouts.map((l: any) => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    {collection?.backLayoutId
-                      ? 'The back is rendered from this layout, like the card front. Edit it from the game\'s layouts page.'
-                      : 'Pick a layout to design the card back, or use a static image below.'}
-                  </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+              <div className="px-2 py-1.5">
+                <select
+                  value={collection?.backLayoutId ?? ''}
+                  onChange={async (e) => {
+                    const v = e.target.value
+                    if (!gameId || !collectionId || v === (collection?.backLayoutId ?? '')) return
+                    if (v === '__new__') { await handleCreateAndAssignLayout('back'); return }
+                    try {
+                      await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { backLayoutId: v || null } })
+                    } catch {
+                      setStatus('Error changing back layout.')
+                    }
+                  }}
+                  className="w-full rounded-md border bg-background pl-3 pr-8 py-1.5 text-sm"
+                >
+                  <option value="">No back</option>
+                  {allLayouts.map((l: any) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                  <option value="__new__">+ New layout…</option>
+                </select>
+              </div>
+              {resolvedBackLayout?.root ? (
+                <LayoutEditorPanel
+                  layout={resolvedBackLayout}
+                  onSave={handleLayoutSave}
+                  gameId={gameId!}
+                  gameFonts={gameFonts}
+                  gameImages={gameImages}
+                  onUploadFile={async (file) => {
+                    return await uploadImageMut.mutateAsync(file)
+                  }}
+                  cards={cards}
+                />
+              ) : (
+                <div className="md:col-span-2 flex items-center justify-center rounded-lg border bg-card p-8">
+                  <p className="text-sm text-muted-foreground">Select or create a back layout to edit</p>
                 </div>
-                {!collection?.backLayoutId && (
-                  <div className="space-y-2">
-                    <Label>Card Back Image</Label>
-                    <ValueItemEditor
-                      property="defaultValue"
-                      itemType="image"
-                      value={collection?.back || ''}
-                      layout={game?.layout}
-                      gameImages={gameImages}
-                      onUploadFile={async (file) => {
-                        return await uploadImageMut.mutateAsync(file)
-                      }}
-                      onChange={async (v) => {
-                        try { await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { back: v || undefined } }) }
-                        catch { setStatus('Error saving back.') }
-                      }}
-                    />
-                  </div>
-                )}
-                {!collection?.backLayoutId && collection?.back && (
-                  <div className="space-y-2">
-                    <FloatingSelect
-                      label="Fit Mode"
-                      value={collection?.backFit || 'cover'}
-                      onValueChange={async (fit) => {
-                        try { await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { backFit: fit } }) }
-                        catch { setStatus('Error saving back fit.') }
-                      }}
-                      options={[
-                        { value: 'cover', label: 'Cover' },
-                        { value: 'contain', label: 'Contain' },
-                        { value: 'fill', label: 'Fill' },
-                      ]}
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              )}
+            </div>
           </TabsContent>
 
           <TabsContent value="import">
@@ -1423,8 +1410,6 @@ export default function GameEditorPage() {
               cards={cards}
               layout={game?.layout}
               gameFonts={gameFonts}
-              back={collection?.back}
-              backFit={collection?.backFit}
               backLayoutId={collection?.backLayoutId}
               allLayouts={allLayouts}
               onStatusChange={setStatus}

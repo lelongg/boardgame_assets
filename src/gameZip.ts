@@ -47,7 +47,7 @@ export const exportGameZip = async (
   }
 
   log('Exporting images...')
-  const imageFiles = collectUsedImageFiles(layouts, collections, allCards)
+  const imageFiles = collectUsedImageFiles(layouts, allCards)
 
   for (const file of imageFiles) {
     try {
@@ -161,14 +161,10 @@ export const importGameZip = async (
     log(`Creating collection: ${col.id} (${col.name}) → layout: ${col.layoutId}`)
     const newCol = await storage.createCollection(newGameId, col.name, col.layoutId)
     const newColId = newCol.id
-    // Preserve extra collection fields (backLayoutId, back, backFit, etc.)
+    // Preserve extra collection fields (backLayoutId, etc.)
     // Layout ids are preserved verbatim on import, so backLayoutId needs no remap.
-    const extraFields: Record<string, unknown> = {}
-    if (col.backLayoutId) extraFields.backLayoutId = col.backLayoutId
-    if (col.back) extraFields.back = rewriteAll(col.back)
-    if (col.backFit) extraFields.backFit = col.backFit
-    if (Object.keys(extraFields).length > 0) {
-      await storage.updateCollection(newGameId, newColId, extraFields)
+    if (col.backLayoutId) {
+      await storage.updateCollection(newGameId, newColId, { backLayoutId: col.backLayoutId })
     }
 
     const colDir = f.name.replace('/collection.json', '')

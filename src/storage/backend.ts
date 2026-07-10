@@ -19,7 +19,7 @@ export type CheckpointMeta = { id: string; name: string; createdAt: string };
 
 /** A named, restorable snapshot of a collection's cards + metadata. */
 export type Checkpoint = CheckpointMeta & {
-  collection: { name: string; layoutId: string; backLayoutId?: string; back?: string; backFit?: "cover" | "contain" | "fill" };
+  collection: { name: string; layoutId: string; backLayoutId?: string };
   cards: CardData[];
 };
 

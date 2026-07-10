@@ -592,7 +592,7 @@ app.post("/api/games/:gameId/collections/:collectionId/checkpoints", (req, res) 
   const createdAt = new Date().toISOString();
   const checkpoint = {
     id, name, createdAt,
-    collection: { name: col.name, layoutId: col.layoutId, backLayoutId: (col as any).backLayoutId, back: (col as any).back, backFit: (col as any).backFit },
+    collection: { name: col.name, layoutId: col.layoutId, backLayoutId: (col as any).backLayoutId },
     cards,
   };
   writeJson(checkpointPath(gameId, collectionId, id), checkpoint);
@@ -611,14 +611,12 @@ app.post("/api/games/:gameId/collections/:collectionId/checkpoints/:checkpointId
     const norm = normalizeCard(card);
     writeJson(collectionCardPath(gameId, collectionId, norm.id), norm);
   }
-  // Restore collection metadata (layout + back), keep id/name.
+  // Restore collection metadata (layout + back layout), keep id/name.
   const col = readJson<any>(collectionPath(gameId, collectionId), {});
   writeJson(collectionPath(gameId, collectionId), {
     ...col,
     layoutId: checkpoint.collection.layoutId,
     backLayoutId: checkpoint.collection.backLayoutId,
-    back: checkpoint.collection.back,
-    backFit: checkpoint.collection.backFit,
   });
   touchGame(gameId);
   res.status(204).end();

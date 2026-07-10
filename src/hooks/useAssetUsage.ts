@@ -7,7 +7,7 @@ import { collectUsedImageFiles, collectUsedFontSlots, findUnusedFontSlots } from
 export type AssetUsage = {
   /** True while any of the underlying game data is still loading. */
   isLoading: boolean
-  /** Image file names referenced by at least one layout, card, collection or checkpoint. */
+  /** Image file names referenced by at least one layout, card or checkpoint. */
   usedImageFiles: Set<string>
   /** Image file names present in storage but referenced nowhere. */
   unusedImageFiles: Set<string>
@@ -96,10 +96,7 @@ export default function useAssetUsage(gameId: string | undefined): AssetUsage {
       ...cardQueries.flatMap((q) => (q.data as any[]) ?? []),
       ...checkpoints.flatMap((cp) => cp.cards ?? []),
     ]
-    // A checkpoint's collection snapshot carries its own `back` image
-    const allCollections = [...collections, ...checkpoints.map((cp) => cp.collection).filter(Boolean)]
-
-    const usedImageFiles = collectUsedImageFiles(layouts, allCollections, allCards)
+    const usedImageFiles = collectUsedImageFiles(layouts, allCards)
     const unusedImageFiles = new Set(
       images.map((img) => img.file).filter((file) => !usedImageFiles.has(file)),
     )

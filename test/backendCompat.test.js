@@ -267,7 +267,7 @@ async function startServer() {
     const { name } = await c.req.json();
     const id = uid();
     const createdAt = new Date().toISOString();
-    const checkpoint = { id, name: name || "Checkpoint", createdAt, collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId, back: col.back, backFit: col.backFit }, cards: listCardsFor(gid, cid) };
+    const checkpoint = { id, name: name || "Checkpoint", createdAt, collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId }, cards: listCardsFor(gid, cid) };
     writeJson(chkPath(gid, cid, id), checkpoint);
     return c.json({ id, name: checkpoint.name, createdAt }, 201);
   });
@@ -280,7 +280,7 @@ async function startServer() {
     fs.mkdirSync(cdir, { recursive: true });
     for (const card of checkpoint.cards ?? []) writeJson(cardPath(gid, cid, card.id), card);
     const col = readJson(colPath(gid, cid), {});
-    writeJson(colPath(gid, cid), { ...col, layoutId: checkpoint.collection.layoutId, backLayoutId: checkpoint.collection.backLayoutId, back: checkpoint.collection.back, backFit: checkpoint.collection.backFit });
+    writeJson(colPath(gid, cid), { ...col, layoutId: checkpoint.collection.layoutId, backLayoutId: checkpoint.collection.backLayoutId });
     return c.body(null, 204);
   });
   app.delete("/api/games/:gid/collections/:cid/checkpoints/:chk", (c) => {
@@ -571,9 +571,9 @@ async function createFullTestGame(storage) {
   };
   await storage.saveLayout(gameId, tpl.id, tpl);
 
-  // Set back image on default collection
+  // Set a layout back on the default collection
   const cols = await storage.listCollections(gameId);
-  await storage.updateCollection(gameId, cols[0].id, { back: imageUrl, backFit: "contain" });
+  await storage.updateCollection(gameId, cols[0].id, { backLayoutId: tpl.id });
 
   // Cards
   await storage.saveCard(gameId, cols[0].id, "card-1", {
@@ -676,9 +676,7 @@ async function verifyFullTestGame(storage, gameId) {
 
   // Collection metadata
   const defCol = cols.find(c => c.name === "Default");
-  assert.ok(defCol.back, "Default collection should have a back image");
-  assert.ok(defCol.back.includes(`/api/games/${gameId}/images/`), "Back image URL should reference the game");
-  assert.equal(defCol.backFit, "contain");
+  assert.equal(defCol.backLayoutId, tpl.id, "backLayoutId must survive the round trip");
 
   // Cards
   const defCards = await storage.listCards(gameId, defCol.id);

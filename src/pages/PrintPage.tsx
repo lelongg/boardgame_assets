@@ -103,7 +103,7 @@ function computePageLayout(config: PrintConfig, cardWidthMm: number, cardHeightM
 
 // --- Component ---
 
-type CardEntry = { card: CardData; layout: CardLayout; collectionName: string; back?: string; backFit?: string; backLayout?: CardLayout }
+type CardEntry = { card: CardData; layout: CardLayout; collectionName: string; backLayout?: CardLayout }
 
 export default function PrintPage() {
   const { gameId, collectionId } = useParams<{ gameId: string; collectionId?: string }>()
@@ -196,7 +196,7 @@ export default function PrintPage() {
           ])
           for (const card of cards) {
             if (cardIdSet && !cardIdSet.has(card.id)) continue
-            all.push({ card, layout: tpl, collectionName: col.name, back: col.back, backFit: col.backFit, backLayout: backTpl ?? undefined })
+            all.push({ card, layout: tpl, collectionName: col.name, backLayout: backTpl ?? undefined })
           }
         }
 
@@ -300,13 +300,11 @@ export default function PrintPage() {
       const isDuplexPdf = config.printMode === 'duplex'
       const foldHPdf = isFoldPdf && (config.foldEdge === 'left' || config.foldEdge === 'right')
 
-      // Resolve a card's back: a layout-rendered SVG (rasterized) wins over
-      // the collection's static back image.
-      const backImageFor = async (idx: number): Promise<{ data: string; type: 'PNG' | 'JPEG' } | null> => {
+      // A card's back is its collection's back layout rendered per card;
+      // cards whose collection has no back layout print nothing on the back.
+      const backImageFor = async (idx: number): Promise<{ data: string; type: 'PNG' } | null> => {
         const bsvg = backSvgs[idx]
-        if (bsvg) return { data: await rasterizeSvg(bsvg, baseCw, baseCh), type: 'PNG' }
-        const back = entries[idx]?.back
-        return back ? { data: back, type: 'JPEG' } : null
+        return bsvg ? { data: await rasterizeSvg(bsvg, baseCw, baseCh), type: 'PNG' } : null
       }
 
       const renderPage = async (startIdx: number, isBack: boolean) => {
@@ -540,27 +538,17 @@ export default function PrintPage() {
                           )}
                         </div>
                       )}
-                      {showBack && (backSvgs[svgIdx] || entry.back) && (
+                      {showBack && backSvgs[svgIdx] && (
                         <div style={config.printMode === 'back' ? { width: '100%', height: '100%' } : backStyle}>
-                          {backSvgs[svgIdx] ? (
-                            <img
-                              src={`data:image/svg+xml,${encodeURIComponent(backSvgs[svgIdx]!)}`}
-                              alt="Back"
-                              className="w-full h-full pointer-events-none"
-                              draggable={false}
-                            />
-                          ) : (
-                            <img
-                              src={entry.back}
-                              alt="Back"
-                              className="w-full h-full pointer-events-none"
-                              style={{ objectFit: (entry.backFit as any) || 'cover' }}
-                              draggable={false}
-                            />
-                          )}
+                          <img
+                            src={`data:image/svg+xml,${encodeURIComponent(backSvgs[svgIdx]!)}`}
+                            alt="Back"
+                            className="w-full h-full pointer-events-none"
+                            draggable={false}
+                          />
                         </div>
                       )}
-                      {showBack && !backSvgs[svgIdx] && !entry.back && config.printMode === 'back' && (
+                      {showBack && !backSvgs[svgIdx] && config.printMode === 'back' && (
                         <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">No back</div>
                       )}
                       {isFold && (
