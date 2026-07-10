@@ -93,7 +93,9 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
         : 20;
     // Determine item type - only if explicitly set
     const hasType = obj.type !== undefined && obj.type !== null && obj.type !== "";
-    const type = hasType ? safeEnum(obj.type, ["text", "frame", "image", "emoji", "copy", "numbers"] as const, "text" as const) : null;
+    // Migration: "copy" items were renamed to "clone"
+    const rawType = obj.type === "copy" ? "clone" : obj.type;
+    const type = hasType ? safeEnum(rawType, ["text", "frame", "image", "emoji", "clone", "numbers"] as const, "text" as const) : null;
     // Common base
     const base = {
         id,
@@ -144,12 +146,16 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
         };
         return emojiItem;
     }
-    if (type === "copy") {
+    if (type === "clone") {
+        // Migration: legacy "copy" items stored the target as copyTargetId
+        const cloneTargetId = typeof obj.cloneTargetId === 'string' ? obj.cloneTargetId
+            : typeof obj.copyTargetId === 'string' ? obj.copyTargetId
+            : undefined;
         return {
             ...base,
             bindings: normalizeBindings(obj),
-            type: "copy" as const,
-            copyTargetId: typeof obj.copyTargetId === 'string' ? obj.copyTargetId : undefined,
+            type: "clone" as const,
+            cloneTargetId,
             scale: obj.scale !== undefined && obj.scale !== null ? safeNumber(obj.scale, 1) : undefined,
         };
     }

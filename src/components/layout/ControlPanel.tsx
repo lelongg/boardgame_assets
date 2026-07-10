@@ -119,7 +119,7 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
     case 'visible': return { type: 'boolean' }
-    case 'copyTargetId': {
+    case 'cloneTargetId': {
       const nodes = flattenNodes(layout.root).filter(n => !selectedNodeId || n.id !== selectedNodeId)
       return { type: 'select', options: nodes.map(n => ({
         value: n.id,
@@ -465,7 +465,7 @@ export const getEditorType = (property: string, itemType?: string): FieldMeta['t
     case 'gap': case 'fontSize': case 'widthMm': case 'heightMm':
     case 'offsetX': case 'offsetY': case 'rotation': case 'scale': case 'strokeWidth': case 'cornerRadius':
     case 'columns': case 'repeatCount': case 'repeatOffsetX': case 'repeatOffsetY': return 'number'
-    case 'layout': case 'align': case 'verticalAlign': case 'font': case 'fit': case 'copyTargetId': return 'select'
+    case 'layout': case 'align': case 'verticalAlign': case 'font': case 'fit': case 'cloneTargetId': return 'select'
     default: return 'text'
   }
 }

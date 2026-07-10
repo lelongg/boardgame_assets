@@ -67,10 +67,11 @@ export type CardLayoutEmojiItem = CardLayoutItemBase & {
   fontSize: number;
 };
 
-// Copy item - renders the same content as another item or section's items
-export type CardLayoutCopyItem = CardLayoutItemBase & {
-  type: "copy";
-  copyTargetId?: string;
+// Clone item - renders the same content as another item or section's items
+// (formerly "copy"; the normalizer migrates legacy data)
+export type CardLayoutCloneItem = CardLayoutItemBase & {
+  type: "clone";
+  cloneTargetId?: string;
   scale?: number;
 };
 
@@ -92,7 +93,7 @@ export type CardLayoutItem =
   | CardLayoutFrameItem
   | CardLayoutImageItem
   | CardLayoutEmojiItem
-  | CardLayoutCopyItem
+  | CardLayoutCloneItem
   | CardLayoutNumbersItem;
 
 export type CardLayoutSection = {

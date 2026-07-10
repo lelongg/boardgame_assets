@@ -101,3 +101,24 @@ test("both renderers use the same text fontSize fallback", () => {
   assert.equal(sizeOf(a), sizeOf(b), "fallback font size must match between renderers");
   assert.equal(sizeOf(a), "16", "fallback must match the normalizer default");
 });
+
+test("both renderers apply offsets to clone items", () => {
+  const PX_PER_MM = 300 / 25.4;
+  const cloneItem = (extra = {}) => ({
+    id: "cl1", name: "Clone", type: "clone", cloneTargetId: "f1", scale: 1,
+    anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+    widthMm: 40, heightMm: 20,
+    ...extra,
+  });
+  const translateOf = (svg) => {
+    const m = svg.match(/<g transform="translate\((-?[\d.]+),(-?[\d.]+)\) scale\(/);
+    return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
+  };
+  for (const render of [renderApp, renderServer]) {
+    const base = translateOf(render(card(), layoutWith([frame(), cloneItem()])));
+    const shifted = translateOf(render(card(), layoutWith([frame(), cloneItem({ offsetX: 10, offsetY: 5 })])));
+    assert.ok(base && shifted, "clone items must render a translated group");
+    assert.equal(Math.round(shifted.x - base.x), Math.round(10 * PX_PER_MM), "offsetX must shift the clone");
+    assert.equal(Math.round(shifted.y - base.y), Math.round(5 * PX_PER_MM), "offsetY must shift the clone");
+  }
+});

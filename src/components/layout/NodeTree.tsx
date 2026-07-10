@@ -11,7 +11,7 @@ type NodeTreeProps = {
   onSelectNode: (id: string) => void
   onDrop: (dragId: string, dragKind: 'section' | 'item', dropTargetId: string, position: 'before' | 'after' | 'inside') => void
   onAddSection?: () => void
-  onAddItem?: (type: 'text' | 'frame' | 'image' | 'emoji' | 'copy' | 'numbers') => void
+  onAddItem?: (type: 'text' | 'frame' | 'image' | 'emoji' | 'clone' | 'numbers') => void
   onDuplicate?: () => void
   onDelete?: () => void
   canDelete?: boolean
@@ -155,7 +155,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
                 <button onClick={() => { onAddItem('frame'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Frame className="h-3.5 w-3.5" /> Frame</button>
                 <button onClick={() => { onAddItem('image'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Image className="h-3.5 w-3.5" /> Image</button>
                 <button onClick={() => { onAddItem('emoji'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Smile className="h-3.5 w-3.5" /> Emoji</button>
-                <button onClick={() => { onAddItem('copy'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Copy className="h-3.5 w-3.5" /> Copy</button>
+                <button onClick={() => { onAddItem('clone'); close() }} className="flex items-center gap-2 w-full rounded px-3 py-1.5 text-left text-sm hover:bg-accent/50"><Copy className="h-3.5 w-3.5" /> Clone</button>
               </>)}
             </PortalDropdown>
           )}
@@ -190,7 +190,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
         const prefix = isSection ? (hasChildren ? (isCollapsed ? '▸' : '▾') : '▾') : '·'
         const iconClass = "h-3.5 w-3.5 inline-block opacity-60"
         const sectionIcons: Record<string, React.ReactNode> = { column: <Rows3 className={iconClass} />, row: <Columns3 className={iconClass} />, stack: <Layers className={iconClass} />, grid: <Grid3X3 className={iconClass} /> }
-        const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, numbers: <Hash className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} />, emoji: <Smile className={iconClass} />, copy: <Copy className={iconClass} /> }
+        const itemIcons: Record<string, React.ReactNode> = { text: <Type className={iconClass} />, numbers: <Hash className={iconClass} />, frame: <Frame className={iconClass} />, image: <Image className={iconClass} />, emoji: <Smile className={iconClass} />, clone: <Copy className={iconClass} /> }
         const typeIcon = node.kind === 'section'
           ? sectionIcons[(node.obj as CardLayoutSection).layout] ?? null
           : itemIcons[(node.obj as any).type ?? 'text'] ?? null

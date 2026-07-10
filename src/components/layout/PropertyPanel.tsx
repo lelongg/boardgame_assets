@@ -77,8 +77,8 @@ const EMOJI_PROPERTIES: PropertyDef[] = [
   { key: 'fontSize', label: 'Size' },
 ]
 
-const COPY_PROPERTIES: PropertyDef[] = [
-  { key: 'copyTargetId', label: 'Target' },
+const CLONE_PROPERTIES: PropertyDef[] = [
+  { key: 'cloneTargetId', label: 'Target' },
   { key: 'scale', label: 'Scale' },
 ]
 
@@ -91,7 +91,7 @@ const getPropertiesForNode = (kind: 'section' | 'item', node: any, isRoot: boole
     case 'frame': return [...COMMON_ITEM_PROPERTIES, ...FRAME_PROPERTIES]
     case 'image': return [...COMMON_ITEM_PROPERTIES, ...IMAGE_PROPERTIES]
     case 'emoji': return [...COMMON_ITEM_PROPERTIES, ...EMOJI_PROPERTIES]
-    case 'copy': return [...COMMON_ITEM_PROPERTIES.filter(p => p.key !== 'widthMm' && p.key !== 'heightMm'), ...COPY_PROPERTIES]
+    case 'clone': return [...COMMON_ITEM_PROPERTIES.filter(p => p.key !== 'widthMm' && p.key !== 'heightMm'), ...CLONE_PROPERTIES]
     default: return COMMON_ITEM_PROPERTIES
   }
 }
