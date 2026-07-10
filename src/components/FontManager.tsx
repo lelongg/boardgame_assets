@@ -22,9 +22,11 @@ type FontManagerProps = {
   selectedFont: string | null
   onSelectFont: (key: string | null) => void
   isLoading?: boolean
+  /** Slot keys detected as unused; shows a badge per font and a bulk-delete button. */
+  unusedSlots?: Set<string>
 }
 
-export default function FontManager({ gameId, fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont, isLoading }: FontManagerProps) {
+export default function FontManager({ gameId, fonts, onFontsChange, onStatus, showAdd, onToggleAdd, selectedFont, onSelectFont, isLoading, unusedSlots }: FontManagerProps) {
   const addGoogleFontMut = useAddGoogleFont(gameId)
   const uploadFontMut = useUploadFont(gameId)
   const deleteFontMut = useDeleteFont(gameId)
@@ -99,7 +101,30 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus, sh
     }
   }
 
+  const handleDeleteUnused = async () => {
+    if (!unusedSlots || unusedSlots.size === 0) return
+    onStatus('Deleting unused fonts...')
+    try {
+      // Dedupe: deleteFont removes every slot pointing at the same file
+      const files = new Set<string>()
+      for (const key of unusedSlots) {
+        const file = fonts[key]?.file
+        if (file) files.add(file)
+      }
+      for (const file of files) await deleteFontMut.mutateAsync(file)
+      onFontsChange()
+      if (selectedFont && unusedSlots.has(selectedFont)) {
+        const remaining = Object.keys(fonts).filter(k => !unusedSlots.has(k))
+        onSelectFont(remaining[0] ?? null)
+      }
+      onStatus(`Deleted ${files.size} unused font${files.size === 1 ? '' : 's'}.`)
+    } catch (err: any) {
+      onStatus(`Error: ${err.message}`)
+    }
+  }
+
   const fontEntries = Object.entries(fonts)
+  const unusedCount = unusedSlots ? fontEntries.filter(([key, f]) => unusedSlots.has(key) && f.file).length : 0
 
   return (
     <div className="space-y-2">
@@ -120,21 +145,33 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus, sh
             onStatus(`Error: ${err.message}`)
           }
         }}
-        toolbar={
+        toolbar={<>
+          {unusedCount > 0 && (
+            <ConfirmButton
+              variant="ghost"
+              disabled={loading}
+              label={`${unusedCount} unused`}
+              title={`Delete ${unusedCount} unused font${unusedCount === 1 ? '' : 's'} (checkpoints are not scanned)`}
+              onConfirm={handleDeleteUnused}
+            />
+          )}
           <Button size="sm" variant="ghost" onClick={() => setShowAddForm(true)} title="Add font">
             <Plus className="h-4 w-4" />
           </Button>
-        }
+        </>}
         actions={selectedFont ? (
           <ConfirmButton iconOnly onConfirm={() => handleDelete(selectedFont)} disabled={loading} />
         ) : undefined}
         empty={isLoading
           ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           : !showAddForm ? <p className="text-sm text-muted-foreground">No fonts yet.</p> : undefined}
-        renderItem={([, font], _vm, selected) => (
+        renderItem={([key, font], _vm, selected) => (
           <ListItem selected={selected}>
             <span className="font-medium">{font.name}</span>
             <span className="ml-2 text-xs text-muted-foreground">{font.source === 'google' ? 'Google Fonts' : 'File'}</span>
+            {unusedSlots?.has(key) && (
+              <span className="ml-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">unused</span>
+            )}
           </ListItem>
         )}
       />

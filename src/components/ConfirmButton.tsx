@@ -8,6 +8,8 @@ type ConfirmButtonProps = {
   variant?: 'destructive' | 'outline' | 'default' | 'ghost'
   disabled?: boolean
   iconOnly?: boolean
+  title?: string
+  label?: string
 }
 
 export default function ConfirmButton({
@@ -16,6 +18,8 @@ export default function ConfirmButton({
   variant = 'destructive',
   disabled,
   iconOnly,
+  title = 'Delete',
+  label,
 }: ConfirmButtonProps) {
   const [confirming, setConfirming] = useState(false)
 
@@ -34,7 +38,7 @@ export default function ConfirmButton({
         className="rounded p-1 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30"
         disabled={disabled}
         onClick={() => setConfirming(true)}
-        title="Delete"
+        title={title}
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -51,6 +55,7 @@ export default function ConfirmButton({
         title="Confirm delete"
       >
         <Check className="h-4 w-4" />
+        {label && <span className="ml-1">{label}</span>}
       </Button>
     )
   }
@@ -61,9 +66,10 @@ export default function ConfirmButton({
       variant={variant}
       disabled={disabled}
       onClick={() => setConfirming(true)}
-      title="Delete"
+      title={title}
     >
       <Trash2 className="h-4 w-4" />
+      {label && <span className="ml-1">{label}</span>}
     </Button>
   )
 }
