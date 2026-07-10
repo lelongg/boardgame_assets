@@ -3,9 +3,10 @@ import { test } from "node:test";
 import { renderCardSvg as renderApp } from "../src/render.js";
 import { renderCardSvg as renderServer } from "../src/render/cardSvg.js";
 
-// The project intentionally keeps TWO renderers (src/render.ts for the app,
-// src/render/cardSvg.ts for the server/tests). These tests pin the behaviors
-// that had drifted so the preview and the server output stay in sync.
+// The renderers share a single implementation (src/render/core.ts) exposed
+// through two entry points: src/render.ts for the app and src/render/cardSvg.ts
+// for the server/tests. These tests pin the behaviors that had drifted while
+// the implementations were separate, and assert the entry points stay identical.
 
 const layoutWith = (items, bindingMeta) => ({
   id: "l1", name: "L", width: 63.5, height: 88.9, radius: 2, bleed: 1,
@@ -86,6 +87,46 @@ test("both renderers honor bound emoji fontSize", () => {
     const svg = render(card({ size: "64" }), layoutWith([emoji]));
     assert.match(svg, /font-size="64"/, "emoji fontSize binding must apply");
   }
+});
+
+test("both entry points produce identical SVG for the same input", () => {
+  const items = [
+    frame({ cornerRadius: 3 }),
+    {
+      id: "t1", name: "T", type: "text", defaultValue: "<p>Hello <strong>world</strong></p>",
+      fontSize: 18, align: "left", verticalAlign: "top", color: "#123456", font: "body",
+      anchor: { x: 0, y: 0 }, attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 0 } },
+      widthMm: 40, heightMm: 20,
+    },
+    {
+      id: "n1", name: "N", type: "numbers", defaultValue: "1234",
+      fontSize: 14, align: "right", verticalAlign: "bottom", color: "#000",
+      anchor: { x: 1, y: 1 }, attach: { targetType: "section", targetId: "root", anchor: { x: 1, y: 1 } },
+      widthMm: 20, heightMm: 10,
+    },
+    {
+      id: "i1", name: "I", type: "image", defaultValue: "https://example.com/a.png",
+      fit: "contain", cornerRadius: 4,
+      anchor: { x: 0.5, y: 0 }, attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0 } },
+      widthMm: 30, heightMm: 30,
+    },
+    {
+      id: "e1", name: "E", type: "emoji", emoji: "⭐", fontSize: 40, rotation: 15,
+      anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+      widthMm: 10, heightMm: 10,
+    },
+    {
+      id: "cp1", name: "CP", type: "clone", cloneTargetId: "t1", scale: 0.5,
+      anchor: { x: 0, y: 1 }, attach: { targetType: "section", targetId: "root", anchor: { x: 0, y: 1 } },
+      widthMm: 20, heightMm: 10,
+    },
+  ];
+  const layout = layoutWith(items);
+  const slots = { body: { name: "Roboto", file: "r.woff2" } };
+  const theCard = card();
+  const a = renderApp(theCard, layout, { fonts: slots, back: "back.png", backFit: "contain" });
+  const b = renderServer(theCard, layout, { fontSlots: slots, back: "back.png", backFit: "contain" });
+  assert.equal(a, b, "app and server entry points must produce byte-identical SVG");
 });
 
 test("both renderers use the same text fontSize fallback", () => {
