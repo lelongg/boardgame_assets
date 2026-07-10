@@ -600,6 +600,10 @@ async function createFullTestGame(storage) {
             fontSize: 22, align: "right", verticalAlign: "middle", color: "#222",
             anchor: { x: 1, y: 0 }, attach: { targetType: "section", targetId: "body", anchor: { x: 1, y: 0 } },
             widthMm: 25, heightMm: 12 },
+          { id: "mini-title", name: "Mini Title", type: "clone", cloneTargetId: "title-item",
+            scale: 0.5, offsetX: 2.5, offsetY: -1.5,
+            anchor: { x: 0.5, y: 1 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } },
+            widthMm: 30, heightMm: 10 },
         ],
       },
     ],
@@ -649,7 +653,7 @@ async function verifyFullTestGame(storage, gameId) {
   const items = [];
   function collect(s) { items.push(...(s.items || [])); (s.children || []).forEach(collect); }
   collect(tpl.root);
-  assert.equal(items.length, 6, `expected 6 items, got ${items.length}: ${items.map(i => i.name).join(", ")}`);
+  assert.equal(items.length, 7, `expected 7 items, got ${items.length}: ${items.map(i => i.name).join(", ")}`);
 
   // Text item
   const title = items.find(i => i.id === "title-item");
@@ -690,6 +694,14 @@ async function verifyFullTestGame(storage, gameId) {
   const desc = items.find(i => i.id === "desc-item");
   assert.ok(desc); assert.equal(desc.attach.targetType, "item");
   assert.equal(desc.attach.targetId, "art-item");
+
+  // Clone item
+  const mini = items.find(i => i.id === "mini-title");
+  assert.ok(mini); assert.equal(mini.type, "clone");
+  assert.equal(mini.cloneTargetId, "title-item");
+  assert.equal(mini.scale, 0.5);
+  assert.equal(mini.offsetX, 2.5, "clone offsetX must survive the round trip");
+  assert.equal(mini.offsetY, -1.5, "clone offsetY must survive the round trip");
 
   // Numbers item
   const score = items.find(i => i.id === "score-item");

@@ -292,7 +292,7 @@ const computeLayoutPx = (layout: CardLayout): LayoutResult => {
   layoutSections(layout.root, rootRect, result);
   layoutItems(layout, result);
 
-  // Resize copy items to match their target's bounds * scale
+  // Resize clone items to match their target's bounds * scale
   const findItemInSection = (s: CardLayoutSection, id: string): CardLayoutItem | null => {
     for (const i of s.items) if (i.id === id) return i;
     for (const c of s.children) { const r = findItemInSection(c, id); if (r) return r; }
@@ -308,12 +308,12 @@ const computeLayoutPx = (layout: CardLayout): LayoutResult => {
     s.children.forEach(c => list.push(...getAllItemsInSection(c)));
     return list;
   };
-  const resizeCopyItems = (section: CardLayoutSection) => {
+  const resizeCloneItems = (section: CardLayoutSection) => {
     section.items.forEach((item) => {
-      if (item.type !== "copy") return;
-      const copyRect = result.items.get(item.id);
-      if (!copyRect) return;
-      const targetId = (item as any).copyTargetId;
+      if (item.type !== "clone") return;
+      const cloneRect = result.items.get(item.id);
+      if (!cloneRect) return;
+      const targetId = (item as any).cloneTargetId;
       if (!targetId) return;
       const targetItem = findItemInSection(layout.root, targetId);
       const targetSection = targetItem ? null : findSectionInRoot(layout.root, targetId);
@@ -331,20 +331,22 @@ const computeLayoutPx = (layout: CardLayout): LayoutResult => {
       const w = (bounds.x2 - bounds.x) * scale;
       const h = (bounds.y2 - bounds.y) * scale;
       // Reposition based on anchor
-      copyRect.width = w;
-      copyRect.height = h;
+      cloneRect.width = w;
+      cloneRect.height = h;
       const attachTarget = item.attach.targetType === "item"
         ? result.items.get(item.attach.targetId)
         : result.sections.get(item.attach.targetId);
       if (attachTarget) {
         const target = anchorPosition(attachTarget, item.attach.anchor);
-        copyRect.x = target.x - w * item.anchor.x;
-        copyRect.y = target.y - h * item.anchor.y;
+        const ox = mmToPx((item as any).offsetX ?? 0);
+        const oy = mmToPx((item as any).offsetY ?? 0);
+        cloneRect.x = target.x - w * item.anchor.x + ox;
+        cloneRect.y = target.y - h * item.anchor.y + oy;
       }
     });
-    section.children.forEach(resizeCopyItems);
+    section.children.forEach(resizeCloneItems);
   };
-  resizeCopyItems(layout.root);
+  resizeCloneItems(layout.root);
 
   return result;
 };
@@ -488,8 +490,8 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
         return wrapRotation(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
       }
 
-      if (itemType === "copy") {
-        const targetId = (item as any).copyTargetId;
+      if (itemType === "clone") {
+        const targetId = (item as any).cloneTargetId;
         if (!targetId) return "";
         const targetItem = findItem(layout.root, targetId);
         const targetSection = targetItem ? null : findSection(layout.root, targetId);
@@ -542,7 +544,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
       }
 
       // Render text/numbers item (default) - type guard
-      if (item.type === "frame" || item.type === "image" || item.type === "emoji" || item.type === "copy") return "";
+      if (item.type === "frame" || item.type === "image" || item.type === "emoji" || item.type === "clone") return "";
       const isNumbers = item.type === "numbers";
       const value = String(resolve(item, "defaultValue", card, layoutMm) ?? "");
       if (!value) return "";
@@ -696,8 +698,8 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
       const textY = rect.y + rect.height / 2;
       return wrapRot(`<text x="${textX}" y="${textY}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" fill="#000000">${escape(emoji)}</text>`);
     }
-    if (itemType === "copy") {
-      const targetId = (item as any).copyTargetId;
+    if (itemType === "clone") {
+      const targetId = (item as any).cloneTargetId;
       if (!targetId) return "";
       const targetItem = findItem(layout.root, targetId);
       const targetSection = targetItem ? null : findSection(layout.root, targetId);
@@ -750,7 +752,7 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: {
       parts.push(`</g>`);
       return wrapRot(parts.join(""));
     }
-    if (item.type === "frame" || item.type === "image" || item.type === "emoji" || item.type === "copy") return "";
+    if (item.type === "frame" || item.type === "image" || item.type === "emoji" || item.type === "clone") return "";
     const isNumbers = item.type === "numbers";
     const value = String(resolve(item, "defaultValue", emptyCard, layoutMm) ?? "");
     if (!value) return "";

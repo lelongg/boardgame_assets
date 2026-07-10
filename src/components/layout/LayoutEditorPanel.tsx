@@ -116,7 +116,7 @@ export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, 
     setSelectedNodeId(section.id)
   }
 
-  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji' | 'copy' | 'numbers') => {
+  const handleAddItem = (itemType: 'text' | 'frame' | 'image' | 'emoji' | 'clone' | 'numbers') => {
     const t = JSON.parse(JSON.stringify(layout))
     let parentId: string
     if (selectedKind === 'section' && selectedNodeId) parentId = selectedNodeId
@@ -132,7 +132,7 @@ export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, 
       frame: { ...base, type: 'frame', name: 'New Frame', strokeWidth: 2, cornerRadius: 8 },
       image: { ...base, type: 'image', name: 'New Image', fit: 'cover', cornerRadius: 0 },
       emoji: { ...base, type: 'emoji', name: 'Emoji', emoji: '⭐', fontSize: 32 },
-      copy: { ...base, type: 'copy', name: 'Copy' },
+      clone: { ...base, type: 'clone', name: 'Clone' },
       numbers: { ...base, type: 'numbers', name: 'New Numbers', fontSize: 20, align: 'right', defaultValue: '0' },
     }
     const item = items[itemType]

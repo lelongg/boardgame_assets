@@ -431,3 +431,31 @@ test("normalizeLayout handles anchor point rounding", () => {
   assert.equal(item.attach.anchor.x, 0.5);
   assert.equal(item.attach.anchor.y, 0.5);
 });
+
+test("normalizeLayout migrates legacy copy items to clone", () => {
+  const layout = normalizeLayout({
+    id: "l", name: "L", width: 63.5, height: 88.9, radius: 2, bleed: 1,
+    root: {
+      id: "root", name: "Root", layout: "stack", sizePct: 100, gap: 0, children: [],
+      items: [
+        { id: "legacy", name: "Legacy", type: "copy", copyTargetId: "t1", scale: 2,
+          offsetX: 3, offsetY: -2,
+          anchor: { x: 0.5, y: 0.5 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+          widthMm: 30, heightMm: 20 },
+        { id: "current", name: "Current", type: "clone", cloneTargetId: "t2",
+          anchor: { x: 0.5, y: 0.5 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+          widthMm: 30, heightMm: 20 },
+      ]
+    }
+  });
+  const [legacy, current] = layout.root.items;
+  assert.equal(legacy.type, "clone");
+  assert.equal(legacy.cloneTargetId, "t1");
+  assert.equal(legacy.scale, 2);
+  assert.equal(legacy.offsetX, 3);
+  assert.equal(legacy.offsetY, -2);
+  assert.equal(current.type, "clone");
+  assert.equal(current.cloneTargetId, "t2");
+});
