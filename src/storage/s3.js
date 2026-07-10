@@ -559,6 +559,14 @@ export const createS3Storage = (options = {}) => {
       return { fonts };
     },
 
+    async renameFont(gameId, slot, newName) {
+      const fonts = await getFontManifest(gameId);
+      if (!fonts[slot]) throw new Error("Font not found");
+      fonts[slot] = { ...fonts[slot], name: newName };
+      await saveFontManifest(gameId, fonts);
+      return { fonts };
+    },
+
     // ── Images ─────────────────────────────────────────────────────────────
 
     async uploadImage(gameId, file) {

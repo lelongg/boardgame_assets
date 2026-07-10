@@ -611,6 +611,14 @@ export const createGoogleDriveStorage = (options = {}) => {
     return { fonts: data };
   };
 
+  const renameFont = async (gameId, slot, newName) => {
+    const { fid, data } = await gameFontsManifest(gameId);
+    if (!data[slot]) throw new Error("Font not found");
+    data[slot] = { ...data[slot], name: newName };
+    await writeFile(fid, data);
+    return { fonts: data };
+  };
+
   // --- Images ---
 
   // Binary (non-JSON) files in a folder, cached like the JSON listings.
@@ -760,7 +768,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     listLayouts, getLayout, saveLayout, createLayout, deleteLayout, copyLayout,
     listCollections, getCollection, createCollection, updateCollection, deleteCollection,
     listCards, getCard, saveCard, deleteCard, copyCard,
-    listFonts, addGoogleFont, uploadFont, deleteFont,
+    listFonts, addGoogleFont, uploadFont, deleteFont, renameFont,
     uploadImage, listImages, deleteImage, renameImage,
     listCheckpoints, createCheckpoint, restoreCheckpoint, deleteCheckpoint,
     clearCache,

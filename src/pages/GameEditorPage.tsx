@@ -1052,6 +1052,10 @@ export default function GameEditorPage() {
                 getPreviewSrc={(card: any) => cardThumbnails[card.id] ?? ''}
                 selectedKey={selectedCardId}
                 onSelect={(key) => { if (key) selectCard(storage, key); else setSelectedCardId(null) }}
+                onRename={(cardId, name) => {
+                  // Local update only — the selected-card auto-save effect persists it.
+                  setCards(prev => prev.map(c => c.id === cardId ? { ...c, name } : c))
+                }}
                 empty={cardsLoading
                   ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                   : <p className="text-sm text-muted-foreground">No cards yet.</p>}

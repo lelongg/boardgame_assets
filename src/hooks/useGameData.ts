@@ -369,11 +369,29 @@ export function useDeleteFont(gameId: string | undefined) {
   })
 }
 
+export function useRenameFont(gameId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, { slot: string; newName: string }>({
+    mutationFn: ({ slot, newName }) => storage.renameFont(gameId!, slot, newName),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.fonts(gameId!) }) },
+  })
+}
+
 export function useUploadImage(gameId: string | undefined) {
   const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<string, Error, File>({
     mutationFn: (file: File) => storage.uploadImage(gameId!, file),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.images(gameId!) }) },
+  })
+}
+
+export function useRenameImage(gameId: string | undefined) {
+  const storage = useStorageInstance()!
+  const qc = useQueryClient()
+  return useMutation<any, Error, { file: string; newName: string }>({
+    mutationFn: ({ file, newName }) => storage.renameImage(gameId!, file, newName),
     onSuccess: () => { qc.invalidateQueries({ queryKey: queryKeys.images(gameId!) }) },
   })
 }
