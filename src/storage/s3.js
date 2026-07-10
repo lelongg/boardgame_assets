@@ -653,6 +653,10 @@ export const createS3Storage = (options = {}) => {
       return metas;
     },
 
+    async getCheckpoint(gameId, collectionId, checkpointId) {
+      return await getJson(checkpointKey(gameId, collectionId, checkpointId));
+    },
+
     async createCheckpoint(gameId, collectionId, name) {
       const col = await getJson(collectionKey(gameId, collectionId));
       const cardKeys = await listKeys(cardsPrefix(gameId, collectionId));

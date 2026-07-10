@@ -88,6 +88,7 @@ export interface StorageBackend {
   // Named, restorable snapshots of a collection (its cards + metadata).
   // Each is stored as one self-contained document under the collection.
   listCheckpoints(gameId: string, collectionId: string): Promise<CheckpointMeta[]>;
+  getCheckpoint(gameId: string, collectionId: string, checkpointId: string): Promise<Checkpoint>;
   createCheckpoint(gameId: string, collectionId: string, name: string): Promise<CheckpointMeta>;
   restoreCheckpoint(gameId: string, collectionId: string, checkpointId: string): Promise<void>;
   deleteCheckpoint(gameId: string, collectionId: string, checkpointId: string): Promise<void>;

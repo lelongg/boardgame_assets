@@ -766,7 +766,7 @@ export default function CollectionsPage() {
                   ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                   : <p className="text-sm text-muted-foreground">{showUnusedImagesOnly ? 'No unused images.' : 'No images yet.'}</p>}
                 subheader={showUnusedImagesOnly ? (
-                  <span className="text-xs text-muted-foreground">Not referenced by any layout, card or collection. Checkpoints are not scanned.</span>
+                  <span className="text-xs text-muted-foreground">Not referenced by any layout, card, collection or checkpoint.</span>
                 ) : undefined}
                 actions={selectedImage ? (<>
                   <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit image"
@@ -802,7 +802,7 @@ export default function CollectionsPage() {
                   {unusedImages.length > 0 && (
                     <ConfirmButton
                       variant="ghost"
-                      title={`Delete ${unusedImages.length} unused image${unusedImages.length === 1 ? '' : 's'} (checkpoints are not scanned)`}
+                      title={`Delete ${unusedImages.length} unused image${unusedImages.length === 1 ? '' : 's'}`}
                       onConfirm={handleDeleteUnusedImages}
                     />
                   )}
