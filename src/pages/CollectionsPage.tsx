@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { ArrowLeft, Pencil, Copy, Plus, Check, Layers, Loader2 } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
@@ -421,23 +420,6 @@ export default function CollectionsPage() {
                   }}>
                     <Copy className="h-4 w-4" />
                   </button>
-                  <Select
-                    value={col.layoutId}
-                    onValueChange={async (newLayoutId) => {
-                      if (newLayoutId === col.layoutId) return
-                      try { await updateCollectionMut.mutateAsync({ collectionId: col.id, updates: { layoutId: newLayoutId } }) }
-                      catch { setStatus('Error changing layout.') }
-                    }}
-                  >
-                    <SelectTrigger className="h-7 w-auto max-w-[8rem] gap-1 border-none bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground focus:ring-0" title="Collection layout" aria-label="Collection layout">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {layouts.map((l: any) => (
-                        <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" onClick={() => {
                     setSelectedLayoutId(col.layoutId)
                     setSearchParams({ tab: 'layouts' }, { replace: true })
@@ -483,14 +465,11 @@ export default function CollectionsPage() {
                   <Button size="sm" variant="outline" type="submit" className="w-full border-green-600 text-green-600 hover:bg-green-600 hover:text-white"><Check className="h-4 w-4" /></Button>
                 </form>
               ) : undefined}
-              renderItem={(col: any, _vm, selected) => {
-                    const layoutName = layouts.find((l: any) => l.id === col.layoutId)?.name
-                    return (
+              renderItem={(col: any, _vm, selected) => (
                     <ListItem selected={selected}>
                       <span className="font-medium truncate">{col.name}</span>
-                      {layoutName && <span className="ml-2 shrink-0 text-xs text-muted-foreground">{layoutName}</span>}
                     </ListItem>
-                  )}}
+                  )}
                 />
             <div className="space-y-4 min-w-0">
               {expandedCollection ? (
