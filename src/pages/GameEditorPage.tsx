@@ -513,6 +513,7 @@ export default function GameEditorPage() {
   const { data: gameImages = [] } = useImages(gameId)
   const { data: allLayouts = [] } = useLayouts(gameId)
   const { data: queryLayout } = useLayout(gameId, collection?.layoutId)
+  const { data: backLayout } = useLayout(gameId, collection?.backLayoutId ?? undefined)
   const { data: queryCards, isLoading: cardsLoading } = useCards(gameId, collectionId)
 
   // ── Mutation hooks ──────────────────────────────────────────────
@@ -534,6 +535,13 @@ export default function GameEditorPage() {
     if (!gameData || !queryLayout) return null
     return { ...gameData, layout: queryLayout }
   }, [gameData, queryLayout])
+
+  // Guard against keepPreviousData serving a stale layout after backLayoutId
+  // is cleared or changed.
+  const resolvedBackLayout = useMemo(() => {
+    if (!collection?.backLayoutId || !backLayout) return null
+    return backLayout.id === collection.backLayoutId ? backLayout : null
+  }, [collection?.backLayoutId, backLayout])
 
   // Cards: local state seeded from query, kept local for editing
   const [cards, setCards] = useState<any[]>([])
@@ -583,6 +591,7 @@ export default function GameEditorPage() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const selectedCard = useMemo(() => cards.find(c => c.id === selectedCardId) ?? null, [cards, selectedCardId])
   const [cardPreview, setCardPreview] = useState<string>('')
+  const [backPreview, setBackPreview] = useState<string>('')
   const [editingName, setEditingName] = useState(false)
   const [editingColName, setEditingColName] = useState(false)
   const [savedCardJson, setSavedCardJson] = useState('')
@@ -718,6 +727,33 @@ export default function GameEditorPage() {
     }, 100)
     return () => { cancelled = true; clearTimeout(timer) }
   }, [selectedCard, game?.layout, gameId, collection?.back])
+
+  // Render the card back from its layout (when the collection uses one).
+  // The back layout is rendered with the selected card's data so bound
+  // properties work; a static back simply binds nothing.
+  useEffect(() => {
+    if (!resolvedBackLayout || !gameId) {
+      setBackPreview(prev => { if (prev) URL.revokeObjectURL(prev); return '' })
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const { renderCardSvg, embedFontsInSvg, embedImagesInSvg } = await import('../render')
+        if (cancelled) return
+        const card = selectedCard ?? { id: 'back', name: '', fields: {} }
+        let svg = renderCardSvg(card, resolvedBackLayout, { fonts: gameFonts })
+        svg = await embedFontsInSvg(svg, gameId, gameFonts)
+        svg = await embedImagesInSvg(svg)
+        if (cancelled) return
+        const blobUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+        setBackPreview(prev => { if (prev) URL.revokeObjectURL(prev); return blobUrl })
+      } catch (error) {
+        if (!cancelled) console.error('Error updating back preview:', error)
+      }
+    }, 100)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [selectedCard, resolvedBackLayout, gameId])
 
   // Generate thumbnails for detailed/gallery views — only re-render all on layout change or card add/remove
   const cardsRef = useRef(cards)
@@ -1219,7 +1255,12 @@ export default function GameEditorPage() {
               )}
 
               {cardPreview && (
-                <ZoomablePreview src={cardPreview} alt="Card preview" backImage={collection?.back} backFit={collection?.backFit} />
+                <ZoomablePreview
+                  src={cardPreview}
+                  alt="Card preview"
+                  backImage={resolvedBackLayout ? (backPreview || undefined) : collection?.back}
+                  backFit={resolvedBackLayout ? 'fill' : collection?.backFit}
+                />
               )}
             </div>
           </TabsContent>
@@ -1280,29 +1321,55 @@ export default function GameEditorPage() {
           </TabsContent>
 
           <TabsContent value="back">
-            {collection?.back && (
-              <ZoomablePreview src={collection.back} alt="Back preview" maxImgHeight="30vh" />
+            {resolvedBackLayout ? (
+              backPreview && <ZoomablePreview src={backPreview} alt="Back preview" maxImgHeight="30vh" />
+            ) : (
+              collection?.back && <ZoomablePreview src={collection.back} alt="Back preview" maxImgHeight="30vh" />
             )}
             <Card>
               <CardContent className="pt-6 space-y-4">
                 <div className="space-y-2">
-                  <Label>Card Back Image</Label>
-                  <ValueItemEditor
-                    property="defaultValue"
-                    itemType="image"
-                    value={collection?.back || ''}
-                    layout={game?.layout}
-                    gameImages={gameImages}
-                    onUploadFile={async (file) => {
-                      return await uploadImageMut.mutateAsync(file)
+                  <Label>Back Layout</Label>
+                  <select
+                    value={collection?.backLayoutId ?? ''}
+                    onChange={async (e) => {
+                      const v = e.target.value
+                      try { await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { backLayoutId: v || null } }) }
+                      catch { setStatus('Error saving back layout.') }
                     }}
-                    onChange={async (v) => {
-                      try { await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { back: v || undefined } }) }
-                      catch { setStatus('Error saving back.') }
-                    }}
-                  />
+                    className="w-full rounded-md border bg-background pl-3 pr-8 py-1.5 text-sm"
+                  >
+                    <option value="">None (use image)</option>
+                    {allLayouts.map((l: any) => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    {collection?.backLayoutId
+                      ? 'The back is rendered from this layout, like the card front. Edit it from the game\'s layouts page.'
+                      : 'Pick a layout to design the card back, or use a static image below.'}
+                  </p>
                 </div>
-                {collection?.back && (
+                {!collection?.backLayoutId && (
+                  <div className="space-y-2">
+                    <Label>Card Back Image</Label>
+                    <ValueItemEditor
+                      property="defaultValue"
+                      itemType="image"
+                      value={collection?.back || ''}
+                      layout={game?.layout}
+                      gameImages={gameImages}
+                      onUploadFile={async (file) => {
+                        return await uploadImageMut.mutateAsync(file)
+                      }}
+                      onChange={async (v) => {
+                        try { await updateCollectionMut.mutateAsync({ collectionId: collectionId!, updates: { back: v || undefined } }) }
+                        catch { setStatus('Error saving back.') }
+                      }}
+                    />
+                  </div>
+                )}
+                {!collection?.backLayoutId && collection?.back && (
                   <div className="space-y-2">
                     <FloatingSelect
                       label="Fit Mode"
@@ -1358,6 +1425,8 @@ export default function GameEditorPage() {
               gameFonts={gameFonts}
               back={collection?.back}
               backFit={collection?.backFit}
+              backLayoutId={collection?.backLayoutId}
+              allLayouts={allLayouts}
               onStatusChange={setStatus}
               onCardsChange={() => { invalidateGame(); cardsInitialized.current = false }}
             />

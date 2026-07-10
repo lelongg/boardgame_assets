@@ -262,7 +262,7 @@ async function startServer() {
     const { name } = await c.req.json();
     const id = uid();
     const createdAt = new Date().toISOString();
-    const checkpoint = { id, name: name || "Checkpoint", createdAt, collection: { name: col.name, layoutId: col.layoutId, back: col.back, backFit: col.backFit }, cards: listCardsFor(gid, cid) };
+    const checkpoint = { id, name: name || "Checkpoint", createdAt, collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId, back: col.back, backFit: col.backFit }, cards: listCardsFor(gid, cid) };
     writeJson(chkPath(gid, cid, id), checkpoint);
     return c.json({ id, name: checkpoint.name, createdAt }, 201);
   });
@@ -275,7 +275,7 @@ async function startServer() {
     fs.mkdirSync(cdir, { recursive: true });
     for (const card of checkpoint.cards ?? []) writeJson(cardPath(gid, cid, card.id), card);
     const col = readJson(colPath(gid, cid), {});
-    writeJson(colPath(gid, cid), { ...col, layoutId: checkpoint.collection.layoutId, back: checkpoint.collection.back, backFit: checkpoint.collection.backFit });
+    writeJson(colPath(gid, cid), { ...col, layoutId: checkpoint.collection.layoutId, backLayoutId: checkpoint.collection.backLayoutId, back: checkpoint.collection.back, backFit: checkpoint.collection.backFit });
     return c.body(null, 204);
   });
   app.delete("/api/games/:gid/collections/:cid/checkpoints/:chk", (c) => {
@@ -580,8 +580,9 @@ async function createFullTestGame(storage) {
     fields: { cost: "3", description: "*Wise* mage", faction: "🔮" },
   });
 
-  // Second collection
+  // Second collection — uses a layout-rendered back instead of an image
   const col2 = await storage.createCollection(gameId, "Expansion", tpl.id);
+  await storage.updateCollection(gameId, col2.id, { backLayoutId: tpl.id });
   await storage.saveCard(gameId, col2.id, "card-3", {
     id: "card-3", name: "Rogue",
     fields: { cost: "4", faction: "🏹" },
@@ -683,6 +684,7 @@ async function verifyFullTestGame(storage, gameId) {
   assert.ok(warrior.fields.image.includes(`/api/games/${gameId}/images/`));
 
   const expCol = cols.find(c => c.name === "Expansion");
+  assert.equal(expCol.backLayoutId, tpl.id, "backLayoutId must survive the round trip");
   const expCards = await storage.listCards(gameId, expCol.id);
   assert.equal(expCards.length, 1);
   assert.equal(expCards[0].fields.faction, "🏹");

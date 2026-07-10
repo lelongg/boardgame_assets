@@ -58,7 +58,7 @@ function GameFilesPanel({ gameId, game, layouts, collections, gameFonts, onStatu
         const colCards = queryClient.getQueryData<any[]>(queryKeys.cards(gameId, col.id))
           ?? await queryClient.fetchQuery({ queryKey: queryKeys.cards(gameId, col.id), queryFn: () => storage.listCards(gameId, col.id) })
           ?? []
-        cards.push(...colCards.map((c: any) => ({ ...c, collectionId: col.id, collectionName: col.name, collectionBack: col.back, collectionBackFit: col.backFit })))
+        cards.push(...colCards.map((c: any) => ({ ...c, collectionId: col.id, collectionName: col.name, collectionBack: col.back, collectionBackFit: col.backFit, collectionBackLayoutId: col.backLayoutId })))
       }
       if (!cancelled) setAllCards(cards)
     }
@@ -73,6 +73,7 @@ function GameFilesPanel({ gameId, game, layouts, collections, gameFonts, onStatu
       cards={allCards}
       layout={layout}
       gameFonts={gameFonts}
+      allLayouts={layouts}
       onStatusChange={onStatusChange}
     />
   )

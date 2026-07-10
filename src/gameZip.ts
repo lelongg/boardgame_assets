@@ -187,8 +187,10 @@ export const importGameZip = async (
     log(`Creating collection: ${col.id} (${col.name}) → layout: ${col.layoutId}`)
     const newCol = await storage.createCollection(newGameId, col.name, col.layoutId)
     const newColId = newCol.id
-    // Preserve extra collection fields (back, backFit, etc.)
+    // Preserve extra collection fields (backLayoutId, back, backFit, etc.)
+    // Layout ids are preserved verbatim on import, so backLayoutId needs no remap.
     const extraFields: Record<string, unknown> = {}
+    if (col.backLayoutId) extraFields.backLayoutId = col.backLayoutId
     if (col.back) extraFields.back = rewriteAll(col.back)
     if (col.backFit) extraFields.backFit = col.backFit
     if (Object.keys(extraFields).length > 0) {
