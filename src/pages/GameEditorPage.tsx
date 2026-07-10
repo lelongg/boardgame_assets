@@ -949,9 +949,9 @@ export default function GameEditorPage() {
       // Persist any pending card edit first so the snapshot is current.
       flushSave()
       await createCheckpointMut.mutateAsync(name)
-      setStatus('Checkpoint saved.')
+      setStatus('Version saved.')
     } catch (err) {
-      setError('Could not save checkpoint.', err)
+      setError('Could not save version.', err)
     } finally {
       setCheckpointBusy(false)
     }
@@ -965,9 +965,9 @@ export default function GameEditorPage() {
       await restoreCheckpointMut.mutateAsync(checkpointId)
       await resyncFromStorage()
       setShowCheckpointsDialog(false)
-      setStatus('Checkpoint restored.')
+      setStatus('Version restored.')
     } catch (err) {
-      setError('Could not restore checkpoint.', err)
+      setError('Could not restore version.', err)
     } finally {
       setCheckpointBusy(false)
     }
@@ -976,7 +976,7 @@ export default function GameEditorPage() {
   const handleDeleteCheckpoint = async (checkpointId: string) => {
     setCheckpointBusy(true)
     try { await deleteCheckpointMut.mutateAsync(checkpointId) }
-    catch (err) { setError('Could not delete checkpoint.', err) }
+    catch (err) { setError('Could not delete version.', err) }
     finally { setCheckpointBusy(false) }
   }
 
@@ -1055,7 +1055,7 @@ export default function GameEditorPage() {
       </>}
       status={status}
       storageActions={<>
-        <Button size="sm" variant="ghost" onClick={() => setShowCheckpointsDialog(true)} title="Checkpoints">
+        <Button size="sm" variant="ghost" onClick={() => setShowCheckpointsDialog(true)} title="Versions">
           <History className="h-4 w-4" />
         </Button>
         <Button size="sm" variant="ghost" onClick={handleReloadClick} title="Reload from storage">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,10 +7,18 @@ import { History, RotateCcw, Loader2 } from 'lucide-react'
 
 type CheckpointMeta = { id: string; name: string; createdAt: string }
 
+// Local date in YYYY-MM-DD, used as the default name for a new version.
+const defaultVersionName = () => {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 /**
- * Named, restorable snapshots of a collection. Creating saves the current
+ * Collection versions: named, restorable snapshots of a collection
+ * (called "checkpoints" in the storage layer). Creating saves the current
  * cards + layout assignment; restoring replaces the current cards with the
- * snapshot (the editor auto-saves a "Before restore" checkpoint first).
+ * snapshot (the editor auto-saves a "Before restore" version first).
  */
 export default function CheckpointsDialog({
   open,
@@ -31,13 +39,19 @@ export default function CheckpointsDialog({
   onRestore: (id: string) => Promise<void> | void
   onDelete: (id: string) => Promise<void> | void
 }) {
-  const [name, setName] = useState('')
+  const [name, setName] = useState(defaultVersionName)
+
+  // Re-prime the default each time the dialog opens so a long-lived
+  // session still suggests today's date, not the mount-time date.
+  useEffect(() => {
+    if (open) setName(defaultVersionName())
+  }, [open])
 
   const submit = async () => {
     const n = name.trim()
     if (!n || busy) return
     await onCreate(n)
-    setName('')
+    setName(defaultVersionName())
   }
 
   const fmt = (iso: string) => {
@@ -49,9 +63,9 @@ export default function CheckpointsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><History className="h-4 w-4" /> Checkpoints</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><History className="h-4 w-4" /> Versions</DialogTitle>
           <DialogDescription>
-            Save a named snapshot of this collection’s cards and layout, and restore it later.
+            Save a version of this collection’s cards and layout, and restore it later.
           </DialogDescription>
         </DialogHeader>
 
@@ -59,7 +73,7 @@ export default function CheckpointsDialog({
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Checkpoint name (e.g. before rebalance)"
+            placeholder="Version name (e.g. before rebalance)"
             className="h-9"
           />
           <Button type="submit" disabled={!name.trim() || busy}>Save</Button>
@@ -69,7 +83,7 @@ export default function CheckpointsDialog({
           {loading ? (
             <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
           ) : checkpoints.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">No checkpoints yet.</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">No versions yet.</p>
           ) : (
             <ul className="divide-y">
               {checkpoints.map((cp) => (
@@ -78,7 +92,7 @@ export default function CheckpointsDialog({
                     <div className="truncate text-sm font-medium">{cp.name}</div>
                     <div className="text-xs text-muted-foreground">{fmt(cp.createdAt)}</div>
                   </div>
-                  <Button variant="outline" size="sm" disabled={busy} onClick={() => onRestore(cp.id)} title="Restore this checkpoint (a safety snapshot is saved first)">
+                  <Button variant="outline" size="sm" disabled={busy} onClick={() => onRestore(cp.id)} title="Restore this version (a safety snapshot is saved first)">
                     <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Restore
                   </Button>
                   <ConfirmButton iconOnly onConfirm={() => onDelete(cp.id)} disabled={busy} />
