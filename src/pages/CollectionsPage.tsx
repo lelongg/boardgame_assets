@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, Pencil, Copy, Plus, Check, Layers, Loader2 } from 'lucide-react'
+import { ArrowLeft, Pencil, Copy, Plus, Check, Layers, Loader2, ImageOff } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
 import { ValueItemEditor } from '@/components/layout/ControlPanel'
@@ -766,7 +766,10 @@ export default function CollectionsPage() {
                   ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                   : <p className="text-sm text-muted-foreground">{showUnusedImagesOnly ? 'No unused images.' : 'No images yet.'}</p>}
                 subheader={showUnusedImagesOnly ? (
-                  <span className="text-xs text-muted-foreground">Not referenced by any layout, card, collection or checkpoint.</span>
+                  <span
+                    className="text-xs text-muted-foreground whitespace-nowrap"
+                    title="Not referenced by any layout, card, collection or checkpoint"
+                  >Unused only</span>
                 ) : undefined}
                 actions={selectedImage ? (<>
                   <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit image"
@@ -793,13 +796,15 @@ export default function CollectionsPage() {
                     <Button
                       size="sm"
                       variant={showUnusedImagesOnly ? 'secondary' : 'ghost'}
+                      className="px-2 shrink-0"
                       onClick={() => setShowUnusedImagesOnly(v => !v)}
-                      title={showUnusedImagesOnly ? 'Show all images' : 'Show only unused images'}
+                      title={showUnusedImagesOnly ? 'Show all images' : `Show ${unusedImages.length} unused image${unusedImages.length === 1 ? '' : 's'} (not referenced by any layout, card, collection or checkpoint)`}
                     >
-                      {unusedImages.length} unused
+                      <ImageOff className="h-4 w-4" />
+                      <span className="ml-1 text-xs">{unusedImages.length}</span>
                     </Button>
                   )}
-                  {unusedImages.length > 0 && (
+                  {showUnusedImagesOnly && unusedImages.length > 0 && (
                     <ConfirmButton
                       variant="ghost"
                       title={`Delete ${unusedImages.length} unused image${unusedImages.length === 1 ? '' : 's'}`}
