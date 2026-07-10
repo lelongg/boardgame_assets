@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
-import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput } from 'lucide-react'
+import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import useFuzzyFilter from '@/hooks/useFuzzyFilter'
@@ -145,23 +145,54 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   const hasSubheader = true
   const selectedItem = selectedKey ? items.find(i => getKey(i) === selectedKey) : null
   const [renaming, setRenaming] = useState(false)
+  const [renameDraft, setRenameDraft] = useState('')
   useEffect(() => { setRenaming(false) }, [selectedKey])
-  const commitRename = (value: string) => {
+  const startRename = () => {
+    if (!selectedItem) return
+    setRenameDraft(getName(selectedItem))
+    setRenaming(true)
+  }
+  const commitRename = () => {
     setRenaming(false)
     if (!selectedItem) return
-    const name = value.trim()
+    const name = renameDraft.trim()
     if (!name || name === getName(selectedItem)) return
     onRename?.(getKey(selectedItem), name)
   }
   const renameButton = onRename && selectedItem ? (
     <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Rename"
-      onClick={() => setRenaming(true)}>
+      onClick={startRename}>
       <TextCursorInput className="h-4 w-4" />
     </button>
   ) : null
+  // Explicit confirm/cancel: Enter or ✓ commits, Escape or ✗ cancels.
+  const renameForm = (
+    <form className="flex flex-1 items-center gap-1 min-w-0"
+      onClick={(e) => e.stopPropagation()}
+      onSubmit={(e) => { e.preventDefault(); commitRename() }}>
+      <input
+        autoFocus
+        value={renameDraft}
+        onChange={(e) => setRenameDraft(e.target.value)}
+        onFocus={(e) => e.target.select()}
+        onKeyDown={(e) => { if (e.key === 'Escape') setRenaming(false) }}
+        className="flex-1 min-w-0 h-7 rounded border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+      />
+      <button type="submit" className="rounded p-1 text-green-600 hover:bg-green-600/10 transition-colors" title="Confirm rename">
+        <Check className="h-4 w-4" />
+      </button>
+      <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Cancel"
+        onClick={() => setRenaming(false)}>
+        <X className="h-4 w-4" />
+      </button>
+    </form>
+  )
   const selectedIdx = selectedItem ? filtered.indexOf(selectedItem) : -1
   const previewSrc = selectedItem && getPreviewSrc ? getPreviewSrc(selectedItem) : ''
   const showBigPreview = mode === 'preview' && getPreviewSrc && selectedItem
+  // The form replaces the selected row in list modes; grid/preview modes (and a
+  // selected item hidden by the filter) fall back to the subheader.
+  const renameInSubheader = renaming && !!selectedItem && (!!isGrid || !!showBigPreview || selectedIdx < 0)
 
   return (<>
     {hoverThumb && (
@@ -186,17 +217,8 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
         {drawer && <div className="shrink-0">{drawer}</div>}
         {hasSubheader && (
           <div className="flex items-center gap-1 px-2 py-1 border-b shrink-0">
-            {renaming && selectedItem ? (
-              <input
-                autoFocus
-                defaultValue={getName(selectedItem)}
-                className="flex-1 min-w-0 h-6 rounded border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-primary"
-                onBlur={(e) => commitRename(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                  if (e.key === 'Escape') { (e.target as HTMLInputElement).value = getName(selectedItem); setRenaming(false) }
-                }}
-              />
+            {renameInSubheader ? (
+              renameForm
             ) : showBigPreview ? (<>
               <span className="text-xs font-medium truncate">{getName(selectedItem!)}</span>
               <div className="flex items-center gap-1 ml-auto">
@@ -281,6 +303,15 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
             ) : (() => {
               const renderListItem = (item: T, idx: number) => {
                 const k = getKey(item)
+                // Editing the selected row in place keeps the input right where
+                // the user is looking (the subheader variant is used for grid
+                // and preview modes, where there is no row to replace).
+                if (renaming && !renameInSubheader && !multiSelect && k === selectedKey) {
+                  return <div key={k}
+                    ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }}
+                    className="rounded-lg border bg-card ring-2 ring-inset ring-primary px-3 py-1.5"
+                  >{renameForm}</div>
+                }
                 const previewSrc = getPreviewSrc?.(item)
                 return <div key={k}
                   ref={(el) => { if (el) itemRefs.current.set(k, el); else itemRefs.current.delete(k) }}
