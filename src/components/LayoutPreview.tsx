@@ -12,7 +12,6 @@ type LayoutPreviewProps = {
   layout: CardLayout
   gameId: string
   cards?: PreviewCard[]
-  back?: string
   gameFonts?: Record<string, { name: string; file: string }>
   selectedNodeId?: string | null
   onNodeClick?: (id: string) => void
@@ -56,7 +55,7 @@ function CardPicker({ cards, value, onChange }: { cards: PreviewCard[]; value: s
   )
 }
 
-export default function LayoutPreview({ layout, gameId, cards = [], back, gameFonts, selectedNodeId, onNodeClick }: LayoutPreviewProps) {
+export default function LayoutPreview({ layout, gameId, cards = [], gameFonts, selectedNodeId, onNodeClick }: LayoutPreviewProps) {
   const [showSections, setShowSections] = useState(true)
   const [showItemWires, setShowItemWires] = useState(true)
   const [previewCardId, setPreviewCardId] = useState<string | null>(null)
@@ -94,7 +93,7 @@ export default function LayoutPreview({ layout, gameId, cards = [], back, gameFo
     debounceRef.current = setTimeout(run, 150)
 
     return () => { cancelled.current = true; if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [layout, gameId, showSections, showItemWires, selectedNodeId, previewCard, back])
+  }, [layout, gameId, showSections, showItemWires, selectedNodeId, previewCard])
 
   if (!previewUrl) return null
 

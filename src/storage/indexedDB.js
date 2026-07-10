@@ -552,7 +552,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
         const createdAt = now();
         const checkpoint = {
           id, name, createdAt,
-          collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId, back: col.back, backFit: col.backFit },
+          collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId },
           cards,
         };
         await idbPut(db, "checkpoints", [gameId, collectionId, id], checkpoint);
@@ -573,14 +573,12 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
           const normalized = normalizeCard(card);
           await idbPut(db, "cards", [gameId, collectionId, normalized.id], normalized);
         }
-        // Restore collection metadata (layout + back), keep id/name.
+        // Restore collection metadata (layout + back layout), keep id/name.
         const col = (await idbGet(db, "collections", [gameId, collectionId])) ?? { id: collectionId, name: collectionId };
         await idbPut(db, "collections", [gameId, collectionId], {
           ...col,
           layoutId: checkpoint.collection.layoutId,
           backLayoutId: checkpoint.collection.backLayoutId,
-          back: checkpoint.collection.back,
-          backFit: checkpoint.collection.backFit,
           updatedAt: now(),
         });
       } finally {

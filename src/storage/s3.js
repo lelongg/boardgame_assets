@@ -669,7 +669,7 @@ export const createS3Storage = (options = {}) => {
       const createdAt = now();
       const checkpoint = {
         id, name, createdAt,
-        collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId, back: col.back, backFit: col.backFit },
+        collection: { name: col.name, layoutId: col.layoutId, backLayoutId: col.backLayoutId },
         cards,
       };
       await putJson(checkpointKey(gameId, collectionId, id), checkpoint);
@@ -687,14 +687,12 @@ export const createS3Storage = (options = {}) => {
         const normalized = normalizeCard(card);
         await putJson(cardKey(gameId, collectionId, normalized.id), normalized);
       }
-      // Restore collection metadata (layout + back), keep id/name.
+      // Restore collection metadata (layout + back layout), keep id/name.
       const col = await getJson(collectionKey(gameId, collectionId));
       await putJson(collectionKey(gameId, collectionId), {
         ...col,
         layoutId: checkpoint.collection.layoutId,
         backLayoutId: checkpoint.collection.backLayoutId,
-        back: checkpoint.collection.back,
-        backFit: checkpoint.collection.backFit,
         updatedAt: now(),
       });
     },

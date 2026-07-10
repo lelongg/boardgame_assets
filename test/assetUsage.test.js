@@ -25,7 +25,7 @@ const layoutWith = (overrides = {}) => ({
 test("image in layout item defaultValue is used", () => {
   const layout = layoutWith();
   layout.root.items.push({ id: "i1", type: "image", defaultValue: img("a.png") });
-  const used = collectUsedImageFiles([layout], [], []);
+  const used = collectUsedImageFiles([layout], []);
   assert.deepEqual([...used], ["a.png"]);
 });
 
@@ -39,13 +39,13 @@ test("image in nested section item is used", () => {
     }],
     items: [],
   });
-  const used = collectUsedImageFiles([layout], [], []);
+  const used = collectUsedImageFiles([layout], []);
   assert.ok(used.has("deep.png"));
 });
 
 test("image in card field value is used, including multiple URLs in one value", () => {
   const card = { id: "c1", name: "Card", fields: { art: img("b.png"), text: `see ${img("c.png")} and ${img("d.png")}` } };
-  const used = collectUsedImageFiles([], [], [card]);
+  const used = collectUsedImageFiles([], [card]);
   assert.deepEqual([...used].sort(), ["b.png", "c.png", "d.png"]);
 });
 
@@ -55,25 +55,20 @@ test("image in bindingMeta default and values is used", () => {
       "defaultValue:art": { default: img("def.png"), values: [img("v1.png"), img("v2.png")] },
     },
   });
-  const used = collectUsedImageFiles([layout], [], []);
+  const used = collectUsedImageFiles([layout], []);
   assert.deepEqual([...used].sort(), ["def.png", "v1.png", "v2.png"]);
-});
-
-test("image in collection back is used", () => {
-  const used = collectUsedImageFiles([], [{ id: "col1", back: img("back.png") }], []);
-  assert.ok(used.has("back.png"));
 });
 
 test("unreferenced images are not collected and URL matching is game-id-agnostic", () => {
   const card = { id: "c1", fields: { art: "/api/games/other-game/images/x.png" } };
-  const used = collectUsedImageFiles([], [], [card]);
+  const used = collectUsedImageFiles([], [card]);
   assert.ok(used.has("x.png"));
   assert.equal(used.size, 1);
 });
 
 test("image URL stops at quote/whitespace/markup delimiters", () => {
   const card = { id: "c1", fields: { t: `<img src="${img("q.png")}"> trailing` } };
-  const used = collectUsedImageFiles([], [], [card]);
+  const used = collectUsedImageFiles([], [card]);
   assert.deepEqual([...used], ["q.png"]);
 });
 

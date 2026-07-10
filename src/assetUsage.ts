@@ -4,8 +4,8 @@
  *
  * Reference forms differ by asset type:
  * - Images are referenced by full URL (`/api/games/{gameId}/images/{file}`)
- *   in card field values, image item defaultValues, layout bindingMeta
- *   defaults/values, and collection backs.
+ *   in card field values, image item defaultValues, and layout bindingMeta
+ *   defaults/values.
  * - Fonts are referenced by manifest slot key (`item.font`, font bindings,
  *   bindingMeta for `font:*`), never by URL.
  *
@@ -27,10 +27,9 @@ const walkItems = (section: SectionLike | undefined | null, fn: (item: any) => v
   for (const child of section.children ?? []) walkItems(child, fn)
 }
 
-/** Image file names referenced anywhere in the given layouts, collections and cards. */
+/** Image file names referenced anywhere in the given layouts and cards. */
 export function collectUsedImageFiles(
   layouts: any[],
-  collections: any[],
   allCards: any[],
 ): Set<string> {
   const files = new Set<string>()
@@ -50,7 +49,6 @@ export function collectUsedImageFiles(
       for (const v of meta?.values ?? []) collect(v)
     }
   }
-  for (const col of collections) collect(col.back)
   return files
 }
 

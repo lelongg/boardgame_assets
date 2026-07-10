@@ -68,7 +68,7 @@ test("CSV round-trips commas, quotes and newlines", () => {
 
 // ── Zip export image collection ─────────────────────────────────────────────
 
-test("zip export collects all image refs: multi-image fields, bindingMeta, back", async () => {
+test("zip export collects all image refs: multi-image fields, bindingMeta", async () => {
   const gameId = "g1";
   const img = (f) => `/api/games/${gameId}/images/${f}`;
   const tpl = {
@@ -84,7 +84,7 @@ test("zip export collects all image refs: multi-image fields, bindingMeta, back"
     getGame: async () => ({ id: gameId, name: "G" }),
     listLayouts: async () => [tpl],
     listFonts: async () => ({}),
-    listCollections: async () => [{ id: "c1", name: "C", layoutId: "l1", back: img("back.png") }],
+    listCollections: async () => [{ id: "c1", name: "C", layoutId: "l1" }],
     listCards: async () => [{
       id: "k1", name: "K", fields: {
         rich: `<img src="${img("rich-1.png")}"> and <img src="${img("rich-2.png")}">`,
@@ -110,7 +110,7 @@ test("zip export collects all image refs: multi-image fields, bindingMeta, back"
     .map(u => u.split("/images/")[1])
     .sort();
   assert.deepEqual(requestedImages, [
-    "back.png", "item-default.png", "meta-default.png", "meta-value.png",
+    "item-default.png", "meta-default.png", "meta-value.png",
     "plain.png", "rich-1.png", "rich-2.png",
   ], "every referenced image (multi-match, bindingMeta default/values) must be exported with a clean filename");
 });
