@@ -66,6 +66,15 @@ const saveGameFonts = (gameId: string, fonts: Record<string, FontEntry>) => {
   writeJson(gameFontsManifest(gameId), fonts);
 };
 const imagesDir = (gameId: string) => path.join(dataRoot, gameId, "images");
+// Display names for hash-named image files, kept in a sidecar manifest
+// (excluded from listings because it has no image extension).
+const imageNamesPath = (gameId: string) => path.join(imagesDir(gameId), "_names.json");
+const loadImageNames = (gameId: string): Record<string, string> =>
+  readJson<Record<string, string>>(imageNamesPath(gameId), {});
+const saveImageNames = (gameId: string, names: Record<string, string>) => {
+  fs.mkdirSync(imagesDir(gameId), { recursive: true });
+  writeJson(imageNamesPath(gameId), names);
+};
 const ttsDir = (gameId: string) => path.join(dataRoot, gameId, "tts");
 
 const hashBuffer = (data: Buffer): string =>
@@ -696,12 +705,25 @@ app.delete("/api/games/:gameId/fonts/:file", (req, res) => {
   res.json({ fonts });
 });
 
+app.post("/api/games/:gameId/fonts/:slot/rename", (req, res) => {
+  const { gameId, slot } = req.params;
+  const newName = String(req.body?.newName ?? "").trim();
+  if (!newName) return res.status(400).json({ error: "Name required" });
+  const fonts = loadGameFonts(gameId);
+  if (!fonts[slot]) return res.status(404).json({ error: "Font not found" });
+  fonts[slot] = { ...fonts[slot], name: newName };
+  saveGameFonts(gameId, fonts);
+  touchGame(gameId);
+  res.json({ fonts });
+});
+
 // Images
 app.get("/api/games/:gameId/images", (req, res) => {
   const dir = imagesDir(req.params.gameId);
   if (!fs.existsSync(dir)) return res.json([]);
+  const names = loadImageNames(req.params.gameId);
   const files = fs.readdirSync(dir).filter(f => /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(f));
-  res.json(files.map(f => ({ file: f, url: `/api/games/${req.params.gameId}/images/${f}` })));
+  res.json(files.map(f => ({ file: f, url: `/api/games/${req.params.gameId}/images/${f}`, name: names[f] || f })));
 });
 
 app.post("/api/games/:gameId/images/upload", express.raw({ type: "*/*", limit: "50mb" }), (req, res) => {
@@ -719,7 +741,23 @@ app.post("/api/games/:gameId/images/upload", express.raw({ type: "*/*", limit: "
   const dir = imagesDir(gameId);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, fileName), data);
+  const names = loadImageNames(gameId);
+  if (!names[fileName]) {
+    names[fileName] = path.basename(originalName, ext) || fileName;
+    saveImageNames(gameId, names);
+  }
   res.status(201).json({ file: fileName, url: `/api/games/${gameId}/images/${fileName}` });
+});
+
+app.post("/api/games/:gameId/images/:file/rename", (req, res) => {
+  const { gameId, file } = req.params;
+  const newName = String(req.body?.newName ?? "").trim();
+  if (!newName) return res.status(400).json({ error: "Name required" });
+  if (!fs.existsSync(path.join(imagesDir(gameId), file))) return res.status(404).json({ error: "Not found" });
+  const names = loadImageNames(gameId);
+  names[file] = newName;
+  saveImageNames(gameId, names);
+  res.json({ file, name: newName });
 });
 
 app.get("/api/games/:gameId/images/:file", (req, res) => {
@@ -730,6 +768,11 @@ app.get("/api/games/:gameId/images/:file", (req, res) => {
 
 app.delete("/api/games/:gameId/images/:file", (req, res) => {
   fs.rmSync(path.join(imagesDir(req.params.gameId), req.params.file), { force: true });
+  const names = loadImageNames(req.params.gameId);
+  if (names[req.params.file]) {
+    delete names[req.params.file];
+    saveImageNames(req.params.gameId, names);
+  }
   res.status(204).end();
 });
 

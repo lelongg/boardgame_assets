@@ -76,6 +76,9 @@ export interface StorageBackend {
   addGoogleFont(gameId: string, name: string, slotName?: string): Promise<{ fonts: FontManifest }>;
   uploadFont(gameId: string, file: File, slotName?: string): Promise<{ fonts: FontManifest }>;
   deleteFont(gameId: string, file: string): Promise<{ fonts: FontManifest }>;
+  /** Change the display name of the font in the given manifest slot. Layouts
+   * reference fonts by slot key, so renaming never breaks existing layouts. */
+  renameFont(gameId: string, slot: string, newName: string): Promise<{ fonts: FontManifest }>;
 
   uploadImage(gameId: string, file: File): Promise<string>;
   listImages(gameId: string): Promise<ImageEntry[]>;

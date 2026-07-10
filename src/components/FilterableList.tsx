@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
-import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import useFuzzyFilter from '@/hooks/useFuzzyFilter'
@@ -18,6 +18,7 @@ type FilterableListProps<T> = {
   getGroup?: (item: T) => string | undefined
   selectedKey?: string | null
   onSelect?: (key: string | null) => void
+  onRename?: (key: string, newName: string) => void | Promise<void>
   selectedKeys?: Set<string>
   onSelectedKeysChange?: (keys: Set<string>) => void
   renderItem: (item: T, viewMode: ViewMode, selected: boolean, index: number) => ReactNode
@@ -33,7 +34,7 @@ type FilterableListProps<T> = {
 
 const COL_WIDTH = 120
 
-export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, getGroup, selectedKey, onSelect, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
+export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, getGroup, selectedKey, onSelect, onRename, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
   const multiSelect = !!(selectedKeys && onSelectedKeysChange)
   const [hoverThumb, setHoverThumb] = useState<{ src: string; x: number; y: number } | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -143,6 +144,21 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
 
   const hasSubheader = true
   const selectedItem = selectedKey ? items.find(i => getKey(i) === selectedKey) : null
+  const [renaming, setRenaming] = useState(false)
+  useEffect(() => { setRenaming(false) }, [selectedKey])
+  const commitRename = (value: string) => {
+    setRenaming(false)
+    if (!selectedItem) return
+    const name = value.trim()
+    if (!name || name === getName(selectedItem)) return
+    onRename?.(getKey(selectedItem), name)
+  }
+  const renameButton = onRename && selectedItem ? (
+    <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Rename"
+      onClick={() => setRenaming(true)}>
+      <TextCursorInput className="h-4 w-4" />
+    </button>
+  ) : null
   const selectedIdx = selectedItem ? filtered.indexOf(selectedItem) : -1
   const previewSrc = selectedItem && getPreviewSrc ? getPreviewSrc(selectedItem) : ''
   const showBigPreview = mode === 'preview' && getPreviewSrc && selectedItem
@@ -170,7 +186,18 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
         {drawer && <div className="shrink-0">{drawer}</div>}
         {hasSubheader && (
           <div className="flex items-center gap-1 px-2 py-1 border-b shrink-0">
-            {showBigPreview ? (<>
+            {renaming && selectedItem ? (
+              <input
+                autoFocus
+                defaultValue={getName(selectedItem)}
+                className="flex-1 min-w-0 h-6 rounded border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-primary"
+                onBlur={(e) => commitRename(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                  if (e.key === 'Escape') { (e.target as HTMLInputElement).value = getName(selectedItem); setRenaming(false) }
+                }}
+              />
+            ) : showBigPreview ? (<>
               <span className="text-xs font-medium truncate">{getName(selectedItem!)}</span>
               <div className="flex items-center gap-1 ml-auto">
                 <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
@@ -182,6 +209,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
                   disabled={selectedIdx >= filtered.length - 1}
                   onClick={() => { if (selectedIdx < filtered.length - 1) onSelect?.(getKey(filtered[selectedIdx + 1])) }}
                   title="Next"><ChevronRight className="h-3.5 w-3.5" /></button>
+                {renameButton}
                 {actions}
               </div>
             </>) : (<>
@@ -205,6 +233,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
               </>}
 
               <div className="flex items-center gap-1 ml-auto">
+                {renameButton}
                 {actions}
               </div>
             </>)}

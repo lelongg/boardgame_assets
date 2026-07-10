@@ -669,6 +669,19 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       }
     },
 
+    async renameFont(gameId, slot, newName) {
+      const db = await openDB();
+      try {
+        const fonts = await getFontManifest(db, gameId);
+        if (!fonts[slot]) throw new Error("Font not found");
+        fonts[slot] = { ...fonts[slot], name: newName };
+        await saveFontManifest(db, gameId, fonts);
+        return { fonts };
+      } finally {
+        db.close();
+      }
+    },
+
     // ── Images ─────────────────────────────────────────────────────────────
 
     async listImages(gameId) {

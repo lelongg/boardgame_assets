@@ -246,6 +246,15 @@ export default function GamesPage() {
             getName={(game: any) => game.name}
             selectedKey={expandedGame}
             onSelect={setExpandedGame}
+            onRename={async (gameId, name) => {
+              if (!storage) return
+              try {
+                await storage.updateGame(gameId, { name })
+                queryClient.invalidateQueries({ queryKey: queryKeys.games() })
+              } catch (err) {
+                setError('Error renaming game', err)
+              }
+            }}
             empty={!storage || gamesLoading
               ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
               : gamesError

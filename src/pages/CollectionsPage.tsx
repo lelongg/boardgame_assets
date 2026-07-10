@@ -23,7 +23,7 @@ import {
   useCreateCollection, useUpdateCollection, useDeleteCollection,
   useCreateLayout, useSaveLayout, useCopyLayout, useDeleteLayout,
   useSaveCard, useCopyCard, useDeleteCard,
-  useUpdateGame, useUploadImage, useDeleteImage,
+  useUpdateGame, useUploadImage, useDeleteImage, useRenameImage,
   useInvalidateGame, queryKeys,
 } from '../hooks/useGameData'
 import FilesPanel from '@/components/FilesPanel'
@@ -174,6 +174,7 @@ export default function CollectionsPage() {
   const updateGameMut = useUpdateGame(gameId)
   const uploadImageMut = useUploadImage(gameId)
   const deleteImageMut = useDeleteImage(gameId)
+  const renameImageMut = useRenameImage(gameId)
   const invalidateGame = useInvalidateGame(gameId)
 
   const [layoutPreviewCards, setLayoutPreviewCards] = useState<any[]>([])
@@ -385,6 +386,10 @@ export default function CollectionsPage() {
                 setExpandedCollection(key)
                 if (gameId) { if (key) localStorage.setItem(`game:${gameId}:selectedCollection`, key); else localStorage.removeItem(`game:${gameId}:selectedCollection`) }
               }}
+              onRename={async (collectionId, name) => {
+                try { await updateCollectionMut.mutateAsync({ collectionId, updates: { name } }) }
+                catch { setStatus('Error renaming collection.') }
+              }}
               empty={collectionsLoading
                 ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                 : <p className="text-sm text-muted-foreground">No collections yet.</p>}
@@ -502,6 +507,12 @@ export default function CollectionsPage() {
                   getPreviewSrc={(card: any) => cardPreviews[card.id] || ''}
                   selectedKey={selectedCardId}
                   onSelect={setSelectedCardId}
+                  onRename={async (cardId, name) => {
+                    const card = collectionCards.find((c: any) => c.id === cardId)
+                    if (!card) return
+                    try { await saveCardMut.mutateAsync({ cardId, card: { ...card, name } }) }
+                    catch { setStatus('Error renaming card.') }
+                  }}
                   actions={selectedCardId ? (<>
                     <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit"
                       onClick={() => { if (gameId && expandedCollection) { if (selectedCardId) localStorage.setItem(`editor:${gameId}:${expandedCollection}:selectedCard`, selectedCardId); localStorage.setItem(`editor:${gameId}:tab`, 'cards') }; navigate(`/game/${gameId}/collection/${expandedCollection}`) }}>
@@ -595,6 +606,16 @@ export default function CollectionsPage() {
                 onSelect={(key) => {
                   setSelectedLayoutId(key)
                   if (gameId) { if (key) localStorage.setItem(`game:${gameId}:selectedLayout`, key); else localStorage.removeItem(`game:${gameId}:selectedLayout`) }
+                }}
+                onRename={async (layoutId, name) => {
+                  const tpl = layouts.find((t: any) => t.id === layoutId)
+                  if (!tpl) return
+                  try {
+                    const saved = await saveLayoutMut.mutateAsync({ layoutId, layout: { ...tpl, name } })
+                    // Keep the per-id layout cache (staleTime: Infinity) in sync,
+                    // matching the optimistic-update pattern used by the editor.
+                    queryClient.setQueryData(queryKeys.layout(gameId!, layoutId), saved)
+                  } catch { setStatus('Error renaming layout.') }
                 }}
                 empty={layoutsLoading
                   ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
@@ -737,6 +758,10 @@ export default function CollectionsPage() {
                 getPreviewSrc={img => img.url}
                 selectedKey={selectedImage}
                 onSelect={setSelectedImage}
+                onRename={async (file, name) => {
+                  try { await renameImageMut.mutateAsync({ file, newName: name }) }
+                  catch { setStatus('Error renaming image.') }
+                }}
                 empty={imagesLoading
                   ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                   : <p className="text-sm text-muted-foreground">No images yet.</p>}

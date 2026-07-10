@@ -94,6 +94,47 @@ test("server: updateGame merges arbitrary fields like the other backends", async
   assert.equal(updated.id, game.id);
 });
 
+test("server: image upload records a display name and rename updates it", async () => {
+  const create = await fetch(`${BASE}/api/games`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Image Game" }),
+  });
+  const game = await create.json();
+
+  const up = await fetch(`${BASE}/api/games/${game.id}/images/upload`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": 'attachment; filename="hero.png"',
+    },
+    body: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  });
+  assert.equal(up.status, 201);
+  const { file } = await up.json();
+
+  let list = await (await fetch(`${BASE}/api/games/${game.id}/images`)).json();
+  assert.equal(list.find(i => i.file === file)?.name, "hero", "display name defaults to the original filename");
+
+  const rename = await fetch(`${BASE}/api/games/${game.id}/images/${file}/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newName: "villain" }),
+  });
+  assert.equal(rename.status, 200);
+
+  list = await (await fetch(`${BASE}/api/games/${game.id}/images`)).json();
+  assert.equal(list.find(i => i.file === file)?.name, "villain", "rename must persist");
+  assert.ok(!list.some(i => i.file === "_names.json"), "the names sidecar must not be listed as an image");
+
+  const missing = await fetch(`${BASE}/api/games/${game.id}/images/nope.png/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newName: "x" }),
+  });
+  assert.equal(missing.status, 404, "renaming a missing image must 404");
+});
+
 test("server: rendered card SVG uses the game's configured fonts", async () => {
   const create = await fetch(`${BASE}/api/games`, {
     method: "POST",

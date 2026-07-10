@@ -7,7 +7,7 @@ import ConfirmButton from './ConfirmButton'
 import ListItem from './ListItem'
 import FilterableList from '@/components/FilterableList'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
-import { useAddGoogleFont, useUploadFont, useDeleteFont } from '../hooks/useGameData'
+import { useAddGoogleFont, useUploadFont, useDeleteFont, useRenameFont } from '../hooks/useGameData'
 
 type FontEntry = { name: string; file: string; source: 'upload' | 'google' }
 
@@ -28,13 +28,14 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus, sh
   const addGoogleFontMut = useAddGoogleFont(gameId)
   const uploadFontMut = useUploadFont(gameId)
   const deleteFontMut = useDeleteFont(gameId)
+  const renameFontMut = useRenameFont(gameId)
 
   const [showAddFormInternal, setShowAddFormInternal] = useState(false)
   const showAddForm = showAdd ?? showAddFormInternal
   const setShowAddForm = onToggleAdd ? () => onToggleAdd() : setShowAddFormInternal
   const [source, setSource] = useState<'google' | 'upload'>('google')
   const [googleFontName, setGoogleFontName] = useState('')
-  const loading = addGoogleFontMut.isPending || uploadFontMut.isPending || deleteFontMut.isPending
+  const loading = addGoogleFontMut.isPending || uploadFontMut.isPending || deleteFontMut.isPending || renameFontMut.isPending
 
   // Load font CSS for previews
   useEffect(() => {
@@ -109,6 +110,16 @@ export default function FontManager({ gameId, fonts, onFontsChange, onStatus, sh
         getName={([, font]) => font.name}
         selectedKey={selectedFont}
         onSelect={onSelectFont}
+        onRename={async (slot, newName) => {
+          onStatus('Renaming font...')
+          try {
+            await renameFontMut.mutateAsync({ slot, newName })
+            onFontsChange()
+            onStatus('Font renamed.')
+          } catch (err: any) {
+            onStatus(`Error: ${err.message}`)
+          }
+        }}
         toolbar={
           <Button size="sm" variant="ghost" onClick={() => setShowAddForm(true)} title="Add font">
             <Plus className="h-4 w-4" />

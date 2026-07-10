@@ -226,6 +226,16 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
       return await response.json();
     },
 
+    async renameFont(gameId, slot, newName) {
+      const response = await fetch(`${apiBase}/games/${gameId}/fonts/${encodeURIComponent(slot)}/rename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newName }),
+      });
+      if (!response.ok) throw new Error("Failed to rename font");
+      return await response.json();
+    },
+
     // Images
     async listImages(gameId) {
       const response = await fetch(`${apiBase}/games/${gameId}/images`);

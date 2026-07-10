@@ -107,6 +107,40 @@ describe("Font endpoints", () => {
     assert.ok(body.fonts, "Response should have fonts property");
   });
 
+  test("POST /api/games/:gameId/fonts/:slot/rename updates the display name only", async () => {
+    // The upload above created slot "test font" (basename with -/_ mapped to spaces)
+    const slot = "test font";
+    const res = await fetch(`${BASE}/api/games/${gameId}/fonts/${encodeURIComponent(slot)}/rename`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newName: "Renamed Font" }),
+    });
+    assert.equal(res.status, 200, "Should return 200");
+    const body = await res.json();
+    assert.equal(body.fonts[slot].name, "Renamed Font", "Name should be updated");
+    assert.equal(body.fonts[slot].source, "upload", "Source should be preserved");
+    assert.ok(body.fonts[slot].file, "File should be preserved");
+
+    const list = await (await fetch(`${BASE}/api/games/${gameId}/fonts`)).json();
+    assert.equal(list[slot].name, "Renamed Font", "Rename should persist");
+  });
+
+  test("POST fonts rename returns 404 for unknown slot and 400 for empty name", async () => {
+    const missing = await fetch(`${BASE}/api/games/${gameId}/fonts/nope/rename`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newName: "X" }),
+    });
+    assert.equal(missing.status, 404);
+
+    const empty = await fetch(`${BASE}/api/games/${gameId}/fonts/${encodeURIComponent("test font")}/rename`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newName: "  " }),
+    });
+    assert.equal(empty.status, 400);
+  });
+
   test("DELETE /api/games/:gameId/fonts/:file removes the font file", async () => {
     assert.ok(downloadedFontFile, "Should have a downloaded font file from previous test");
 
