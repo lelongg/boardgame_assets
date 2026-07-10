@@ -506,10 +506,16 @@ export default function CollectionsPage() {
                       setStatus('Cloning collection...')
                       const newCol = await storage.createCollection(gameId, `${col.name} (copy)`, col.layoutId)
                       const cards = await storage.listCards(gameId, col.id)
+                      const copies: any[] = []
                       for (const card of cards) {
-                        await storage.saveCard(gameId, newCol.id, null, { ...card, id: undefined, name: card.name })
+                        copies.push(await storage.saveCard(gameId, newCol.id, null, { ...card, id: undefined, name: card.name }))
                       }
-                      invalidateGame()
+                      // Seed the caches directly — a full refetch is slow on S3
+                      // and can serve pre-clone listings.
+                      queryClient.setQueryData<any[]>(queryKeys.collections(gameId), (old) =>
+                        old ? [...old, newCol] : old)
+                      queryClient.setQueryData(queryKeys.collection(gameId, newCol.id), newCol)
+                      queryClient.setQueryData(queryKeys.cards(gameId, newCol.id), copies.filter(Boolean))
                       setExpandedCollection(newCol.id)
                       setStatus('Collection cloned.')
                     } catch { setStatus('Error cloning collection.') }
