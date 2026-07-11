@@ -2,7 +2,7 @@ const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
-import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
+import { normalizeCard, normalizeLayout, emptyLayout } from "../normalizeExport.js";
 import { getAsset, putAsset, deleteAsset } from "./assetCache.js";
 
 const loadGoogleScript = () =>
@@ -382,7 +382,7 @@ export const createGoogleDriveStorage = (options = {}) => {
 
   const createLayout = async (gameId, name) => {
     const tf = await layoutsFolder(gameId);
-    const tpl = defaultLayout();
+    const tpl = emptyLayout();
     // Random suffix like the indexedDB/S3 backends: a bare slug collides when
     // two layouts share a name, and Drive folders happily hold duplicates.
     const id = `${slugify(name) || "layout"}-${uid()}`;

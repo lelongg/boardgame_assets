@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it, before, after } from "node:test";
 import "fake-indexeddb/auto";
-import { defaultLayout } from "../src/layout.js";
+import { defaultLayout, emptyLayout } from "../src/layout.js";
 import { createLocalFileStorage } from "../src/storage/localFile.js";
 import { createIndexedDBStorage } from "../src/storage/indexedDB.js";
 import { createS3Storage } from "../src/storage/s3.js";
@@ -163,7 +163,7 @@ async function startServer() {
   });
   app.post("/api/games/:gid/layouts", async (c) => {
     const gid = c.req.param("gid"); const { name } = await c.req.json();
-    const tpl = { ...defaultLayout(), id: slug(name) || uid(), name };
+    const tpl = { ...emptyLayout(), id: slug(name) || uid(), name };
     writeJson(tplPath(gid, tpl.id), tpl); return c.json(tpl, 201);
   });
   app.get("/api/games/:gid/layouts/:tid", (c) => {

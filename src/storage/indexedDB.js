@@ -4,7 +4,7 @@
  */
 
 import { getAsset, putAsset, deleteAsset, listAssets } from "./assetCache.js";
-import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
+import { normalizeCard, normalizeLayout, emptyLayout } from "../normalizeExport.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -359,11 +359,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       const db = await openDB();
       try {
         const layoutId = slugify(name) + "-" + uid();
-        const layout = normalizeLayout(
-          defaultLayout
-            ? { ...defaultLayout(), id: layoutId, name }
-            : { id: layoutId, name }
-        );
+        const layout = normalizeLayout({ ...emptyLayout(), id: layoutId, name });
         await idbPut(db, "layouts", [gameId, layoutId], layout);
         return layout;
       } finally {
