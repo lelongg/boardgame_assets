@@ -73,6 +73,18 @@ const normalizeBindings = (obj: Record<string, unknown>): Record<string, Propert
 let fallbackIdCounter = 0;
 const fallbackId = (prefix: string): string => `${prefix}-${Date.now()}-${fallbackIdCounter++}`;
 
+/** Optional text-effect fields shared by text and numbers items. */
+const normalizeTextEffects = (obj: Record<string, unknown>) => ({
+    strokeColor: obj.strokeColor !== undefined && obj.strokeColor !== null && obj.strokeColor !== "" ? safeString(obj.strokeColor, "#000000") : undefined,
+    strokeWidth: obj.strokeWidth !== undefined && obj.strokeWidth !== null ? safeNumber(obj.strokeWidth, 0) : undefined,
+    shadowColor: obj.shadowColor !== undefined && obj.shadowColor !== null && obj.shadowColor !== "" ? safeString(obj.shadowColor, "#000000") : undefined,
+    shadowOffsetX: obj.shadowOffsetX !== undefined && obj.shadowOffsetX !== null ? safeNumber(obj.shadowOffsetX, 0) : undefined,
+    shadowOffsetY: obj.shadowOffsetY !== undefined && obj.shadowOffsetY !== null ? safeNumber(obj.shadowOffsetY, 0) : undefined,
+    shadowBlur: obj.shadowBlur !== undefined && obj.shadowBlur !== null ? safeNumber(obj.shadowBlur, 0) : undefined,
+    lineHeight: obj.lineHeight !== undefined && obj.lineHeight !== null ? safeNumber(obj.lineHeight, 0) : undefined,
+    letterSpacing: obj.letterSpacing !== undefined && obj.letterSpacing !== null ? safeNumber(obj.letterSpacing, 0) : undefined,
+});
+
 const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): CardLayoutItem => {
     const obj = item && typeof item === "object" ? item as Record<string, unknown> : {};
     // Base properties
@@ -176,6 +188,7 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
             verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
             font: obj.font !== undefined && obj.font !== null && obj.font !== "" ? safeString(obj.font, "body") : undefined,
             color: safeString(obj.color, "#000000"),
+            ...normalizeTextEffects(obj),
         };
         return numbersItem;
     }
@@ -190,6 +203,7 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
         verticalAlign: safeEnum(obj.verticalAlign, ["top", "middle", "bottom"] as const, "middle" as const),
         font: obj.font !== undefined && obj.font !== null && obj.font !== "" ? safeString(obj.font, "body") : undefined,
         color: safeString(obj.color, "#000000"),
+        ...normalizeTextEffects(obj),
     };
     return textItem;
 };

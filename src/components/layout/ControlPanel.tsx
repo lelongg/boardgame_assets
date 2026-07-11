@@ -74,6 +74,11 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     case 'scale': return { type: 'number', min: 0.1, max: 10, step: 0.1, hardMin: true }
     case 'strokeWidth': return { type: 'number', min: 0, max: 20, step: 0.5, hardMin: true }
     case 'cornerRadius': return { type: 'number', min: 0, max: 100, step: 1, hardMin: true }
+    case 'shadowOffsetX': return { type: 'number', min: -20, max: 20, step: 0.5 }
+    case 'shadowOffsetY': return { type: 'number', min: -20, max: 20, step: 0.5 }
+    case 'shadowBlur': return { type: 'number', min: 0, max: 50, step: 0.5, hardMin: true }
+    case 'lineHeight': return { type: 'number', min: 0.5, max: 3, step: 0.05, hardMin: true }
+    case 'letterSpacing': return { type: 'number', min: -10, max: 50, step: 0.5 }
     case 'layout': return { type: 'select', options: [
       { value: 'row', label: 'Row' },
       { value: 'column', label: 'Column' },
@@ -118,6 +123,7 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     }
     case 'color':
     case 'strokeColor':
+    case 'shadowColor':
     case 'fillColor': return { type: 'color' }
     case 'defaultValue': {
       if (selectedNodeId) {
@@ -473,13 +479,14 @@ function ImageUploadEditor({ value, onChange, aspectRatio, gameImages, onUploadF
 export const getEditorType = (property: string, itemType?: string): FieldMeta['type'] => {
   switch (property) {
     case 'emoji': return 'emoji'
-    case 'color': case 'strokeColor': case 'fillColor': return 'color'
+    case 'color': case 'strokeColor': case 'shadowColor': case 'fillColor': return 'color'
     case 'visible': case 'flipH': case 'flipV': return 'boolean'
     case 'defaultValue': return itemType === 'image' ? 'image-upload' : 'richtext'
     case 'maskUrl': return 'image-upload'
     case 'width': case 'height': case 'radius': case 'bleed': case 'sizePct': case 'opacity':
     case 'gap': case 'fontSize': case 'widthMm': case 'heightMm':
     case 'offsetX': case 'offsetY': case 'rotation': case 'scale': case 'strokeWidth': case 'cornerRadius':
+    case 'shadowOffsetX': case 'shadowOffsetY': case 'shadowBlur': case 'lineHeight': case 'letterSpacing':
     case 'columns': case 'repeatCount': case 'repeatOffsetX': case 'repeatOffsetY': return 'number'
     case 'layout': case 'align': case 'verticalAlign': case 'font': case 'fit': case 'cloneTargetId': case 'blendMode': return 'select'
     default: return 'text'

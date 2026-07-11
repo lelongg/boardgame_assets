@@ -566,6 +566,9 @@ async function createFullTestGame(storage) {
           bindings: { defaultValue: { field: "name" } },
           fontSize: 32, align: "center", verticalAlign: "middle", font: "title", color: "#1a1a2e",
           rotation: 15, flipH: true, opacity: 60,
+          strokeWidth: 1.5, strokeColor: "#ffffff",
+          shadowColor: "#333333cc", shadowOffsetX: 2, shadowOffsetY: 3, shadowBlur: 4,
+          lineHeight: 1.4, letterSpacing: 2,
           anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0.5, y: 0.5 } },
           widthMm: 100, heightMm: 100 },
       ]},
@@ -666,6 +669,12 @@ async function verifyFullTestGame(storage, gameId) {
   assert.equal(title.flipH, true, "flipH must survive the round trip");
   assert.equal(title.opacity, 60, "opacity must survive the round trip");
   assert.equal(title.font, "title"); assert.equal(title.color, "#1a1a2e");
+  assert.equal(title.strokeWidth, 1.5, "text strokeWidth must survive the round trip");
+  assert.equal(title.strokeColor, "#ffffff", "text strokeColor must survive the round trip");
+  assert.equal(title.shadowColor, "#333333cc", "shadowColor must survive the round trip");
+  assert.equal(title.shadowOffsetX, 2); assert.equal(title.shadowOffsetY, 3); assert.equal(title.shadowBlur, 4);
+  assert.equal(title.lineHeight, 1.4, "lineHeight must survive the round trip");
+  assert.equal(title.letterSpacing, 2, "letterSpacing must survive the round trip");
 
   // Frame item
   const border = items.find(i => i.id === "border-item");
