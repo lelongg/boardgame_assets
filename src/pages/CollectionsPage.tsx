@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, Pencil, Copy, Plus, Check, History, Layers, Loader2, ImageOff } from 'lucide-react'
+import { ArrowLeft, Pencil, Copy, Download, Plus, Check, History, Layers, Loader2, ImageOff } from 'lucide-react'
 import ConfirmButton from '@/components/ConfirmButton'
 import CheckpointsDialog from '@/components/CheckpointsDialog'
 import ListItem from '@/components/ListItem'
@@ -870,6 +870,26 @@ export default function CollectionsPage() {
                   <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Copy URL"
                     onClick={() => { const img = gameImages.find(i => i.file === selectedImage); if (img) { navigator.clipboard.writeText(img.url); setStatus('URL copied.') } }}>
                     <Copy className="h-4 w-4" />
+                  </button>
+                  <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors" title="Download image"
+                    onClick={async () => {
+                      const img = gameImages.find(i => i.file === selectedImage)
+                      if (!img) return
+                      try {
+                        const resp = await fetch(img.url)
+                        const blob = await resp.blob()
+                        const objectUrl = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = objectUrl
+                        a.download = img.file
+                        document.body.appendChild(a)
+                        a.click()
+                        a.remove()
+                        URL.revokeObjectURL(objectUrl)
+                        setStatus('Image downloaded.')
+                      } catch { setStatus('Error downloading image.') }
+                    }}>
+                    <Download className="h-4 w-4" />
                   </button>
                   <ConfirmButton iconOnly onConfirm={async () => {
                     if (!selectedImage) return
