@@ -15,9 +15,11 @@ type LayoutEditorPanelProps = {
   gameImages?: { file: string; url: string; name: string }[]
   onUploadFile: (file: File) => Promise<string>
   cards?: PreviewCard[]
+  /** Rendered image of the card's other face — enables the preview's flip button. */
+  flipImage?: string
 }
 
-export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, gameFonts, gameImages, onUploadFile, cards }: LayoutEditorPanelProps) {
+export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, gameFonts, gameImages, onUploadFile, cards, flipImage }: LayoutEditorPanelProps) {
   // Local working copy for instant feedback; debounced save to backend
   const [workingLayout, setWorkingLayout] = useState(propLayout)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(null)
@@ -222,6 +224,7 @@ export default function LayoutEditorPanel({ layout: propLayout, onSave, gameId, 
         gameFonts={gameFonts}
         selectedNodeId={selectedNodeId}
         onNodeClick={handleNodeSelect}
+        flipImage={flipImage}
       />
     </>
   )

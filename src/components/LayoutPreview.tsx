@@ -15,6 +15,8 @@ type LayoutPreviewProps = {
   gameFonts?: Record<string, { name: string; file: string }>
   selectedNodeId?: string | null
   onNodeClick?: (id: string) => void
+  /** Rendered image of the card's other face — enables the flip button. */
+  flipImage?: string
 }
 
 function CardPicker({ cards, value, onChange }: { cards: PreviewCard[]; value: string | null; onChange: (id: string | null) => void }) {
@@ -55,7 +57,7 @@ function CardPicker({ cards, value, onChange }: { cards: PreviewCard[]; value: s
   )
 }
 
-export default function LayoutPreview({ layout, gameId, cards = [], gameFonts, selectedNodeId, onNodeClick }: LayoutPreviewProps) {
+export default function LayoutPreview({ layout, gameId, cards = [], gameFonts, selectedNodeId, onNodeClick, flipImage }: LayoutPreviewProps) {
   const [showSections, setShowSections] = useState(true)
   const [showItemWires, setShowItemWires] = useState(true)
   const [previewCardId, setPreviewCardId] = useState<string | null>(null)
@@ -106,6 +108,8 @@ export default function LayoutPreview({ layout, gameId, cards = [], gameFonts, s
       hitAreas={hitAreas}
       selectedHitAreaId={selectedNodeId}
       onHitAreaClick={onNodeClick}
+      backImage={flipImage}
+      backFit="fill"
       extraButtons={<>
         {cards.length > 0 && <span className="mr-1"><CardPicker cards={cards} value={previewCardId} onChange={setPreviewCardId} /></span>}
         <button

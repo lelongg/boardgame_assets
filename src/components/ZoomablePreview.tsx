@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Lock, Unlock, Home, Box } from 'lucide-react'
+import { Lock, Unlock, Home, Box, FlipHorizontal2 } from 'lucide-react'
 import useAssetUrl from '../hooks/useAssetUrl'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 
@@ -29,6 +29,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   const { collapsed: panelCollapsed, toggle: togglePanel } = useCollapsible()
   const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 })
   const [unlocked, setUnlocked] = useState(false)
+  const [flipped, setFlipped] = useState(false)
   const [mode3d, setMode3d] = useState(false)
   const [rotation, setRotation] = useState<Rotation>({ x: 0, y: 0 })
   const [zoom3d, setZoom3d] = useState(1)
@@ -98,7 +99,8 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
   }, [view.x, view.y, view.scale, unlocked, mode3d, rotation.x, rotation.y, zoom3d])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (unlocked || !hitAreas?.length || !onHitAreaClick || !svgWidth || !svgHeight) return
+    // Hit areas describe the front face — ignore clicks while showing the back.
+    if (flipped || unlocked || !hitAreas?.length || !onHitAreaClick || !svgWidth || !svgHeight) return
     const container = containerRef.current
     if (!container) return
     const img = container.querySelector('img')
@@ -114,7 +116,7 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
     const currentIdx = sorted.findIndex(a => a.id === selectedHitAreaId)
     const hit = sorted[(currentIdx + 1) % sorted.length]
     if (hit) onHitAreaClick(hit.id)
-  }, [unlocked, hitAreas, selectedHitAreaId, onHitAreaClick, svgWidth, svgHeight])
+  }, [flipped, unlocked, hitAreas, selectedHitAreaId, onHitAreaClick, svgWidth, svgHeight])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!pointersRef.current.has(e.pointerId)) return
@@ -180,6 +182,16 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
     })
   }, [])
 
+  // In 2D the flip button swaps which face is displayed; in 3D it spins the
+  // card half a turn so the back comes around.
+  const handleFlip = useCallback(() => {
+    if (mode3d) {
+      setRotation(prev => ({ ...prev, y: prev.y + 180 }))
+      return
+    }
+    setFlipped(prev => !prev)
+  }, [mode3d])
+
   const CARD_DEPTH = 4
   const checkerboard = { backgroundImage: 'repeating-conic-gradient(#e5e5e5 0% 25%, transparent 0% 50%)', backgroundSize: '16px 16px' }
 
@@ -188,6 +200,19 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
       <CollapsibleHeader collapsed={panelCollapsed} onToggle={togglePanel}>
         <div className="ml-auto flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
           {extraButtons}
+          {backImage && (
+            <button
+              onClick={handleFlip}
+              className={`rounded p-1 transition-colors ${
+                flipped && !mode3d
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              title={mode3d ? 'Flip card' : flipped ? 'Show front' : 'Show back'}
+            >
+              <FlipHorizontal2 className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={toggle3d}
             className={`rounded p-1 transition-colors ${
@@ -381,8 +406,8 @@ export default function ZoomablePreview({ src, alt, svgWidth, svgHeight, hitArea
           )
         })() : (
           <img
-            src={resolvedSrc}
-            alt={alt}
+            src={flipped && resolvedBack ? resolvedBack : resolvedSrc}
+            alt={flipped && resolvedBack ? `${alt} (back)` : alt}
             className={`max-w-full block mx-auto select-none transition-opacity duration-200 drop-shadow-lg ${imgLoaded ? 'opacity-100' : 'opacity-0 h-0'}`}
             draggable={false}
             onLoad={() => setImgLoaded(true)}

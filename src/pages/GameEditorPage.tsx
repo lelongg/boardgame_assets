@@ -1349,6 +1349,7 @@ export default function GameEditorPage() {
                     return await uploadImageMut.mutateAsync(file)
                   }}
                   cards={cards}
+                  flipImage={backPreview || undefined}
                 />
               )}
             </div>
@@ -1389,6 +1390,7 @@ export default function GameEditorPage() {
                     return await uploadImageMut.mutateAsync(file)
                   }}
                   cards={cards}
+                  flipImage={cardPreview || undefined}
                 />
               ) : (
                 <div className="md:col-span-2 flex items-center justify-center rounded-lg border bg-card p-8">
