@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, useId, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput, Check, X, Tags, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -120,7 +120,9 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   // ── Tag editing (selected item) ─────────────────────────────────
   const [editingTags, setEditingTags] = useState(false)
   const [tagDraft, setTagDraft] = useState('')
-  const tagListId = useId()
+  // Custom suggestions dropdown — a native <datalist> renders nothing in
+  // several browsers, so existing tags get a real, clickable list instead.
+  const [tagSuggestionsOpen, setTagSuggestionsOpen] = useState(false)
   const allTags = useMemo(
     () => getTags ? [...new Set(items.flatMap(i => getTags(i) ?? []))].sort(naturalCompare) : [],
     [items, getTags]
@@ -392,17 +394,39 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
                 </button>
               </span>
             ))}
-            <form className="flex-1 min-w-[6rem]" onSubmit={(e) => { e.preventDefault(); addTag() }}>
+            <form className="relative flex flex-1 items-center gap-1 min-w-[8rem]" onSubmit={(e) => { e.preventDefault(); addTag() }}>
               <input
                 value={tagDraft}
                 onChange={(e) => setTagDraft(e.target.value)}
-                list={tagListId}
+                onFocus={() => setTagSuggestionsOpen(true)}
+                onBlur={() => setTagSuggestionsOpen(false)}
                 placeholder="Add tag..."
-                className="w-full h-6 rounded border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-primary"
+                className="flex-1 min-w-0 h-6 rounded border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-primary"
               />
-              <datalist id={tagListId}>
-                {allTags.filter(t => !selectedTags.includes(t)).map(t => <option key={t} value={t} />)}
-              </datalist>
+              {/* Explicit confirm, mirroring the rename form (Enter also works). */}
+              <button type="submit" disabled={!tagDraft.trim()}
+                className="rounded p-1 text-green-600 hover:bg-green-600/10 disabled:opacity-30 transition-colors" title="Add tag">
+                <Check className="h-4 w-4" />
+              </button>
+              {(() => {
+                if (!tagSuggestionsOpen) return null
+                const query = tagDraft.trim().toLowerCase()
+                const suggestions = allTags.filter(t => !selectedTags.includes(t) && (!query || t.toLowerCase().includes(query)))
+                if (suggestions.length === 0) return null
+                return (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-md border bg-card py-1 shadow-md">
+                    {suggestions.map(t => (
+                      <button key={t} type="button"
+                        className="block w-full px-2 py-1 text-left text-xs hover:bg-muted transition-colors"
+                        // preventDefault keeps the input focused so the click lands before blur
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { onTagsChange(getKey(selectedItem), [...selectedTags, t]); setTagDraft('') }}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })()}
             </form>
           </div>
         )}
