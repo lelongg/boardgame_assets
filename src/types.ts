@@ -13,6 +13,27 @@ export type PropertyBinding = {
   field: string;
 };
 
+// Layer blend modes (CSS mix-blend-mode values), applied to the item's group.
+export const BLEND_MODES = [
+  "normal",
+  "multiply",
+  "screen",
+  "overlay",
+  "darken",
+  "lighten",
+  "color-dodge",
+  "color-burn",
+  "hard-light",
+  "soft-light",
+  "difference",
+  "exclusion",
+  "hue",
+  "saturation",
+  "color",
+  "luminosity",
+] as const;
+export type BlendMode = (typeof BLEND_MODES)[number];
+
 // Base properties shared by all item types
 type CardLayoutItemBase = {
   id: string;
@@ -29,6 +50,14 @@ type CardLayoutItemBase = {
   offsetX?: number;
   offsetY?: number;
   rotation?: number;
+  // Mirror the item horizontally / vertically around its center
+  flipH?: boolean;
+  flipV?: boolean;
+  // Opacity in percent (0-100); unset means fully opaque
+  opacity?: number;
+  blendMode?: BlendMode;
+  // Image URL used as an alpha mask, stretched over the item's rect
+  maskUrl?: string;
   bindings?: Record<string, PropertyBinding>;
 };
 

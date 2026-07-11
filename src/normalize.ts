@@ -1,4 +1,5 @@
 import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutFrameItem, CardLayoutImageItem, CardLayoutTextItem, CardLayoutEmojiItem, CardLayoutNumbersItem, PropertyBinding } from "./types";
+import { BLEND_MODES } from "./types";
 
 /**
  * Safely parse a number from a value that might be empty, null, or undefined.
@@ -111,6 +112,11 @@ const normalizeItem = (item: unknown, cardWidth: number, cardHeight: number): Ca
         offsetX: obj.offsetX !== undefined && obj.offsetX !== null ? safeNumber(obj.offsetX, 0) : undefined,
         offsetY: obj.offsetY !== undefined && obj.offsetY !== null ? safeNumber(obj.offsetY, 0) : undefined,
         rotation: obj.rotation !== undefined && obj.rotation !== null ? safeNumber(obj.rotation, 0) : undefined,
+        flipH: typeof obj.flipH === "boolean" ? obj.flipH : undefined,
+        flipV: typeof obj.flipV === "boolean" ? obj.flipV : undefined,
+        opacity: obj.opacity !== undefined && obj.opacity !== null ? safeNumber(obj.opacity, 100) : undefined,
+        blendMode: obj.blendMode !== undefined && obj.blendMode !== null && obj.blendMode !== "" ? safeEnum(obj.blendMode, BLEND_MODES, "normal") : undefined,
+        maskUrl: obj.maskUrl !== undefined && obj.maskUrl !== null && obj.maskUrl !== "" ? safeString(obj.maskUrl, "") : undefined,
         visible: typeof obj.visible === "boolean" ? obj.visible : undefined,
     };
     if (type === "frame") {

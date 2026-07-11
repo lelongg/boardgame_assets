@@ -42,7 +42,7 @@ export function collectUsedImageFiles(
     for (const val of Object.values(card.fields ?? {})) collect(val)
   }
   for (const tpl of layouts) {
-    walkItems(tpl.root, (item) => collect(item.defaultValue))
+    walkItems(tpl.root, (item) => { collect(item.defaultValue); collect(item.maskUrl) })
     // Binding defaults and allowed values live at layout level in bindingMeta
     for (const meta of Object.values(tpl.bindingMeta ?? {}) as any[]) {
       collect(meta?.default)

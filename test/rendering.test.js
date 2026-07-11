@@ -905,3 +905,67 @@ test("renderCardSvg embeds fonts when fontData provided", () => {
   assert.ok(svg.includes("TestFont"), "Should reference font name");
   assert.ok(svg.includes("data:font/woff2;base64,"), "Should contain base64 data URI");
 });
+
+const effectsLayout = (itemProps) => ({
+  version: 2,
+  id: "t",
+  name: "T",
+  width: 63.5,
+  height: 88.9,
+  radius: 2.5,
+  bleed: 1.5,
+  root: {
+    id: "root", name: "Root", layout: "stack", sizePct: 100, gap: 0, children: [],
+    items: [
+      { type: "frame", id: "fx1", name: "Fx",
+        strokeWidth: 2, strokeColor: "#000000", fillColor: "#ff0000",
+        anchor: { x: 0.5, y: 0.5 },
+        attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+        widthMm: 30, heightMm: 30,
+        ...itemProps },
+    ],
+  },
+});
+
+test("renderCardSvg applies item effects (flip, opacity, blend mode, alpha mask)", () => {
+  const card = { id: "t", name: "T", fields: {} };
+  const layout = effectsLayout({
+    rotation: 30, flipH: true, flipV: true, opacity: 50,
+    blendMode: "multiply", maskUrl: "/api/games/g/images/mask.png",
+  });
+  const svg = renderCardSvg(card, layout);
+  assert.ok(svg.includes("rotate(30"), "Should rotate around the item center");
+  assert.ok(/scale\(-1 -1\)/.test(svg), "Should mirror both axes");
+  assert.ok(svg.includes('opacity="0.5"'), "Should apply opacity as 0-1");
+  assert.ok(svg.includes("mix-blend-mode:multiply"), "Should apply the blend mode");
+  assert.ok(svg.includes('mask="url(#mask-fx1)"'), "Should reference the alpha mask");
+  assert.ok(/<defs>[^]*<mask id="mask-fx1"[^]*<\/mask>[^]*<\/defs>/.test(svg), "Mask definition should be hoisted into <defs>");
+  assert.ok(svg.includes('href="/api/games/g/images/mask.png"'), "Mask should embed the mask image");
+});
+
+test("renderLayoutSvg applies item effects and hoists mask defs", () => {
+  const layout = effectsLayout({
+    flipH: true, opacity: 25, blendMode: "screen", maskUrl: "/api/games/g/images/mask.png",
+  });
+  const svg = renderLayoutSvg(layout);
+  assert.ok(/scale\(-1 1\)/.test(svg), "Should mirror horizontally only");
+  assert.ok(svg.includes('opacity="0.25"'), "Should apply opacity as 0-1");
+  assert.ok(svg.includes("mix-blend-mode:screen"), "Should apply the blend mode");
+  assert.ok(svg.includes('mask="url(#mask-fx1)"'), "Should reference the alpha mask");
+  assert.ok(/<defs>[^]*<mask id="mask-fx1"/.test(svg), "Mask definition should be hoisted into <defs>");
+});
+
+test("neutral or invalid effects emit no wrapper attributes", () => {
+  const card = { id: "t", name: "T", fields: {} };
+  const layout = effectsLayout({ opacity: 100, blendMode: "normal", flipH: false, flipV: false });
+  const svg = renderCardSvg(card, layout);
+  assert.ok(!svg.includes("mix-blend-mode"), "normal blend mode should be omitted");
+  assert.ok(!/<g [^>]*opacity=/.test(svg), "opacity 100 should be omitted");
+  assert.ok(!svg.includes("scale(-1"), "flip false should not mirror");
+
+  const bound = effectsLayout({ bindings: { opacity: { field: "alpha" }, blendMode: { field: "blend" } } });
+  const cardWithFields = { id: "t", name: "T", fields: { alpha: "40", blend: "javascript:alert(1)" } };
+  const boundSvg = renderCardSvg(cardWithFields, bound);
+  assert.ok(boundSvg.includes('opacity="0.4"'), "opacity should resolve through bindings");
+  assert.ok(!boundSvg.includes("javascript:"), "non-whitelisted blend modes must be ignored");
+});
