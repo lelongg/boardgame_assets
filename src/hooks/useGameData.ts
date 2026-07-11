@@ -270,8 +270,10 @@ export function useSaveLayout(gameId: string | undefined) {
   const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, { layoutId: string; layout: any }>({
+    // Every UI layout save flows through this hook, so this is where the
+    // last-modified stamp lives (zip import bypasses it and keeps history).
     mutationFn: ({ layoutId, layout }) =>
-      storage.saveLayout(gameId!, layoutId, layout),
+      storage.saveLayout(gameId!, layoutId, { ...layout, updatedAt: new Date().toISOString() }),
     onSuccess: (saved, vars) => {
       // Don't refetch — update both layout caches in place. Refetching would
       // cause a race that reverts edits (especially on slow backends like S3,
@@ -317,8 +319,10 @@ export function useSaveCard(gameId: string | undefined, collectionId: string | u
   const storage = useStorageInstance()!
   const qc = useQueryClient()
   return useMutation<any, Error, { cardId: string; card: any }>({
+    // UI card saves stamp the last-modified date here (zip import calls the
+    // backend directly and keeps the original timestamps).
     mutationFn: ({ cardId, card }) =>
-      storage.saveCard(gameId!, collectionId!, cardId, card),
+      storage.saveCard(gameId!, collectionId!, cardId, { ...card, updatedAt: new Date().toISOString() }),
     onSuccess: (saved) => {
       // In-place update (or append for a new card) instead of a refetch — see
       // useSaveLayout for why refetching misbehaves on slow backends.
@@ -376,7 +380,9 @@ export function useTransferCard(gameId: string | undefined) {
   return useMutation<any, Error, { sourceCollectionId: string; targetCollectionId: string; card: any; mode: 'copy' | 'move' }>({
     mutationFn: async ({ sourceCollectionId, targetCollectionId, card, mode }) => {
       const targetId = mode === 'move' ? card.id : null
-      const saved = await storage.saveCard(gameId!, targetCollectionId, targetId, { ...card, id: targetId ?? undefined })
+      // A copy is a new card and gets fresh timestamps; a move keeps them.
+      const stamp = mode === 'copy' ? { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } : {}
+      const saved = await storage.saveCard(gameId!, targetCollectionId, targetId, { ...card, id: targetId ?? undefined, ...stamp })
       if (mode === 'move') await storage.deleteCard(gameId!, sourceCollectionId, card.id)
       return saved
     },

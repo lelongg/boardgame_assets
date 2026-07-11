@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
-import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput, Check, X } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback, useMemo, useId, type ReactNode } from 'react'
+import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput, Check, X, Tags, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import useFuzzyFilter from '@/hooks/useFuzzyFilter'
@@ -8,6 +8,24 @@ import ZoomablePreview from '@/components/ZoomablePreview'
 import CardThumbnail from '@/components/CardThumbnail'
 
 export type ViewMode = 'compact' | 'detailed' | 'gallery' | 'preview'
+
+export type SortBy = 'name' | 'tag' | 'created' | 'updated'
+type SortState = { by: SortBy; dir: 'asc' | 'desc' }
+// Names/tags read naturally A→Z; dates read naturally newest-first.
+const DEFAULT_DIR: Record<SortBy, 'asc' | 'desc'> = { name: 'asc', tag: 'asc', created: 'desc', updated: 'desc' }
+const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare
+
+/** Small pill badges for an item's tags — drop into any renderItem. */
+export function TagBadges({ tags }: { tags?: string[] }) {
+  if (!tags?.length) return null
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {tags.map(t => (
+        <span key={t} className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-primary whitespace-nowrap">{t}</span>
+      ))}
+    </span>
+  )
+}
 
 type FilterableListProps<T> = {
   title: string
@@ -18,6 +36,15 @@ type FilterableListProps<T> = {
   /** Rendered back of the item — enables the flip button (and the 3D back face) in the big preview. */
   getBackSrc?: (item: T) => string | undefined
   getGroup?: (item: T) => string | undefined
+  // Custom tags: when provided, tags join the fuzzy filter, enable tag
+  // sorting, and (with onTagsChange) an editor for the selected item.
+  getTags?: (item: T) => string[] | undefined
+  onTagsChange?: (key: string, tags: string[]) => void | Promise<void>
+  // ISO timestamps enabling created/modified sorting
+  getCreatedAt?: (item: T) => string | undefined
+  getUpdatedAt?: (item: T) => string | undefined
+  // Enables the sort control; the key persists the choice in localStorage
+  sort?: { key: string }
   selectedKey?: string | null
   onSelect?: (key: string | null) => void
   onRename?: (key: string, newName: string) => void | Promise<void>
@@ -36,11 +63,68 @@ type FilterableListProps<T> = {
 
 const COL_WIDTH = 120
 
-export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, getBackSrc, getGroup, selectedKey, onSelect, onRename, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
+export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, getBackSrc, getGroup, getTags, onTagsChange, getCreatedAt, getUpdatedAt, sort: sortProp, selectedKey, onSelect, onRename, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
   const multiSelect = !!(selectedKeys && onSelectedKeysChange)
   const [hoverThumb, setHoverThumb] = useState<{ src: string; x: number; y: number } | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-  const [filtered, filterInput] = useFuzzyFilter(items, getName)
+  // Tags take part in fuzzy filtering, so typing a tag narrows the list.
+  const [matched, filterInput] = useFuzzyFilter(items, getTags ? (i: T) => `${getName(i)} ${(getTags(i) ?? []).join(' ')}` : getName)
+
+  // ── Sorting ─────────────────────────────────────────────────────
+  const sortOptions = useMemo(() => {
+    const opts: { value: SortBy; label: string }[] = [{ value: 'name', label: 'Name' }]
+    if (getTags) opts.push({ value: 'tag', label: 'Tag' })
+    if (getCreatedAt) opts.push({ value: 'created', label: 'Created' })
+    if (getUpdatedAt) opts.push({ value: 'updated', label: 'Modified' })
+    return opts
+  }, [!!getTags, !!getCreatedAt, !!getUpdatedAt])
+  const [sort, setSort] = useState<SortState>(() => {
+    if (sortProp) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(sortProp.key) ?? 'null')
+        if (saved && ['name', 'tag', 'created', 'updated'].includes(saved.by) && ['asc', 'desc'].includes(saved.dir)) return saved
+      } catch {}
+    }
+    return { by: 'name', dir: 'asc' }
+  })
+  const setSortPersist = (s: SortState) => {
+    setSort(s)
+    if (sortProp) try { localStorage.setItem(sortProp.key, JSON.stringify(s)) } catch {}
+  }
+  // A persisted choice may reference accessors this list no longer provides.
+  const sortBy: SortBy = sortOptions.some(o => o.value === sort.by) ? sort.by : 'name'
+
+  const filtered = useMemo(() => {
+    const dirMul = sort.dir === 'desc' ? -1 : 1
+    const byName = (a: T, b: T) => naturalCompare(getName(a), getName(b))
+    const arr = [...matched]
+    if (sortBy === 'name') return arr.sort((a, b) => dirMul * byName(a, b))
+    const sortValue = (item: T): string | undefined => {
+      if (sortBy === 'tag') {
+        const tags = getTags?.(item) ?? []
+        return tags.length ? [...tags].sort(naturalCompare)[0] : undefined
+      }
+      return (sortBy === 'created' ? getCreatedAt?.(item) : getUpdatedAt?.(item)) || undefined
+    }
+    return arr.sort((a, b) => {
+      const va = sortValue(a), vb = sortValue(b)
+      // Items without a tag/date always sort last, whatever the direction.
+      if (va === undefined && vb === undefined) return byName(a, b)
+      if (va === undefined) return 1
+      if (vb === undefined) return -1
+      const cmp = sortBy === 'tag' ? naturalCompare(va, vb) : (va < vb ? -1 : va > vb ? 1 : 0)
+      return dirMul * cmp || byName(a, b)
+    })
+  }, [matched, sortBy, sort.dir, getName, getTags, getCreatedAt, getUpdatedAt])
+
+  // ── Tag editing (selected item) ─────────────────────────────────
+  const [editingTags, setEditingTags] = useState(false)
+  const [tagDraft, setTagDraft] = useState('')
+  const tagListId = useId()
+  const allTags = useMemo(
+    () => getTags ? [...new Set(items.flatMap(i => getTags(i) ?? []))].sort(naturalCompare) : [],
+    [items, getTags]
+  )
   const { collapsed, toggle } = useCollapsible()
   const containerRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<string, HTMLElement>>(new Map())
@@ -148,7 +232,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   const selectedItem = selectedKey ? items.find(i => getKey(i) === selectedKey) : null
   const [renaming, setRenaming] = useState(false)
   const [renameDraft, setRenameDraft] = useState('')
-  useEffect(() => { setRenaming(false) }, [selectedKey])
+  useEffect(() => { setRenaming(false); setTagDraft('') }, [selectedKey])
   const startRename = () => {
     if (!selectedItem) return
     setRenameDraft(getName(selectedItem))
@@ -166,6 +250,37 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
       onClick={startRename}>
       <TextCursorInput className="h-4 w-4" />
     </button>
+  ) : null
+  const tagsButton = onTagsChange && getTags && selectedItem ? (
+    <button className={`rounded p-1 transition-colors ${editingTags ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`} title="Edit tags"
+      onClick={() => setEditingTags(v => !v)}>
+      <Tags className="h-4 w-4" />
+    </button>
+  ) : null
+  const selectedTags = selectedItem && getTags ? (getTags(selectedItem) ?? []) : []
+  const addTag = () => {
+    if (!selectedItem || !onTagsChange) return
+    const tag = tagDraft.trim()
+    setTagDraft('')
+    if (!tag || selectedTags.includes(tag)) return
+    onTagsChange(getKey(selectedItem), [...selectedTags, tag])
+  }
+  const sortControl = sortProp ? (
+    <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+      <select
+        value={sortBy}
+        onChange={(e) => { const by = e.target.value as SortBy; setSortPersist({ by, dir: DEFAULT_DIR[by] }) }}
+        className="h-6 rounded border bg-background pl-1.5 pr-4 text-xs text-muted-foreground"
+        title="Sort by"
+      >
+        {sortOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <button className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+        onClick={() => setSortPersist({ by: sortBy, dir: sort.dir === 'asc' ? 'desc' : 'asc' })}
+        title={sort.dir === 'asc' ? 'Ascending (click for descending)' : 'Descending (click for ascending)'}>
+        {sort.dir === 'asc' ? <ArrowUpNarrowWide className="h-3.5 w-3.5" /> : <ArrowDownWideNarrow className="h-3.5 w-3.5" />}
+      </button>
+    </div>
   ) : null
   // Explicit confirm/cancel: Enter or ✓ commits, Escape or ✗ cancels.
   const renameForm = (
@@ -243,6 +358,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
                   <span className="text-xs">{items.filter(i => selectedKeys!.has(getKey(i))).length}/{items.length}</span>
                 </label>
               )}
+              {sortControl}
               {subheader && <div className="flex items-center gap-1 ml-2">{subheader}</div>}
               {isGrid && <>
                 <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30" disabled={cols <= 1}
@@ -257,10 +373,37 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
               </>}
 
               <div className="flex items-center gap-1 ml-auto">
+                {tagsButton}
                 {renameButton}
                 {actions}
               </div>
             </>)}
+          </div>
+        )}
+        {editingTags && !showBigPreview && selectedItem && onTagsChange && getTags && (
+          <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5 shrink-0">
+            <Tags className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            {selectedTags.map(tag => (
+              <span key={tag} className="flex items-center gap-0.5 rounded-full bg-primary/10 pl-2 pr-0.5 py-0.5 text-xs text-primary">
+                {tag}
+                <button className="rounded-full p-0.5 hover:bg-primary/20 transition-colors" title="Remove tag"
+                  onClick={() => onTagsChange(getKey(selectedItem), selectedTags.filter(t => t !== tag))}>
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            <form className="flex-1 min-w-[6rem]" onSubmit={(e) => { e.preventDefault(); addTag() }}>
+              <input
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                list={tagListId}
+                placeholder="Add tag..."
+                className="w-full h-6 rounded border bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-primary"
+              />
+              <datalist id={tagListId}>
+                {allTags.filter(t => !selectedTags.includes(t)).map(t => <option key={t} value={t} />)}
+              </datalist>
+            </form>
           </div>
         )}
         {showBigPreview ? (<>

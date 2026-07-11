@@ -456,7 +456,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     // Random suffix like the indexedDB/S3 backends — a bare slug would reuse
     // the existing folder for a same-named collection and merge their cards.
     const id = `${slugify(name) || "col"}-${uid()}`;
-    const col = { id, name, layoutId };
+    const col = { id, name, layoutId, createdAt: now(), updatedAt: now() };
     const cf = await collectionFolder(gameId, id);
     await mkFile("collection.json", col, cf, { type: "collection", gameId, collectionId: id });
     await ensureFolder(cf, "cards", `cards:${gameId}:${id}`);
@@ -468,7 +468,8 @@ export const createGoogleDriveStorage = (options = {}) => {
     const cf = await collectionFolder(gameId, collectionId);
     const fid = await findOrCreate(cf, "collection.json", key, { id: collectionId, name: collectionId, layoutId: "default" });
     const col = await readFile(fid);
-    const next = { ...col, ...updates, id: collectionId };
+    // An explicit updatedAt in the updates wins — zip import uses it to preserve history.
+    const next = { ...col, ...updates, id: collectionId, updatedAt: updates.updatedAt ?? now() };
     await writeFile(fid, next);
     return next;
   };
@@ -536,7 +537,7 @@ export const createGoogleDriveStorage = (options = {}) => {
     const cards = await listCards(gameId, collectionId);
     const name = `New Card ${cards.length + 1}`;
     const id = slugify(name) || `card-${Date.now()}`;
-    return await saveCard(gameId, collectionId, id, { ...card, id, name });
+    return await saveCard(gameId, collectionId, id, { ...card, id, name, createdAt: now(), updatedAt: now() });
   };
 
   // --- Fonts (per-game) ---

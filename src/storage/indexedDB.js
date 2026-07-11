@@ -429,6 +429,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
           name,
           layoutId,
           createdAt: now(),
+          updatedAt: now(),
         };
         await idbPut(db, "collections", [gameId, collectionId], collection);
         return collection;
@@ -442,7 +443,8 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
       try {
         const col = await idbGet(db, "collections", [gameId, collectionId]);
         if (!col) throw new Error(`Collection not found: ${collectionId}`);
-        const updated = { ...col, ...updates, id: collectionId, updatedAt: now() };
+        // An explicit updatedAt in the updates wins — zip import uses it to preserve history.
+        const updated = { ...col, ...updates, id: collectionId, updatedAt: updates.updatedAt ?? now() };
         await idbPut(db, "collections", [gameId, collectionId], updated);
         return updated;
       } finally {
@@ -502,7 +504,7 @@ export const createIndexedDBStorage = ({ defaultLayout } = {}) => {
         const source = await idbGet(db, "cards", [gameId, collectionId, cardId]);
         if (!source) throw new Error(`Card not found: ${cardId}`);
         const newId = uid();
-        const copy = normalizeCard({ ...source, id: newId, name: `${source.name} (copy)` });
+        const copy = normalizeCard({ ...source, id: newId, name: `${source.name} (copy)`, createdAt: now(), updatedAt: now() });
         await idbPut(db, "cards", [gameId, collectionId, newId], copy);
         return copy;
       } finally {

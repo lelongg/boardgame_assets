@@ -5,6 +5,8 @@ export type GameMeta = {
   name: string;
   createdAt?: string;
   updatedAt?: string;
+  // User-defined labels for filtering/sorting in lists
+  tags?: string[];
   [key: string]: unknown;
 };
 

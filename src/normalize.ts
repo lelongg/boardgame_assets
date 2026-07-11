@@ -68,6 +68,22 @@ const normalizeBindings = (obj: Record<string, unknown>): Record<string, Propert
     return Object.keys(result).length > 0 ? result : undefined;
 };
 
+/** Normalize a user-defined tag list: strings only, trimmed, deduped, empty → undefined. */
+const normalizeTags = (value: unknown): string[] | undefined => {
+    if (!Array.isArray(value)) return undefined;
+    const tags: string[] = [];
+    for (const raw of value) {
+        if (typeof raw !== "string") continue;
+        const tag = raw.trim();
+        if (tag && !tags.includes(tag)) tags.push(tag);
+    }
+    return tags.length > 0 ? tags : undefined;
+};
+
+/** Preserve an ISO timestamp string, dropping empty/non-string values. */
+const normalizeTimestamp = (value: unknown): string | undefined =>
+    typeof value === "string" && value !== "" ? value : undefined;
+
 // Counter so that several id-less nodes normalized in the same millisecond
 // still get distinct fallback ids (Date.now() alone collides within one pass).
 let fallbackIdCounter = 0;
@@ -287,6 +303,9 @@ export const normalizeLayout = (layout: unknown): CardLayout => {
         bleed,
         bindingMeta: Object.keys(bindingMeta).length > 0 ? bindingMeta : undefined,
         root,
+        tags: normalizeTags(obj.tags),
+        createdAt: normalizeTimestamp(obj.createdAt),
+        updatedAt: normalizeTimestamp(obj.updatedAt),
     };
 };
 /**
@@ -303,6 +322,9 @@ export const normalizeCard = (card: unknown): CardData => {
     return {
         id,
         name,
-        fields: Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, safeString(value, "")]))
+        fields: Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, safeString(value, "")])),
+        tags: normalizeTags(obj.tags),
+        createdAt: normalizeTimestamp(obj.createdAt),
+        updatedAt: normalizeTimestamp(obj.updatedAt),
     };
 };

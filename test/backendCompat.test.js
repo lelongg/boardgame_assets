@@ -537,6 +537,10 @@ async function createFullTestGame(storage) {
   const game = await storage.createGame("Transfer Test");
   const gameId = game.id;
 
+  // Game tags + creation date must survive export/import (restored at the
+  // end of importGameZip via updateGame).
+  await storage.updateGame(gameId, { tags: ["fantasy", "wip"], createdAt: "2024-01-01T00:00:00.000Z" });
+
   // Upload fonts with realistic names (spaces!)
   await storage.addGoogleFont(gameId, "Playwrite IE", "title");
   await storage.addGoogleFont(gameId, "Space Grotesk", "body");
@@ -549,6 +553,9 @@ async function createFullTestGame(storage) {
   const layouts = await storage.listLayouts(gameId);
   const tpl = layouts[0];
   tpl.name = "Full Layout";
+  tpl.tags = ["fancy", "v2"];
+  tpl.createdAt = "2024-02-01T00:00:00.000Z";
+  tpl.updatedAt = "2024-02-02T00:00:00.000Z";
   tpl.width = 70;
   tpl.height = 120;
   tpl.radius = 3;
@@ -615,14 +622,23 @@ async function createFullTestGame(storage) {
   };
   await storage.saveLayout(gameId, tpl.id, tpl);
 
-  // Set a layout back on the default collection
+  // Set a layout back, tags and explicit timestamps on the default collection.
+  // Backends honor an explicit updatedAt so history survives zip transfers.
   const cols = await storage.listCollections(gameId);
-  await storage.updateCollection(gameId, cols[0].id, { backLayoutId: tpl.id });
+  await storage.updateCollection(gameId, cols[0].id, {
+    backLayoutId: tpl.id,
+    tags: ["core", "print-ready"],
+    createdAt: "2024-03-01T00:00:00.000Z",
+    updatedAt: "2024-03-02T00:00:00.000Z",
+  });
 
   // Cards
   await storage.saveCard(gameId, cols[0].id, "card-1", {
     id: "card-1", name: "Warrior",
     fields: { cost: "5", description: "<b>Brave</b> hero", image: imageUrl, faction: "⚔️" },
+    tags: ["hero", "melee"],
+    createdAt: "2024-04-01T00:00:00.000Z",
+    updatedAt: "2024-04-02T00:00:00.000Z",
   });
   await storage.saveCard(gameId, cols[0].id, "card-2", {
     id: "card-2", name: "Mage",
@@ -643,11 +659,16 @@ async function createFullTestGame(storage) {
 async function verifyFullTestGame(storage, gameId) {
   const game = await storage.getGame(gameId);
   assert.equal(game.name, "Transfer Test");
+  assert.deepEqual(game.tags, ["fantasy", "wip"], "game tags must survive the round trip");
+  assert.equal(game.createdAt, "2024-01-01T00:00:00.000Z", "game createdAt must survive the round trip");
 
   const layouts = await storage.listLayouts(gameId);
   assert.equal(layouts.length, 1);
   const tpl = layouts[0];
   assert.equal(tpl.name, "Full Layout");
+  assert.deepEqual(tpl.tags, ["fancy", "v2"], "layout tags must survive the round trip");
+  assert.equal(tpl.createdAt, "2024-02-01T00:00:00.000Z", "layout createdAt must survive the round trip");
+  assert.equal(tpl.updatedAt, "2024-02-02T00:00:00.000Z", "layout updatedAt must survive the round trip");
   assert.equal(tpl.width, 70);
   assert.equal(tpl.height, 120);
   assert.equal(tpl.radius, 3);
@@ -740,6 +761,9 @@ async function verifyFullTestGame(storage, gameId) {
   // Collection metadata
   const defCol = cols.find(c => c.name === "Default");
   assert.equal(defCol.backLayoutId, tpl.id, "backLayoutId must survive the round trip");
+  assert.deepEqual(defCol.tags, ["core", "print-ready"], "collection tags must survive the round trip");
+  assert.equal(defCol.createdAt, "2024-03-01T00:00:00.000Z", "collection createdAt must survive the round trip");
+  assert.equal(defCol.updatedAt, "2024-03-02T00:00:00.000Z", "collection updatedAt must survive the round trip");
 
   // Cards
   const defCards = await storage.listCards(gameId, defCol.id);
@@ -748,6 +772,9 @@ async function verifyFullTestGame(storage, gameId) {
   assert.ok(warrior); assert.equal(warrior.fields.faction, "⚔️");
   assert.equal(warrior.fields.cost, "5");
   assert.ok(warrior.fields.image.includes(`/api/games/${gameId}/images/`));
+  assert.deepEqual(warrior.tags, ["hero", "melee"], "card tags must survive the round trip");
+  assert.equal(warrior.createdAt, "2024-04-01T00:00:00.000Z", "card createdAt must survive the round trip");
+  assert.equal(warrior.updatedAt, "2024-04-02T00:00:00.000Z", "card updatedAt must survive the round trip");
 
   const expCol = cols.find(c => c.name === "Expansion");
   assert.equal(expCol.backLayoutId, tpl.id, "backLayoutId must survive the round trip");

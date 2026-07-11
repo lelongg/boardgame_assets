@@ -28,7 +28,7 @@ import { FloatingInput, FloatingSelect } from '@/components/ui/floating-field'
 import ZoomablePreview from '@/components/ZoomablePreview'
 import ConfirmButton from '@/components/ConfirmButton'
 import LoadingImg from '@/components/LoadingImg'
-import FilterableList from '@/components/FilterableList'
+import FilterableList, { TagBadges } from '@/components/FilterableList'
 import ListItem from '@/components/ListItem'
 import CardThumbnail from '@/components/CardThumbnail'
 import PageLayout from '@/components/PageLayout'
@@ -273,8 +273,9 @@ function DataSheet({ cards, gameId, collectionId, layout, backLayout, gameImages
   }, [cards, fieldItemTypes])
 
   const saveCard = async (cardId: string, updated: any) => {
-    onCardsChange(prev => prev.map(c => c.id === cardId ? updated : c))
-    try { await onSaveCard(updated) }
+    const stamped = { ...updated, updatedAt: new Date().toISOString() }
+    onCardsChange(prev => prev.map(c => c.id === cardId ? stamped : c))
+    try { await onSaveCard(stamped) }
     catch { onStatusChange('Error saving card.') }
   }
 
@@ -821,7 +822,8 @@ export default function GameEditorPage() {
   const handleCreateCard = async (name?: string) => {
     if (!gameId || !collectionId) return
     const cardName = name?.trim() || `New Card ${cards.length + 1}`
-    const newCard = { id: crypto.randomUUID(), name: cardName, fields: {} }
+    const stamp = new Date().toISOString()
+    const newCard = { id: crypto.randomUUID(), name: cardName, fields: {}, createdAt: stamp, updatedAt: stamp }
     setCards(prev => [...prev, newCard as any])
     setSelectedCardId(newCard.id)
     setSavedCardJson(JSON.stringify(newCard))
@@ -878,7 +880,9 @@ export default function GameEditorPage() {
 
   const updateCard = (fn: (card: any) => any) => {
     if (!selectedCardId) return
-    setCards(prev => prev.map(c => c.id === selectedCardId ? fn(c) : c))
+    // Every edit refreshes the last-modified stamp; the auto-save effect
+    // persists the card (including the stamp) shortly after.
+    setCards(prev => prev.map(c => c.id === selectedCardId ? { ...fn(c), updatedAt: new Date().toISOString() } : c))
   }
 
   // Layout handlers – optimistic update + immediate persist.
@@ -1105,6 +1109,14 @@ export default function GameEditorPage() {
                 items={cards}
                 getKey={(card: any) => card.id}
                 getName={(card: any) => card.name ?? ''}
+                getTags={(card: any) => card.tags}
+                getCreatedAt={(card: any) => card.createdAt}
+                getUpdatedAt={(card: any) => card.updatedAt}
+                sort={{ key: `editor:${gameId}:cardSort` }}
+                onTagsChange={(cardId, tags) => {
+                  // Local update only — the selected-card auto-save effect persists it.
+                  setCards(prev => prev.map(c => c.id === cardId ? { ...c, tags, updatedAt: new Date().toISOString() } : c))
+                }}
                 maxHeight="60vh"
                 viewMode={{ key: `editor:${gameId}:viewMode`, default: 'compact' }}
                 grid={{ colsKey: `editor:${gameId}:galleryCols`, defaultCols: 2 }}
@@ -1114,7 +1126,7 @@ export default function GameEditorPage() {
                 onSelect={(key) => { if (key) selectCard(storage, key); else setSelectedCardId(null) }}
                 onRename={(cardId, name) => {
                   // Local update only — the selected-card auto-save effect persists it.
-                  setCards(prev => prev.map(c => c.id === cardId ? { ...c, name } : c))
+                  setCards(prev => prev.map(c => c.id === cardId ? { ...c, name, updatedAt: new Date().toISOString() } : c))
                 }}
                 empty={cardsLoading
                   ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
@@ -1169,11 +1181,12 @@ export default function GameEditorPage() {
                   />
                 ) : (
                   <ListItem selected={selected}>
-                    <div className={vm === 'detailed' ? 'flex items-center gap-3' : ''}>
+                    <div className={vm === 'detailed' ? 'flex items-center gap-3' : 'flex items-center gap-2'}>
                       {vm === 'detailed' && cardThumbnails[card.id] && (
                         <LoadingImg src={cardThumbnails[card.id]} alt="" className="h-16 w-auto rounded border object-contain shrink-0 bg-white" />
                       )}
                       <span className="text-sm font-medium">{card.name}</span>
+                      <TagBadges tags={card.tags} />
                     </div>
                   </ListItem>
                 )}

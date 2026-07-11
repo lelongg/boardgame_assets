@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 import ConfirmButton from '@/components/ConfirmButton'
 import ListItem from '@/components/ListItem'
-import FilterableList from '@/components/FilterableList'
+import FilterableList, { TagBadges } from '@/components/FilterableList'
 import PageLayout from '@/components/PageLayout'
 import useStorage from '../hooks/useStorage'
 import { useGames, useCreateGame, useDeleteGame, queryKeys } from '../hooks/useGameData'
@@ -47,6 +47,13 @@ export default function GamesPage() {
       setExpandedGame(games[0].id)
     }
   }, [games])
+
+  // In-place cache update — a refetch on slow backends (S3) keeps showing
+  // the old tags for seconds, as if the edit did nothing.
+  const qcSetGameTags = (gameId: string, updated: any) => {
+    queryClient.setQueryData<any[]>(queryKeys.games(), (old) =>
+      old ? old.map((g: any) => g.id === gameId ? { ...g, ...updated } : g) : old)
+  }
 
   const handleCreateGame = async () => {
     if (!storage) {
@@ -244,8 +251,21 @@ export default function GamesPage() {
             items={games}
             getKey={(game: any) => game.id}
             getName={(game: any) => game.name}
+            getTags={(game: any) => game.tags}
+            getCreatedAt={(game: any) => game.createdAt}
+            getUpdatedAt={(game: any) => game.updatedAt}
+            sort={{ key: 'games:sort' }}
             selectedKey={expandedGame}
             onSelect={setExpandedGame}
+            onTagsChange={async (gameId, tags) => {
+              if (!storage) return
+              try {
+                const updated = await storage.updateGame(gameId, { tags })
+                qcSetGameTags(gameId, updated ?? { tags })
+              } catch (err) {
+                setError('Error updating tags', err)
+              }
+            }}
             onRename={async (gameId, name) => {
               if (!storage) return
               try {
@@ -302,7 +322,10 @@ export default function GamesPage() {
             })() : undefined}
             renderItem={(game: any, _vm, selected) => (
               <ListItem selected={selected}>
-                <span className="font-medium">{game.name}</span>
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium truncate">{game.name}</span>
+                  <TagBadges tags={game.tags} />
+                </span>
               </ListItem>
             )}
           />
