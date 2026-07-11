@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, createContext, useContext, type ReactNode } from 'react'
 import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput, Check, X, Tags, ArrowUpNarrowWide, ArrowDownWideNarrow, ListFilter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -15,14 +15,30 @@ type SortState = { by: SortBy; dir: 'asc' | 'desc' }
 const DEFAULT_DIR: Record<SortBy, 'asc' | 'desc'> = { name: 'asc', tag: 'asc', created: 'desc', updated: 'desc' }
 const naturalCompare = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare
 
-/** Small pill badges for an item's tags — drop into any renderItem. */
+// Lets TagBadges (rendered by callers inside renderItem) reach the enclosing
+// list's tag filter without threading props through every renderItem.
+const TagFilterContext = createContext<{ toggle: (tag: string) => void; active: Set<string> } | null>(null)
+
+/** Small pill badges for an item's tags — drop into any renderItem.
+ * Inside a FilterableList with a tag filter, clicking a badge toggles that
+ * tag in the filter; elsewhere the badges render as plain pills. */
 export function TagBadges({ tags }: { tags?: string[] }) {
+  const filter = useContext(TagFilterContext)
   if (!tags?.length) return null
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      {tags.map(t => (
-        <span key={t} className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-primary whitespace-nowrap">{t}</span>
-      ))}
+      {tags.map(t => {
+        const active = filter?.active.has(t)
+        const className = `rounded-full px-1.5 py-0.5 text-[10px] leading-none whitespace-nowrap ${active ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`
+        if (!filter) return <span key={t} className={className}>{t}</span>
+        return (
+          <button key={t} type="button" className={`${className} hover:bg-primary/20 transition-colors ${active ? 'hover:bg-primary/80' : ''}`}
+            title={active ? `Stop filtering by "${t}"` : `Filter by "${t}"`}
+            onClick={(e) => { e.stopPropagation(); filter.toggle(t) }}>
+            {t}
+          </button>
+        )
+      })}
     </span>
   )
 }
@@ -370,7 +386,13 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   // selected item hidden by the filter) fall back to the subheader.
   const renameInSubheader = renaming && !!selectedItem && (!!isGrid || !!showBigPreview || selectedIdx < 0)
 
-  return (<>
+  // Clicking a badge inside renderItem toggles that tag in the filter.
+  const tagFilterCtx = useMemo(
+    () => getTags ? { toggle: toggleFilterTag, active: tagFilter } : null,
+    [!!getTags, tagFilter]
+  )
+
+  return (<TagFilterContext.Provider value={tagFilterCtx}>
     {hoverThumb && (
       <div className="pointer-events-none fixed z-50" style={{ left: hoverThumb.x + 16, top: hoverThumb.y - 80, width: 120 }}>
         <CardThumbnail src={hoverThumb.src} name="" />
@@ -594,5 +616,5 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
         )}
       </>}
     </div>
-  </>)
+  </TagFilterContext.Provider>)
 }
