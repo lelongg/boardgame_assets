@@ -1109,6 +1109,7 @@ export default function GameEditorPage() {
                 viewMode={{ key: `editor:${gameId}:viewMode`, default: 'compact' }}
                 grid={{ colsKey: `editor:${gameId}:galleryCols`, defaultCols: 2 }}
                 getPreviewSrc={(card: any) => cardThumbnails[card.id] ?? ''}
+                getBackSrc={(card: any) => card.id === selectedCardId ? (backPreview || undefined) : undefined}
                 selectedKey={selectedCardId}
                 onSelect={(key) => { if (key) selectCard(storage, key); else setSelectedCardId(null) }}
                 onRename={(cardId, name) => {

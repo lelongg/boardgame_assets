@@ -15,6 +15,8 @@ type FilterableListProps<T> = {
   getKey: (item: T) => string
   getName: (item: T) => string
   getPreviewSrc?: (item: T) => string
+  /** Rendered back of the item — enables the flip button (and the 3D back face) in the big preview. */
+  getBackSrc?: (item: T) => string | undefined
   getGroup?: (item: T) => string | undefined
   selectedKey?: string | null
   onSelect?: (key: string | null) => void
@@ -34,7 +36,7 @@ type FilterableListProps<T> = {
 
 const COL_WIDTH = 120
 
-export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, getGroup, selectedKey, onSelect, onRename, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
+export default function FilterableList<T>({ title, items, getKey, getName, getPreviewSrc, getBackSrc, getGroup, selectedKey, onSelect, onRename, selectedKeys, onSelectedKeysChange, renderItem, toolbar, actions, drawer, subheader, empty, maxHeight = '60vh', grid: gridProp, viewMode: viewModeProp }: FilterableListProps<T>) {
   const multiSelect = !!(selectedKeys && onSelectedKeysChange)
   const [hoverThumb, setHoverThumb] = useState<{ src: string; x: number; y: number } | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -263,7 +265,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
         )}
         {showBigPreview ? (<>
           <div className="overflow-hidden [&>*]:h-full [&>*]:border-0 [&>*]:rounded-none" style={{ height: 'calc(100% - 6.5rem)' }}>
-            <ZoomablePreview src={previewSrc} alt={getName(selectedItem!)} maxImgHeight="100%" />
+            <ZoomablePreview src={previewSrc} alt={getName(selectedItem!)} maxImgHeight="100%" backImage={selectedItem ? getBackSrc?.(selectedItem) : undefined} backFit="fill" />
           </div>
           <div className="relative h-[6.5rem] shrink-0 border-t bg-card">
             <div
