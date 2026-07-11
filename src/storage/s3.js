@@ -403,6 +403,7 @@ export const createS3Storage = (options = {}) => {
         name,
         layoutId,
         createdAt: now(),
+        updatedAt: now(),
       };
       await putJson(collectionKey(gameId, collectionId), collection);
       return collection;
@@ -410,7 +411,8 @@ export const createS3Storage = (options = {}) => {
 
     async updateCollection(gameId, collectionId, updates) {
       const col = await getJson(collectionKey(gameId, collectionId));
-      const updated = { ...col, ...updates, id: collectionId, updatedAt: now() };
+      // An explicit updatedAt in the updates wins — zip import uses it to preserve history.
+      const updated = { ...col, ...updates, id: collectionId, updatedAt: updates.updatedAt ?? now() };
       await putJson(collectionKey(gameId, collectionId), updated);
       return updated;
     },
@@ -458,6 +460,8 @@ export const createS3Storage = (options = {}) => {
         ...source,
         id: newId,
         name: `${source.name} (copy)`,
+        createdAt: now(),
+        updatedAt: now(),
       });
       await putJson(cardKey(gameId, collectionId, newId), copy);
       return copy;

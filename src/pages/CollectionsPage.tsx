@@ -14,7 +14,7 @@ import ImportPanel from '@/components/ImportPanel'
 import ZipMergePanel from '@/components/ZipMergePanel'
 import CardThumbnail from '@/components/CardThumbnail'
 import LoadingImg from '@/components/LoadingImg'
-import FilterableList from '@/components/FilterableList'
+import FilterableList, { TagBadges } from '@/components/FilterableList'
 import PageLayout from '@/components/PageLayout'
 import FontManager, { FontPreview, FontPreviewEditor, defaultPreviewText } from '@/components/FontManager'
 import useStorage from '../hooks/useStorage'
@@ -474,6 +474,15 @@ export default function CollectionsPage() {
               items={collections}
               getKey={(col: any) => col.id}
               getName={(col: any) => col.name}
+              getTags={(col: any) => col.tags}
+              getCreatedAt={(col: any) => col.createdAt}
+              getUpdatedAt={(col: any) => col.updatedAt}
+              sort={{ key: `game:${gameId}:collectionsSort` }}
+              onTagsChange={async (collectionId, tags) => {
+                try {
+                  await updateCollectionMut.mutateAsync({ collectionId, updates: { tags } })
+                } catch { setStatus('Error updating tags.') }
+              }}
               selectedKey={expandedCollection}
               onSelect={(key) => {
                 setExpandedCollection(key)
@@ -507,8 +516,9 @@ export default function CollectionsPage() {
                       const newCol = await storage.createCollection(gameId, `${col.name} (copy)`, col.layoutId)
                       const cards = await storage.listCards(gameId, col.id)
                       const copies: any[] = []
+                      const cloneStamp = new Date().toISOString()
                       for (const card of cards) {
-                        copies.push(await storage.saveCard(gameId, newCol.id, null, { ...card, id: undefined, name: card.name }))
+                        copies.push(await storage.saveCard(gameId, newCol.id, null, { ...card, id: undefined, name: card.name, createdAt: cloneStamp, updatedAt: cloneStamp }))
                       }
                       // Seed the caches directly — a full refetch is slow on S3
                       // and can serve pre-clone listings.
@@ -572,7 +582,10 @@ export default function CollectionsPage() {
               ) : undefined}
               renderItem={(col: any, _vm, selected) => (
                     <ListItem selected={selected}>
-                      <span className="font-medium truncate">{col.name}</span>
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="font-medium truncate">{col.name}</span>
+                        <TagBadges tags={col.tags} />
+                      </span>
                     </ListItem>
                   )}
                 />
@@ -583,6 +596,17 @@ export default function CollectionsPage() {
                   items={collectionCards}
                   getKey={(card: any) => card.id}
                   getName={(card: any) => card.name}
+                  getTags={(card: any) => card.tags}
+                  getCreatedAt={(card: any) => card.createdAt}
+                  getUpdatedAt={(card: any) => card.updatedAt}
+                  sort={{ key: `game:${gameId}:collCardSort` }}
+                  onTagsChange={async (cardId, tags) => {
+                    const card = collectionCards.find((c: any) => c.id === cardId)
+                    if (!card) return
+                    try {
+                      await saveCardMut.mutateAsync({ cardId, card: { ...card, tags } })
+                    } catch { setStatus('Error updating tags.') }
+                  }}
                   empty={cardsLoading
                     ? <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                     : <p className="text-sm text-muted-foreground text-center py-4">No cards in this collection.</p>}
@@ -635,7 +659,7 @@ export default function CollectionsPage() {
                       e.preventDefault()
                       if (!newCollCardName.trim() || !expandedCollection) return
                       const name = newCollCardName.trim()
-                      const newCard = { id: crypto.randomUUID(), name, fields: {} }
+                      const newCard = { id: crypto.randomUUID(), name, fields: {}, createdAt: new Date().toISOString() }
                       try {
                         await saveCardMut.mutateAsync({ cardId: newCard.id, card: newCard })
                         setSelectedCardId(newCard.id)
@@ -663,11 +687,12 @@ export default function CollectionsPage() {
                     />
                   ) : (
                     <ListItem selected={selected}>
-                      <div className={vm === 'detailed' ? 'flex items-center gap-3' : ''}>
+                      <div className={vm === 'detailed' ? 'flex items-center gap-3' : 'flex items-center gap-2'}>
                         {vm === 'detailed' && cardPreviews[card.id] && (
                           <img src={cardPreviews[card.id]} alt="" className="h-16 w-auto rounded border object-contain shrink-0 bg-white" />
                         )}
                         <span className="text-sm font-medium">{card.name}</span>
+                        <TagBadges tags={card.tags} />
                       </div>
                     </ListItem>
                   )}
@@ -688,6 +713,17 @@ export default function CollectionsPage() {
                 items={layouts}
                 getKey={(tpl: any) => tpl.id}
                 getName={(tpl: any) => tpl.name}
+                getTags={(tpl: any) => tpl.tags}
+                getCreatedAt={(tpl: any) => tpl.createdAt}
+                getUpdatedAt={(tpl: any) => tpl.updatedAt}
+                sort={{ key: `game:${gameId}:layoutsSort` }}
+                onTagsChange={async (layoutId, tags) => {
+                  const tpl = layouts.find((t: any) => t.id === layoutId)
+                  if (!tpl) return
+                  try {
+                    await saveLayoutMut.mutateAsync({ layoutId, layout: { ...tpl, tags } })
+                  } catch { setStatus('Error updating tags.') }
+                }}
                 selectedKey={selectedLayoutId}
                 onSelect={(key) => {
                   setSelectedLayoutId(key)
@@ -756,8 +792,11 @@ export default function CollectionsPage() {
                 ) : undefined}
                 renderItem={(tpl: any, _vm, selected) => (
                   <ListItem selected={selected}>
-                    <span className="font-medium">{tpl.name}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">{tpl.width}×{tpl.height}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium truncate">{tpl.name}</span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{tpl.width}×{tpl.height}</span>
+                      <TagBadges tags={tpl.tags} />
+                    </span>
                   </ListItem>
                 )}
               />
@@ -842,6 +881,7 @@ export default function CollectionsPage() {
                 items={showUnusedImagesOnly ? unusedImages : gameImages}
                 getKey={img => img.file}
                 getName={img => img.name}
+                sort={{ key: `game:${gameId}:imagesSort` }}
                 viewMode={{ key: `game:${gameId}:imageViewMode`, default: 'gallery' }}
                 grid={{ colsKey: 'imageCols' }}
                 getPreviewSrc={img => img.url}

@@ -462,7 +462,8 @@ app.post("/api/games/:gameId/collections", (req, res) => {
   if (!layoutId) return res.status(400).json({ error: "layoutId required" });
   if (!loadLayout(gameId, layoutId)) return res.status(404).json({ error: "Layout not found" });
   const id = uniqueId(slugify(name) || "collection", (id) => fs.existsSync(collectionDir(gameId, id)));
-  const collection: Collection = { id, name, layoutId };
+  const now = new Date().toISOString();
+  const collection: Collection = { id, name, layoutId, createdAt: now, updatedAt: now };
   fs.mkdirSync(collectionCardsDir(gameId, id), { recursive: true });
   writeJson(collectionPath(gameId, id), collection);
   touchGame(gameId);
@@ -480,7 +481,8 @@ app.put("/api/games/:gameId/collections/:collectionId", (req, res) => {
   const col = readJson<Collection | null>(collectionPath(gameId, collectionId), null);
   if (!col) return res.status(404).json({ error: "Not found" });
   if (req.body.layoutId && !loadLayout(gameId, req.body.layoutId)) return res.status(404).json({ error: "Layout not found" });
-  const updated = { ...col, ...req.body, id: collectionId };
+  // An explicit updatedAt in the payload wins — zip import uses it to preserve history.
+  const updated = { ...col, ...req.body, id: collectionId, updatedAt: req.body.updatedAt ?? new Date().toISOString() };
   writeJson(collectionPath(gameId, collectionId), updated);
   touchGame(gameId);
   res.json(updated);
@@ -553,7 +555,8 @@ app.post("/api/games/:gameId/collections/:collectionId/cards/:cardId/copy", (req
   const existing = listCollectionCards(gameId, collectionId);
   const newName = `New Card ${existing.length + 1}`;
   const newId = uniqueId(slugify(newName) || `card-${Date.now()}`, (id) => fs.existsSync(collectionCardPath(gameId, collectionId, id)));
-  const copy = { ...card, id: newId, name: newName };
+  const copyStamp = new Date().toISOString();
+  const copy = { ...card, id: newId, name: newName, createdAt: copyStamp, updatedAt: copyStamp };
   writeJson(collectionCardPath(gameId, collectionId, newId), copy);
   touchGame(gameId);
   res.status(201).json(copy);

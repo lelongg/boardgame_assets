@@ -161,10 +161,16 @@ export const importGameZip = async (
     log(`Creating collection: ${col.id} (${col.name}) → layout: ${col.layoutId}`)
     const newCol = await storage.createCollection(newGameId, col.name, col.layoutId)
     const newColId = newCol.id
-    // Preserve extra collection fields (backLayoutId, etc.)
+    // Preserve extra collection fields (backLayoutId, tags, timestamps, etc.)
     // Layout ids are preserved verbatim on import, so backLayoutId needs no remap.
-    if (col.backLayoutId) {
-      await storage.updateCollection(newGameId, newColId, { backLayoutId: col.backLayoutId })
+    // Backends honor an explicit updatedAt in updates, so history survives.
+    const colExtras: Record<string, unknown> = {}
+    if (col.backLayoutId) colExtras.backLayoutId = col.backLayoutId
+    if (Array.isArray(col.tags) && col.tags.length) colExtras.tags = col.tags
+    if (col.createdAt) colExtras.createdAt = col.createdAt
+    if (col.updatedAt) colExtras.updatedAt = col.updatedAt
+    if (Object.keys(colExtras).length) {
+      await storage.updateCollection(newGameId, newColId, colExtras)
     }
 
     const colDir = f.name.replace('/collection.json', '')
@@ -173,6 +179,15 @@ export const importGameZip = async (
       const card = JSON.parse(rewriteAll(await cf.async('text')))
       await storage.saveCard(newGameId, newColId, card.id, card)
     }
+  }
+
+  // Preserve extra game fields (tags, creation date). Done last so the many
+  // imports above can't clobber them via backend touch/updatedAt stamping.
+  const gameExtras: Record<string, unknown> = {}
+  if (Array.isArray(gameMeta.tags) && gameMeta.tags.length) gameExtras.tags = gameMeta.tags
+  if (gameMeta.createdAt) gameExtras.createdAt = gameMeta.createdAt
+  if (Object.keys(gameExtras).length) {
+    await storage.updateGame(newGameId, gameExtras)
   }
 
   log('Done.')

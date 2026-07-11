@@ -2,6 +2,11 @@ export type CardData = {
   id: string;
   name: string;
   fields: Record<string, string>;
+  // User-defined labels for filtering/sorting in lists
+  tags?: string[];
+  // ISO timestamps, stamped by the app on create/save (absent on legacy data)
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AnchorPoint = {
@@ -172,6 +177,11 @@ export type CardLayout = {
   bleed: number;
   bindingMeta?: Record<string, { default?: string; values?: string[] }>;
   root: CardLayoutSection;
+  // User-defined labels for filtering/sorting in lists
+  tags?: string[];
+  // ISO timestamps (absent on legacy data)
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type Collection = {
@@ -180,4 +190,9 @@ export type Collection = {
   layoutId: string;
   // Card back layout, rendered like the front. No back when unset.
   backLayoutId?: string;
+  // User-defined labels for filtering/sorting in lists
+  tags?: string[];
+  // ISO timestamps, stamped by the backends (absent on legacy data)
+  createdAt?: string;
+  updatedAt?: string;
 };

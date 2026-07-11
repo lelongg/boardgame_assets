@@ -146,7 +146,10 @@ export default function ImportPanel({
           }
         }
         if (!colId) continue
-        await storage.saveCard(gameId, colId, existing?.id ?? null, existing ? { ...existing, fields: card.fields } : card)
+        const stamp = new Date().toISOString()
+        await storage.saveCard(gameId, colId, existing?.id ?? null, existing
+          ? { ...existing, fields: card.fields, updatedAt: stamp }
+          : { ...card, createdAt: stamp, updatedAt: stamp })
       }
       for (const card of selectedMissing) {
         const colId = collectionId || (card as any)?.collectionId
