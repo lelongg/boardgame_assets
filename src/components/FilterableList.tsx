@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react'
-import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput, Check, X, Tags, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react'
+import { Minus, Plus, Eye, List, LayoutGrid, GalleryHorizontalEnd, ChevronLeft, ChevronRight, TextCursorInput, Check, X, Tags, ArrowUpNarrowWide, ArrowDownWideNarrow, ListFilter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import useFuzzyFilter from '@/hooks/useFuzzyFilter'
@@ -94,10 +94,29 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   // A persisted choice may reference accessors this list no longer provides.
   const sortBy: SortBy = sortOptions.some(o => o.value === sort.by) ? sort.by : 'name'
 
+  // ── Tag filter (select tags to narrow the list) ─────────────────
+  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set())
+  const [tagFilterOpen, setTagFilterOpen] = useState(false)
+  const allTags = useMemo(
+    () => getTags ? [...new Set(items.flatMap(i => getTags(i) ?? []))].sort(naturalCompare) : [],
+    [items, getTags]
+  )
+  // Drop filter entries whose tag no longer exists anywhere (e.g. removed
+  // from its last item) so the list can't get stuck empty.
+  useEffect(() => {
+    setTagFilter(prev => {
+      if (![...prev].some(t => !allTags.includes(t))) return prev
+      return new Set([...prev].filter(t => allTags.includes(t)))
+    })
+  }, [allTags])
+
   const filtered = useMemo(() => {
     const dirMul = sort.dir === 'desc' ? -1 : 1
     const byName = (a: T, b: T) => naturalCompare(getName(a), getName(b))
-    const arr = [...matched]
+    // Selected filter tags narrow progressively: an item must carry them all.
+    const arr = tagFilter.size > 0
+      ? matched.filter(i => { const ts = getTags?.(i) ?? []; return [...tagFilter].every(t => ts.includes(t)) })
+      : [...matched]
     if (sortBy === 'name') return arr.sort((a, b) => dirMul * byName(a, b))
     const sortValue = (item: T): string | undefined => {
       if (sortBy === 'tag') {
@@ -115,7 +134,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
       const cmp = sortBy === 'tag' ? naturalCompare(va, vb) : (va < vb ? -1 : va > vb ? 1 : 0)
       return dirMul * cmp || byName(a, b)
     })
-  }, [matched, sortBy, sort.dir, getName, getTags, getCreatedAt, getUpdatedAt])
+  }, [matched, tagFilter, sortBy, sort.dir, getName, getTags, getCreatedAt, getUpdatedAt])
 
   // ── Tag editing (selected item) ─────────────────────────────────
   const [editingTags, setEditingTags] = useState(false)
@@ -123,10 +142,6 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
   // Custom suggestions dropdown — a native <datalist> renders nothing in
   // several browsers, so existing tags get a real, clickable list instead.
   const [tagSuggestionsOpen, setTagSuggestionsOpen] = useState(false)
-  const allTags = useMemo(
-    () => getTags ? [...new Set(items.flatMap(i => getTags(i) ?? []))].sort(naturalCompare) : [],
-    [items, getTags]
-  )
   const { collapsed, toggle } = useCollapsible()
   const containerRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<string, HTMLElement>>(new Map())
@@ -267,6 +282,48 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
     if (!tag || selectedTags.includes(tag)) return
     onTagsChange(getKey(selectedItem), [...selectedTags, tag])
   }
+  const toggleFilterTag = (tag: string) => {
+    setTagFilter(prev => {
+      const next = new Set(prev)
+      next.has(tag) ? next.delete(tag) : next.add(tag)
+      return next
+    })
+  }
+  const tagFilterControl = getTags && allTags.length > 0 ? (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        className={`flex items-center gap-0.5 rounded p-1 transition-colors ${tagFilter.size > 0 || tagFilterOpen ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        title="Filter by tags"
+        onClick={() => setTagFilterOpen(v => !v)}>
+        <ListFilter className="h-3.5 w-3.5" />
+        {tagFilter.size > 0 && <span className="text-[10px] leading-none">{tagFilter.size}</span>}
+      </button>
+      {tagFilterOpen && <>
+        <div className="fixed inset-0 z-10" onClick={() => setTagFilterOpen(false)} />
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-44 overflow-y-auto rounded-md border bg-card py-1 shadow-md">
+          {allTags.map(tag => {
+            const active = tagFilter.has(tag)
+            return (
+              <button key={tag} type="button"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs hover:bg-muted transition-colors"
+                onClick={() => toggleFilterTag(tag)}>
+                <Check className={`h-3 w-3 shrink-0 ${active ? 'text-primary' : 'text-transparent'}`} />
+                <span className={`truncate ${active ? 'text-primary font-medium' : ''}`}>{tag}</span>
+              </button>
+            )
+          })}
+          {tagFilter.size > 0 && (
+            <button type="button"
+              className="mt-1 flex w-full items-center gap-2 border-t px-2 py-1 pt-1.5 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setTagFilter(new Set())}>
+              <X className="h-3 w-3 shrink-0" />
+              Clear filter
+            </button>
+          )}
+        </div>
+      </>}
+    </div>
+  ) : null
   const sortControl = sortProp ? (
     <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
       <select
@@ -361,6 +418,7 @@ export default function FilterableList<T>({ title, items, getKey, getName, getPr
                 </label>
               )}
               {sortControl}
+              {tagFilterControl}
               {subheader && <div className="flex items-center gap-1 ml-2">{subheader}</div>}
               {isGrid && <>
                 <button className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30" disabled={cols <= 1}
