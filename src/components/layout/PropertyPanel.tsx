@@ -62,6 +62,14 @@ const TEXT_PROPERTIES: PropertyDef[] = [
   { key: 'verticalAlign', label: 'V Align' },
   { key: 'font', label: 'Font' },
   { key: 'color', label: 'Color' },
+  { key: 'strokeWidth', label: 'Outline Width' },
+  { key: 'strokeColor', label: 'Outline Color' },
+  { key: 'shadowColor', label: 'Shadow Color' },
+  { key: 'shadowOffsetX', label: 'Shadow X' },
+  { key: 'shadowOffsetY', label: 'Shadow Y' },
+  { key: 'shadowBlur', label: 'Shadow Blur' },
+  { key: 'lineHeight', label: 'Line Height' },
+  { key: 'letterSpacing', label: 'Letter Spacing' },
 ]
 
 const FRAME_PROPERTIES: PropertyDef[] = [

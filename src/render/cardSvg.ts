@@ -23,6 +23,7 @@ type RenderOptions = {
   fontSlots?: Record<string, FontSlot>;
   back?: string;
   backFit?: "cover" | "contain" | "fill";
+  svgTextOnly?: boolean;
 };
 
 export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: RenderOptions = {}): string =>
@@ -32,4 +33,5 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     backFit: options.backFit,
     fonts: options.fontSlots,
     embedFonts: options.fonts,
+    svgTextOnly: options.svgTextOnly,
   });

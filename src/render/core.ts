@@ -188,7 +188,10 @@ const itemEffects = (get: (prop: string) => unknown, rotation: number): ItemEffe
 /** Wrap an item's SVG in a <g> carrying its effects. Mask definitions are
  *  appended to `defs` (hoisted into <defs> by the callers). The mask is
  *  declared in the item's untransformed rect space, so it follows the item
- *  through rotation/flip. */
+ *  through rotation/flip. Masks use SVG's default luminance mode (white =
+ *  visible, black = hidden, transparency also hides) so ordinary gallery
+ *  images work — an alpha-type mask has no effect with images that carry
+ *  no alpha channel (JPEG, flat PNG). */
 const wrapItemEffects = (svg: string, itemId: string, rect: Rect, eff: ItemEffects, defs: string[]): string => {
   if (!svg) return svg;
   const cx = rect.x + rect.width / 2;
@@ -202,11 +205,68 @@ const wrapItemEffects = (svg: string, itemId: string, rect: Rect, eff: ItemEffec
   if (eff.blendMode) attrs.push(`style="mix-blend-mode:${eff.blendMode}"`);
   if (eff.maskUrl) {
     const maskId = `mask-${String(itemId).replace(/[^a-zA-Z0-9-_]/g, "")}`;
-    defs.push(`<mask id="${maskId}" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(eff.maskUrl)}" preserveAspectRatio="none" /></mask>`);
+    defs.push(`<mask id="${maskId}" maskUnits="userSpaceOnUse" x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(eff.maskUrl)}" preserveAspectRatio="none" /></mask>`);
     attrs.push(`mask="url(#${maskId})"`);
   }
   if (!attrs.length) return svg;
   return `<g ${attrs.join(" ")}>${svg}</g>`;
+};
+
+type TextEffects = {
+  strokeColor: string;
+  strokeWidth: number;
+  /** Empty string means no shadow. */
+  shadowColor: string;
+  shadowX: number;
+  shadowY: number;
+  shadowBlur: number;
+  /** 0 means unset (browser/renderer default). */
+  lineHeight: number;
+  letterSpacing: number;
+};
+
+/** Gather text effects; values are escaped here so both emitters can
+ *  interpolate them directly. */
+const textEffects = (get: (prop: string) => unknown): TextEffects => {
+  const rawShadow = get("shadowColor");
+  const shadowColor = rawShadow === undefined || rawShadow === null || rawShadow === "" || rawShadow === "none"
+    ? ""
+    : escape(String(rawShadow));
+  return {
+    strokeColor: escape(String(get("strokeColor") ?? "#000000")),
+    strokeWidth: Math.max(0, num(get("strokeWidth"), 0)),
+    shadowColor,
+    shadowX: num(get("shadowOffsetX"), 2),
+    shadowY: num(get("shadowOffsetY"), 2),
+    shadowBlur: Math.max(0, num(get("shadowBlur"), 2)),
+    lineHeight: Math.max(0, num(get("lineHeight"), 0)),
+    letterSpacing: num(get("letterSpacing"), 0),
+  };
+};
+
+/** CSS for the foreignObject text path. Only set properties are emitted so
+ *  untouched layouts render byte-identically. */
+const textEffectCss = (fx: TextEffects): string => {
+  let css = "";
+  if (fx.strokeWidth > 0) css += `-webkit-text-stroke:${fx.strokeWidth}px ${fx.strokeColor};paint-order:stroke;`;
+  if (fx.shadowColor) css += `text-shadow:${fx.shadowX}px ${fx.shadowY}px ${fx.shadowBlur}px ${fx.shadowColor};`;
+  if (fx.lineHeight > 0) css += `line-height:${fx.lineHeight};`;
+  if (fx.letterSpacing) css += `letter-spacing:${fx.letterSpacing}px;`;
+  return css;
+};
+
+/** Attributes for the svgTextOnly <text> path. A drop shadow needs a filter,
+ *  appended to `defs` (CSS blur radius ≈ 2× the Gaussian stdDeviation). */
+const textEffectAttrs = (fx: TextEffects, itemId: string, defs: string[]): string => {
+  let attrs = "";
+  if (fx.strokeWidth > 0) attrs += ` stroke="${fx.strokeColor}" stroke-width="${fx.strokeWidth}" stroke-linejoin="round" paint-order="stroke"`;
+  if (fx.letterSpacing) attrs += ` letter-spacing="${fx.letterSpacing}"`;
+  if (fx.shadowColor) {
+    const filterId = `shadow-${String(itemId).replace(/[^a-zA-Z0-9-_]/g, "")}`;
+    defs.push(`<filter id="${filterId}" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="${fx.shadowX}" dy="${fx.shadowY}" stdDeviation="${fx.shadowBlur / 2}" flood-color="${fx.shadowColor}" /></filter>`);
+    attrs += ` filter="url(#${filterId})"`;
+  }
+  return attrs;
 };
 
 const textAnchorFor = (align: string): string => {
@@ -633,18 +693,19 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     const vAlign = ["top", "middle", "bottom"].includes(vAlignRaw) ? vAlignRaw : "middle";
     // Resolved values can come from card fields — escape before interpolating.
     const color = escape(String(resolve(item, "color", card, layoutMm) ?? palette.ink));
+    const fx = textEffects((p) => resolve(item, p, card, layoutMm));
     const styledLines = parseRichText(value);
     if (options.svgTextOnly) {
       const tabularAttr = isNumbers ? ` font-variant-numeric="tabular-nums" style="font-variant-numeric: tabular-nums"` : "";
       const textX = align === "left" ? rect.x : align === "right" ? rect.x + rect.width : rect.x + rect.width / 2;
       const textY = vAlign === "top" ? rect.y : vAlign === "bottom" ? rect.y + rect.height : rect.y + rect.height / 2;
-      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"${tabularAttr}`;
+      const baseAttrs = `text-anchor="${textAnchorFor(align)}" dominant-baseline="${baselineFor(vAlign)}" font-family="${fontFamily}" font-size="${fontSize}" fill="${color}"${tabularAttr}${textEffectAttrs(fx, item.id, clipPaths)}`;
       if (styledLines.length === 1) {
         pushEl(`<text x="${textX}" y="${textY}" ${baseAttrs}>${renderStyledLine(styledLines[0])}</text>`);
         return;
       }
       const tspans = styledLines.map((line, i) =>
-        `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * 1.2}"`}>${renderStyledLine(line)}</tspan>`
+        `<tspan x="${textX}" ${i === 0 ? `y="${textY}"` : `dy="${fontSize * (fx.lineHeight || 1.2)}"`}>${renderStyledLine(line)}</tspan>`
       ).join('');
       pushEl(`<text ${baseAttrs}>${tspans}</text>`);
       return;
@@ -653,7 +714,7 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     const alignItems = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
     const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
     const tabularStyle = isNumbers ? "font-variant-numeric:tabular-nums;" : "";
-    pushEl(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};${tabularStyle}overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
+    pushEl(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};${tabularStyle}${textEffectCss(fx)}overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
   });
 
   const renderedItems = itemElements.join("");
@@ -872,12 +933,13 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: LayoutSvgOptions 
     const align = item.align ?? "center";
     const vAlign = (item as any).verticalAlign ?? "middle";
     const color = escape(item.color ?? palette.ink);
+    const fx = textEffects((p) => resolve(item, p, emptyCard, layoutMm));
     const justifyContent = vAlign === "top" ? "flex-start" : vAlign === "bottom" ? "flex-end" : "center";
     const alignItems = align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
     const styledLines = parseRichText(value);
     const html = styledLines.map(line => `<div>${renderStyledLineHtml(line)}</div>`).join('');
     const tabularStyle = isNumbers ? "font-variant-numeric:tabular-nums;" : "";
-    return wrapRot(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};${tabularStyle}overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
+    return wrapRot(`<foreignObject x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:100%;height:100%;display:flex;flex-direction:column;align-items:${alignItems};justify-content:${justifyContent};font-family:${fontFamily};font-size:${fontSize}px;color:${color};text-align:${align};${tabularStyle}${textEffectCss(fx)}overflow:hidden;word-wrap:break-word;overflow-wrap:break-word">${html}</div></foreignObject>`);
   }).join("");
 
   // Section wireframes

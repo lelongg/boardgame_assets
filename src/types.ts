@@ -61,8 +61,23 @@ type CardLayoutItemBase = {
   bindings?: Record<string, PropertyBinding>;
 };
 
+// Effects shared by text-like items (text, numbers)
+type TextEffectProps = {
+  // Text outline, painted under the fill (paint-order: stroke)
+  strokeColor?: string;
+  strokeWidth?: number;
+  // Drop shadow, rendered when shadowColor is set
+  shadowColor?: string;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
+  shadowBlur?: number;
+  // Line height multiplier (browser default when unset) and letter spacing in px
+  lineHeight?: number;
+  letterSpacing?: number;
+};
+
 // Text item - displays text from a field
-export type CardLayoutTextItem = CardLayoutItemBase & {
+export type CardLayoutTextItem = CardLayoutItemBase & TextEffectProps & {
   type?: "text";  // Optional to support legacy items
   defaultValue?: string;
   fontSize: number;
@@ -106,7 +121,7 @@ export type CardLayoutCloneItem = CardLayoutItemBase & {
 
 // Numbers item - displays text from a field using tabular figures (CSS tabular-nums)
 // for properly aligned digits. Same shape as a text item.
-export type CardLayoutNumbersItem = CardLayoutItemBase & {
+export type CardLayoutNumbersItem = CardLayoutItemBase & TextEffectProps & {
   type: "numbers";
   defaultValue?: string;
   fontSize: number;

@@ -497,3 +497,39 @@ test("normalizeLayout preserves item effect properties", () => {
   assert.equal(bad.maskUrl, undefined, "empty maskUrl is dropped");
   assert.equal(bad.opacity, 100, "empty opacity falls back to fully opaque");
 });
+
+test("normalizeLayout preserves text effect properties", () => {
+  const layout = normalizeLayout({
+    id: "l", name: "L", width: 63.5, height: 88.9, radius: 2, bleed: 1,
+    root: {
+      id: "root", name: "Root", layout: "stack", sizePct: 100, gap: 0, children: [],
+      items: [
+        { id: "fx", name: "Fx", type: "text", defaultValue: "Hello", fontSize: 20, align: "center",
+          strokeWidth: 1.5, strokeColor: "#ffffff",
+          shadowColor: "#333333cc", shadowOffsetX: 2, shadowOffsetY: -3, shadowBlur: 4,
+          lineHeight: 1.4, letterSpacing: 2,
+          anchor: { x: 0.5, y: 0.5 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+          widthMm: 30, heightMm: 20 },
+        { id: "plain", name: "Plain", type: "numbers", defaultValue: "1", fontSize: 20, align: "center",
+          anchor: { x: 0.5, y: 0.5 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+          widthMm: 30, heightMm: 20 },
+      ]
+    }
+  });
+  const [fx, plain] = layout.root.items;
+  assert.equal(fx.strokeWidth, 1.5);
+  assert.equal(fx.strokeColor, "#ffffff");
+  assert.equal(fx.shadowColor, "#333333cc");
+  assert.equal(fx.shadowOffsetX, 2);
+  assert.equal(fx.shadowOffsetY, -3);
+  assert.equal(fx.shadowBlur, 4);
+  assert.equal(fx.lineHeight, 1.4);
+  assert.equal(fx.letterSpacing, 2);
+  assert.equal(plain.strokeWidth, undefined);
+  assert.equal(plain.strokeColor, undefined);
+  assert.equal(plain.shadowColor, undefined);
+  assert.equal(plain.lineHeight, undefined);
+  assert.equal(plain.letterSpacing, undefined);
+});

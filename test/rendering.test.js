@@ -969,3 +969,73 @@ test("neutral or invalid effects emit no wrapper attributes", () => {
   assert.ok(boundSvg.includes('opacity="0.4"'), "opacity should resolve through bindings");
   assert.ok(!boundSvg.includes("javascript:"), "non-whitelisted blend modes must be ignored");
 });
+
+const textFxLayout = (itemProps) => ({
+  version: 2,
+  id: "t",
+  name: "T",
+  width: 63.5,
+  height: 88.9,
+  radius: 2.5,
+  bleed: 1.5,
+  root: {
+    id: "root", name: "Root", layout: "stack", sizePct: 100, gap: 0, children: [],
+    items: [
+      { type: "text", id: "txt1", name: "Txt", defaultValue: "Hello\nWorld",
+        fontSize: 20, align: "center", verticalAlign: "middle", color: "#111111",
+        anchor: { x: 0.5, y: 0.5 },
+        attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+        widthMm: 40, heightMm: 20,
+        ...itemProps },
+    ],
+  },
+});
+
+test("text effects render in the foreignObject path (card + layout)", () => {
+  const card = { id: "t", name: "T", fields: {} };
+  const layout = textFxLayout({
+    strokeWidth: 1.5, strokeColor: "#ffffff",
+    shadowColor: "#333333", shadowOffsetX: 2, shadowOffsetY: 3, shadowBlur: 4,
+    lineHeight: 1.4, letterSpacing: 2,
+  });
+  for (const svg of [renderCardSvg(card, layout), renderLayoutSvg(layout)]) {
+    assert.ok(svg.includes("-webkit-text-stroke:1.5px #ffffff"), "Should stroke the text");
+    assert.ok(svg.includes("paint-order:stroke"), "Stroke should paint under the fill");
+    assert.ok(svg.includes("text-shadow:2px 3px 4px #333333"), "Should apply the drop shadow");
+    assert.ok(svg.includes("line-height:1.4"), "Should apply line height");
+    assert.ok(svg.includes("letter-spacing:2px"), "Should apply letter spacing");
+  }
+});
+
+test("text effects render in the svgTextOnly path", () => {
+  const card = { id: "t", name: "T", fields: {} };
+  const layout = textFxLayout({
+    strokeWidth: 1.5, strokeColor: "#ffffff",
+    shadowColor: "#333333", shadowOffsetX: 2, shadowOffsetY: 3, shadowBlur: 4,
+    lineHeight: 1.5, letterSpacing: 2,
+  });
+  const svg = renderCardSvg(card, layout, { svgTextOnly: true });
+  assert.ok(svg.includes('stroke="#ffffff" stroke-width="1.5"'), "Should stroke the text");
+  assert.ok(svg.includes('paint-order="stroke"'), "Stroke should paint under the fill");
+  assert.ok(svg.includes('letter-spacing="2"'), "Should apply letter spacing");
+  assert.ok(/<defs>[^]*<feDropShadow dx="2" dy="3" stdDeviation="2" flood-color="#333333"/.test(svg), "Shadow filter should be hoisted into <defs>");
+  assert.ok(svg.includes('filter="url(#shadow-txt1)"'), "Text should reference the shadow filter");
+  assert.ok(svg.includes(`dy="${20 * 1.5}"`), "Multi-line spacing should use the line height");
+});
+
+test("text without effects renders without effect styles", () => {
+  const card = { id: "t", name: "T", fields: {} };
+  const svg = renderCardSvg(card, textFxLayout({}));
+  assert.ok(!svg.includes("-webkit-text-stroke"), "No stroke by default");
+  assert.ok(!svg.includes("text-shadow"), "No shadow by default");
+  assert.ok(!svg.includes("line-height"), "No line-height override by default");
+  assert.ok(!svg.includes("letter-spacing"), "No letter spacing by default");
+});
+
+test("alpha mask uses luminance masking so opaque mask images have an effect", () => {
+  const card = { id: "t", name: "T", fields: {} };
+  const layout = effectsLayout({ maskUrl: "/api/games/g/images/mask.jpg" });
+  const svg = renderCardSvg(card, layout);
+  assert.ok(svg.includes('<mask id="mask-fx1"'), "Mask should be emitted");
+  assert.ok(!svg.includes("mask-type"), "Mask must not be alpha-typed (no effect for images without an alpha channel)");
+});
