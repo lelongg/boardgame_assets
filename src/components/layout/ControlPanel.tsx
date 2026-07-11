@@ -15,6 +15,7 @@ import LoadingImg from '@/components/LoadingImg'
 import ConfirmButton from '@/components/ConfirmButton'
 import RichTextField from '@/components/RichTextField'
 import { findParentSection, findItemById, getNodeKind, flattenNodes, getItemAspectRatio } from './layoutHelpers'
+import { BLEND_MODES } from '../../types'
 import type { CardLayout, PropertyBinding } from '../../types'
 
 type ControlPanelProps = {
@@ -43,8 +44,17 @@ type FieldMeta = {
   step?: number
   /** When true, min is a hard physical constraint (e.g. size >= 0). When false, min is only a default slider bound. */
   hardMin?: boolean
+  /** When true, max is a hard physical constraint (e.g. opacity <= 100). When false, max is only a default slider bound. */
+  hardMax?: boolean
+  /** What an unset boolean means (visible defaults to true, flips to false). */
+  booleanDefault?: boolean
   options?: { value: string; label: string }[]
 }
+
+const BLEND_MODE_OPTIONS = BLEND_MODES.map(m => ({
+  value: m,
+  label: m.charAt(0).toUpperCase() + m.slice(1).replace(/-/g, ' '),
+}))
 
 const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: string, gameFonts?: Record<string, { name: string; file: string }>): FieldMeta => {
   switch (property) {
@@ -52,7 +62,8 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     case 'height': return { type: 'number', min: 10, max: 300, step: 0.5, hardMin: true }
     case 'radius': return { type: 'number', min: 0, max: 20, step: 0.5, hardMin: true }
     case 'bleed': return { type: 'number', min: 0, max: 10, step: 0.5, hardMin: true }
-    case 'sizePct': return { type: 'number', min: 0, max: 100, step: 1, hardMin: true }
+    case 'sizePct': return { type: 'number', min: 0, max: 100, step: 1, hardMin: true, hardMax: true }
+    case 'opacity': return { type: 'number', min: 0, max: 100, step: 1, hardMin: true, hardMax: true }
     case 'gap': return { type: 'number', min: 0, max: 100, step: 1, hardMin: true }
     case 'fontSize': return { type: 'number', min: 1, max: 500, step: 1, hardMin: true }
     case 'widthMm': return { type: 'number', min: 0, max: layout.width * 2, step: 0.5, hardMin: true }
@@ -118,7 +129,11 @@ const getFieldMeta = (property: string, layout: CardLayout, selectedNodeId?: str
     case 'emoji': return { type: 'emoji' }
     case 'anchor':
     case 'attachAnchor': return { type: 'anchor' }
-    case 'visible': return { type: 'boolean' }
+    case 'visible': return { type: 'boolean', booleanDefault: true }
+    case 'flipH':
+    case 'flipV': return { type: 'boolean', booleanDefault: false }
+    case 'blendMode': return { type: 'select', options: BLEND_MODE_OPTIONS }
+    case 'maskUrl': return { type: 'image-upload' }
     case 'cloneTargetId': {
       const nodes = flattenNodes(layout.root).filter(n => !selectedNodeId || n.id !== selectedNodeId)
       return { type: 'select', options: nodes.map(n => ({
@@ -459,13 +474,14 @@ export const getEditorType = (property: string, itemType?: string): FieldMeta['t
   switch (property) {
     case 'emoji': return 'emoji'
     case 'color': case 'strokeColor': case 'fillColor': return 'color'
-    case 'visible': return 'boolean'
+    case 'visible': case 'flipH': case 'flipV': return 'boolean'
     case 'defaultValue': return itemType === 'image' ? 'image-upload' : 'richtext'
-    case 'width': case 'height': case 'radius': case 'bleed': case 'sizePct':
+    case 'maskUrl': return 'image-upload'
+    case 'width': case 'height': case 'radius': case 'bleed': case 'sizePct': case 'opacity':
     case 'gap': case 'fontSize': case 'widthMm': case 'heightMm':
     case 'offsetX': case 'offsetY': case 'rotation': case 'scale': case 'strokeWidth': case 'cornerRadius':
     case 'columns': case 'repeatCount': case 'repeatOffsetX': case 'repeatOffsetY': return 'number'
-    case 'layout': case 'align': case 'verticalAlign': case 'font': case 'fit': case 'cloneTargetId': return 'select'
+    case 'layout': case 'align': case 'verticalAlign': case 'font': case 'fit': case 'cloneTargetId': case 'blendMode': return 'select'
     default: return 'text'
   }
 }
@@ -492,10 +508,17 @@ function roundToStep(n: number, step: number): number {
   return Math.round(n * factor) / factor
 }
 
-export function NumberEditor({ value, onChange, min, max, step, hardMin }: { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number; hardMin?: boolean }) {
+export function NumberEditor({ value, onChange, min, max, step, hardMin, hardMax }: { value: string; onChange: (v: string) => void; min?: number; max?: number; step?: number; hardMin?: boolean; hardMax?: boolean }) {
   const numVal = Number(value || 0)
   const s = step ?? 1
   const round = (n: number) => roundToStep(n, s)
+  // Only enforce bounds that are hard physical constraints (e.g. size >= 0, opacity <= 100)
+  const clamp = useCallback((n: number) => {
+    let r = n
+    if (hardMin && min != null) r = Math.max(min, r)
+    if (hardMax && max != null) r = Math.min(max, r)
+    return r
+  }, [hardMin, hardMax, min, max])
   const valRef = useRef(numVal)
   // Only sync ref from prop changes, not every render — avoids stale overwrites during rapid clicks
   const prevPropValue = useRef(value)
@@ -520,26 +543,68 @@ export function NumberEditor({ value, onChange, min, max, step, hardMin }: { val
   const commitText = useCallback((text: string) => {
     const n = Number(text)
     if (!isNaN(n) && text !== '') {
-      // Only enforce min when it's a hard physical constraint (e.g. size >= 0)
-      const result = hardMin ? Math.max(min ?? -Infinity, n) : n
+      const result = clamp(n)
       onChange(String(result))
       setLocalText(String(result))
     } else {
       // Revert to current value
       setLocalText(String(value ?? 0))
     }
-  }, [onChange, min, hardMin, value])
+  }, [onChange, clamp, value])
 
-  // Dynamic slider range: extends to include current value with headroom
+  // Dynamic slider range: extends to include current value with headroom,
+  // but never past a hard physical bound (e.g. a width can't go negative)
   const defaultRange = (max ?? 0) - (min ?? 0)
   const headroom = Math.max(defaultRange * 0.15, s)
-  const sliderMin = min != null ? Math.min(min, numVal - headroom) : undefined
-  const sliderMax = max != null ? Math.max(max, numVal + headroom) : undefined
+  const sliderMin = min != null ? Math.min(min, hardMin ? numVal : numVal - headroom) : undefined
+  const sliderMax = max != null ? Math.max(max, hardMax ? numVal : numVal + headroom) : undefined
+
+  // While dragging, track the value locally so the bubble and thumb follow the
+  // finger instantly even if the parent re-render (card preview) lags behind
+  const [dragging, setDragging] = useState(false)
+  const [dragVal, setDragVal] = useState<number | null>(null)
+  useEffect(() => {
+    if (!dragging) return
+    const end = () => { setDragging(false); setDragVal(null) }
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    return () => { window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end) }
+  }, [dragging])
+
+  const shown = dragVal ?? numVal
+  const bubblePct = sliderMin != null && sliderMax != null && sliderMax > sliderMin
+    ? ((shown - sliderMin) / (sliderMax - sliderMin)) * 100
+    : 50
+
+  const stepBy = (dir: 1 | -1) => {
+    const v = clamp(round(valRef.current + dir * s))
+    valRef.current = v
+    onChange(String(v))
+  }
 
   return (
     <div className="space-y-2">
-      <Slider min={sliderMin} max={sliderMax} step={step} value={[numVal]} onValueChange={([v]) => onChange(String(round(v)))} />
-      <div className="relative">
+      <div className="relative" onPointerDown={() => setDragging(true)}>
+        {dragging && (
+          <div
+            className="pointer-events-none absolute bottom-full z-50 mb-2 -translate-x-1/2 rounded-md bg-primary px-2 py-0.5 text-sm font-medium tabular-nums text-primary-foreground shadow-md"
+            style={{ left: `clamp(1.5rem, ${bubblePct}%, calc(100% - 1.5rem))` }}
+          >{shown}</div>
+        )}
+        <Slider
+          min={sliderMin}
+          max={sliderMax}
+          step={step}
+          value={[shown]}
+          onValueChange={([v]) => { const r = clamp(round(v)); setDragVal(r); valRef.current = r; onChange(String(r)) }}
+          onValueCommit={() => setDragVal(null)}
+        />
+      </div>
+      <div className="flex items-center gap-1.5">
+        {/* Buttons sit outside the input so a missed tap doesn't focus it and open the keyboard */}
+        <span className="shrink-0 select-none" onPointerDown={(e) => e.preventDefault()}>
+          <RepeatButton size="sm" variant="outline" className="h-10 w-12 sm:h-8 sm:w-9 p-0 text-base" onTick={() => stepBy(-1)}>−</RepeatButton>
+        </span>
         <Input
           inputMode="decimal"
           value={focused ? localText : numVal}
@@ -547,14 +612,11 @@ export function NumberEditor({ value, onChange, min, max, step, hardMin }: { val
           onBlur={() => { setFocused(false); commitText(localText) }}
           onChange={(e) => setLocalText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') commitText(localText) }}
-          className="text-center px-9"
+          className="min-w-0 flex-1 text-center"
         />
-        <div className="absolute left-1 top-1/2 -translate-y-1/2 select-none" onPointerDown={(e) => e.preventDefault()}>
-          <RepeatButton size="sm" variant="ghost" className="h-7 w-7 p-0" onTick={() => { const raw = valRef.current - s; const v = hardMin ? Math.max(min ?? -Infinity, round(raw)) : round(raw); valRef.current = v; onChange(String(v)) }}>-</RepeatButton>
-        </div>
-        <div className="absolute right-1 top-1/2 -translate-y-1/2 select-none" onPointerDown={(e) => e.preventDefault()}>
-          <RepeatButton size="sm" variant="ghost" className="h-7 w-7 p-0" onTick={() => { const v = round(valRef.current + s); valRef.current = v; onChange(String(v)) }}>+</RepeatButton>
-        </div>
+        <span className="shrink-0 select-none" onPointerDown={(e) => e.preventDefault()}>
+          <RepeatButton size="sm" variant="outline" className="h-10 w-12 sm:h-8 sm:w-9 p-0 text-base" onTick={() => stepBy(1)}>+</RepeatButton>
+        </span>
       </div>
     </div>
   )
@@ -572,7 +634,7 @@ export function ValueItemEditor({ property, itemType, itemId, value, onChange, l
   if (type === 'number') {
     const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
     const meta = getFieldMeta(property, dummyLayout)
-    return <NumberEditor value={value} onChange={onChange} min={meta.min} max={meta.max} step={meta.step} hardMin={meta.hardMin} />
+    return <NumberEditor value={value} onChange={onChange} min={meta.min} max={meta.max} step={meta.step} hardMin={meta.hardMin} hardMax={meta.hardMax} />
   }
   if (type === 'select') {
     const dummyLayout = layout ?? { version: 2 as const, id: '', name: '', width: 63.5, height: 88.9, radius: 2.5, bleed: 1.5, fonts: {}, root: { id: 'root', name: 'Root', layout: 'stack' as const, sizePct: 100, gap: 0, children: [], items: [] } }
@@ -685,7 +747,7 @@ function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, on
   }
 
   if (meta.type === 'number') {
-    return <NumberEditor value={String(value ?? 0)} onChange={(v) => onChange(Number(v))} min={meta.min} max={meta.max} step={meta.step} hardMin={meta.hardMin} />
+    return <NumberEditor value={String(value ?? 0)} onChange={(v) => onChange(Number(v))} min={meta.min} max={meta.max} step={meta.step} hardMin={meta.hardMin} hardMax={meta.hardMax} />
   }
 
   if (meta.type === 'select') {
@@ -717,7 +779,9 @@ function ValueEditor({ property, value, bindingValues, gameFonts, gameImages, on
   }
 
   if (meta.type === 'boolean') {
-    const checked = value !== false && value !== 'false'
+    const checked = value === undefined || value === null || value === ''
+      ? (meta.booleanDefault ?? true)
+      : value !== false && value !== 'false'
     return (
       <button
         onClick={() => onChange(!checked)}

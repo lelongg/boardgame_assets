@@ -1,4 +1,5 @@
 import { theme } from "../theme.js";
+import { BLEND_MODES } from "../types.js";
 import type { AnchorPoint, CardData, CardLayout, CardLayoutItem, CardLayoutSection, CardLayoutTextItem } from "../types.js";
 
 // Single card renderer implementation, shared by the app (src/render.ts) and
@@ -150,6 +151,62 @@ const resolve = (item: CardLayoutItem, prop: string, card: CardData, layoutRef?:
     if (meta?.default !== undefined && meta.default !== "") return meta.default;
   }
   return (item as any)[prop];
+};
+
+const isTruthyFlag = (v: unknown): boolean => v === true || v === "true";
+
+type ItemEffects = {
+  rotation: number;
+  flipH: boolean;
+  flipV: boolean;
+  /** Normalized to 0-1 (stored as percent on the item). */
+  opacity: number;
+  blendMode: string;
+  maskUrl: string;
+};
+
+/** Gather the group-level effects of an item; `get` resolves a property
+ *  (through bindings for card renders, statically for layout previews). */
+const itemEffects = (get: (prop: string) => unknown, rotation: number): ItemEffects => {
+  const rawOpacity = get("opacity");
+  const opacity = rawOpacity === undefined || rawOpacity === null || rawOpacity === ""
+    ? 1
+    : Math.min(100, Math.max(0, num(rawOpacity, 100))) / 100;
+  // Whitelist: blendMode can be bound to card data and ends up in a style attribute
+  const rawBlend = String(get("blendMode") ?? "");
+  const blendMode = rawBlend !== "normal" && (BLEND_MODES as readonly string[]).includes(rawBlend) ? rawBlend : "";
+  return {
+    rotation,
+    flipH: isTruthyFlag(get("flipH")),
+    flipV: isTruthyFlag(get("flipV")),
+    opacity,
+    blendMode,
+    maskUrl: String(get("maskUrl") ?? ""),
+  };
+};
+
+/** Wrap an item's SVG in a <g> carrying its effects. Mask definitions are
+ *  appended to `defs` (hoisted into <defs> by the callers). The mask is
+ *  declared in the item's untransformed rect space, so it follows the item
+ *  through rotation/flip. */
+const wrapItemEffects = (svg: string, itemId: string, rect: Rect, eff: ItemEffects, defs: string[]): string => {
+  if (!svg) return svg;
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const transforms: string[] = [];
+  if (eff.rotation) transforms.push(`rotate(${eff.rotation} ${cx} ${cy})`);
+  if (eff.flipH || eff.flipV) transforms.push(`translate(${cx} ${cy}) scale(${eff.flipH ? -1 : 1} ${eff.flipV ? -1 : 1}) translate(${-cx} ${-cy})`);
+  const attrs: string[] = [];
+  if (transforms.length) attrs.push(`transform="${transforms.join(" ")}"`);
+  if (eff.opacity < 1) attrs.push(`opacity="${eff.opacity}"`);
+  if (eff.blendMode) attrs.push(`style="mix-blend-mode:${eff.blendMode}"`);
+  if (eff.maskUrl) {
+    const maskId = `mask-${String(itemId).replace(/[^a-zA-Z0-9-_]/g, "")}`;
+    defs.push(`<mask id="${maskId}" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}"><image x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" href="${escape(eff.maskUrl)}" preserveAspectRatio="none" /></mask>`);
+    attrs.push(`mask="url(#${maskId})"`);
+  }
+  if (!attrs.length) return svg;
+  return `<g ${attrs.join(" ")}>${svg}</g>`;
 };
 
 const textAnchorFor = (align: string): string => {
@@ -465,14 +522,10 @@ export const renderCardSvg = (card: CardData, layoutMm: CardLayout, options: Ren
     if (!baseRect) return;
     const rect = baseRect;
     const rotation = Number(resolve(item, "rotation", card, layoutMm)) || 0;
+    const eff = itemEffects((p) => resolve(item, p, card, layoutMm), rotation);
     const pushEl = (svg: string) => {
-      if (rotation && svg) {
-        const cx = rect.x + rect.width / 2;
-        const cy = rect.y + rect.height / 2;
-        itemElements.push(`<g transform="rotate(${rotation} ${cx} ${cy})">${svg}</g>`);
-      } else {
-        itemElements.push(svg);
-      }
+      const wrapped = wrapItemEffects(svg, item.id, rect, eff, clipPaths);
+      if (wrapped) itemElements.push(wrapped);
     };
 
     const itemType = item.type ?? "text"; // Default to text for legacy items
@@ -717,12 +770,13 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: LayoutSvgOptions 
     const baseRect = computed.items.get(item.id);
     if (!baseRect) return "";
     const rect = baseRect;
-    const rot = (item as any).rotation ?? 0;
+    const rot = Number((item as any).rotation ?? 0) || 0;
+    const eff = itemEffects((p) => resolve(item, p, emptyCard, layoutMm), rot);
     const wrapRot = (svg: string) => {
-      if (!rot || !svg) return svg;
-      const cx = rect.x + rect.width / 2;
-      const cy = rect.y + rect.height / 2;
-      return `<g transform="rotate(${rot} ${cx} ${cy})">${svg}</g>`;
+      // Mask defs are emitted inline and hoisted into <defs> with the clip paths below
+      const effDefs: string[] = [];
+      const wrapped = wrapItemEffects(svg, item.id, rect, eff, effDefs);
+      return wrapped ? effDefs.join("") + wrapped : "";
     };
     const itemType = item.type ?? "text";
     if (itemType === "frame") {
@@ -846,9 +900,9 @@ export const renderLayoutSvg = (layoutMm: CardLayout, options: LayoutSvgOptions 
       return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" rx="10" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
     }).join("") : "";
 
-  const clipPaths = renderedContent.match(/<clipPath[^]*?<\/clipPath>/g) ?? [];
+  const clipPaths = renderedContent.match(/<(?:clipPath|mask)[^]*?<\/(?:clipPath|mask)>/g) ?? [];
   const defs = clipPaths.length > 0 ? `<defs>${clipPaths.join("")}</defs>` : "";
-  const contentWithoutClipPaths = renderedContent.replace(/<clipPath[^]*?<\/clipPath>/g, "");
+  const contentWithoutClipPaths = renderedContent.replace(/<(?:clipPath|mask)[^]*?<\/(?:clipPath|mask)>/g, "");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" xmlns="http://www.w3.org/2000/svg">

@@ -565,7 +565,7 @@ async function createFullTestGame(storage) {
         { id: "title-item", name: "Title", type: "text", defaultValue: "Untitled",
           bindings: { defaultValue: { field: "name" } },
           fontSize: 32, align: "center", verticalAlign: "middle", font: "title", color: "#1a1a2e",
-          rotation: 15,
+          rotation: 15, flipH: true, opacity: 60,
           anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "header", anchor: { x: 0.5, y: 0.5 } },
           widthMm: 100, heightMm: 100 },
       ]},
@@ -575,6 +575,7 @@ async function createFullTestGame(storage) {
             { id: "art-item", name: "Artwork", type: "image", defaultValue: imageUrl,
               bindings: { defaultValue: { field: "image" } },
               fit: "cover", cornerRadius: 12,
+              blendMode: "multiply", maskUrl: imageUrl,
               anchor: { x: 0.5, y: 0 }, attach: { targetType: "section", targetId: "grid-section", anchor: { x: 0.5, y: 0 } },
               widthMm: 100, heightMm: 80 },
           ]},
@@ -582,7 +583,7 @@ async function createFullTestGame(storage) {
         items: [
           { id: "border-item", name: "Border", type: "frame",
             strokeWidth: 3, strokeColor: "#16213e", fillColor: "none", cornerRadius: 8,
-            rotation: -45, visible: false,
+            rotation: -45, visible: false, flipV: true,
             anchor: { x: 0.5, y: 0.5 }, attach: { targetType: "section", targetId: "body", anchor: { x: 0.5, y: 0.5 } },
             widthMm: 95, heightMm: 95 },
           { id: "emoji-item", name: "Faction", type: "emoji", emoji: "⚔️",
@@ -662,6 +663,8 @@ async function verifyFullTestGame(storage, gameId) {
   assert.deepEqual(tpl.bindingMeta?.["defaultValue:name"]?.values, ["Warrior", "Mage", "Rogue"]);
   assert.equal(title.fontSize, 32); assert.equal(title.align, "center");
   assert.equal(title.rotation, 15);
+  assert.equal(title.flipH, true, "flipH must survive the round trip");
+  assert.equal(title.opacity, 60, "opacity must survive the round trip");
   assert.equal(title.font, "title"); assert.equal(title.color, "#1a1a2e");
 
   // Frame item
@@ -670,6 +673,7 @@ async function verifyFullTestGame(storage, gameId) {
   assert.equal(border.strokeWidth, 3); assert.equal(border.cornerRadius, 8);
   assert.equal(border.rotation, -45);
   assert.equal(border.visible, false, "static visible:false must survive the round trip");
+  assert.equal(border.flipV, true, "flipV must survive the round trip");
 
   // bindingMeta image default must survive and point at the (possibly new) game
   assert.ok(
@@ -682,6 +686,8 @@ async function verifyFullTestGame(storage, gameId) {
   assert.ok(art); assert.equal(art.type, "image");
   assert.equal(art.fit, "cover"); assert.equal(art.cornerRadius, 12);
   assert.ok(art.defaultValue.includes(`/api/games/${gameId}/images/`), "image URL should reference the game");
+  assert.equal(art.blendMode, "multiply", "blendMode must survive the round trip");
+  assert.ok(art.maskUrl?.includes(`/api/games/${gameId}/images/`), "maskUrl must survive the round trip and reference the game");
 
   // Emoji item
   const emoji = items.find(i => i.id === "emoji-item");

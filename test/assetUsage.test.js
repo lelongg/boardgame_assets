@@ -29,6 +29,13 @@ test("image in layout item defaultValue is used", () => {
   assert.deepEqual([...used], ["a.png"]);
 });
 
+test("image in item maskUrl is used", () => {
+  const layout = layoutWith();
+  layout.root.items.push({ id: "i1", type: "image", defaultValue: img("a.png"), maskUrl: img("m.png") });
+  const used = collectUsedImageFiles([layout], []);
+  assert.deepEqual([...used].sort(), ["a.png", "m.png"]);
+});
+
 test("image in nested section item is used", () => {
   const layout = layoutWith();
   layout.root.children.push({

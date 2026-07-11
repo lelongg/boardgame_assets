@@ -459,3 +459,41 @@ test("normalizeLayout migrates legacy copy items to clone", () => {
   assert.equal(current.type, "clone");
   assert.equal(current.cloneTargetId, "t2");
 });
+
+test("normalizeLayout preserves item effect properties", () => {
+  const layout = normalizeLayout({
+    id: "l", name: "L", width: 63.5, height: 88.9, radius: 2, bleed: 1,
+    root: {
+      id: "root", name: "Root", layout: "stack", sizePct: 100, gap: 0, children: [],
+      items: [
+        { id: "fx", name: "Fx", type: "frame",
+          flipH: true, flipV: false, opacity: 45, blendMode: "multiply", maskUrl: "/api/games/g/images/mask.png",
+          anchor: { x: 0.5, y: 0.5 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+          widthMm: 30, heightMm: 20 },
+        { id: "plain", name: "Plain", type: "frame",
+          anchor: { x: 0.5, y: 0.5 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+          widthMm: 30, heightMm: 20 },
+        { id: "bad", name: "Bad", type: "frame", blendMode: "not-a-mode", maskUrl: "", opacity: "",
+          anchor: { x: 0.5, y: 0.5 },
+          attach: { targetType: "section", targetId: "root", anchor: { x: 0.5, y: 0.5 } },
+          widthMm: 30, heightMm: 20 },
+      ]
+    }
+  });
+  const [fx, plain, bad] = layout.root.items;
+  assert.equal(fx.flipH, true);
+  assert.equal(fx.flipV, false);
+  assert.equal(fx.opacity, 45);
+  assert.equal(fx.blendMode, "multiply");
+  assert.equal(fx.maskUrl, "/api/games/g/images/mask.png");
+  assert.equal(plain.flipH, undefined);
+  assert.equal(plain.flipV, undefined);
+  assert.equal(plain.opacity, undefined);
+  assert.equal(plain.blendMode, undefined);
+  assert.equal(plain.maskUrl, undefined);
+  assert.equal(bad.blendMode, "normal", "invalid blend mode falls back to normal");
+  assert.equal(bad.maskUrl, undefined, "empty maskUrl is dropped");
+  assert.equal(bad.opacity, 100, "empty opacity falls back to fully opaque");
+});
