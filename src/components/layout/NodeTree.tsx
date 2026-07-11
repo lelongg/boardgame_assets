@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react'
-import { Plus, Trash2, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile, Copy, FolderTree, Hash } from 'lucide-react'
+import { Plus, FolderPlus, ChevronsDownUp, ChevronsUpDown, Rows3, Columns3, Layers, Grid3X3, Type, Frame, Image, Smile, Copy, FolderTree, Hash } from 'lucide-react'
 import { flattenNodes } from './layoutHelpers'
+import ConfirmButton from '@/components/ConfirmButton'
 import PortalDropdown from '@/components/ui/PortalDropdown'
 import CollapsibleHeader, { useCollapsible } from '@/components/ui/CollapsibleHeader'
 import type { CardLayoutSection } from '../../types'
@@ -169,13 +170,7 @@ export default function NodeTree({ root, selectedNodeId, onSelectNode, onDrop, o
             </button>
           )}
           {onDelete && canDelete && (
-            <button
-              onClick={onDelete}
-              className="rounded p-1 text-muted-foreground hover:text-destructive transition-colors"
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <ConfirmButton iconOnly onConfirm={onDelete} />
           )}
         </div>
       </CollapsibleHeader>
