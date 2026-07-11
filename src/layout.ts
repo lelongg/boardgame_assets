@@ -1,5 +1,26 @@
 import type { CardLayout } from "./types";
 
+// Blank layout used when the user creates a new layout: just the root
+// section, no child sections and no items.
+export const emptyLayout = (): CardLayout => ({
+  version: 2,
+  id: "default",
+  name: "Default",
+  width: 63.5,
+  height: 88.9,
+  radius: 2.5,
+  bleed: 1.5,
+  root: {
+    id: "root",
+    name: "Root",
+    layout: "column",
+    sizePct: 100,
+    gap: 0,
+    children: [],
+    items: []
+  }
+});
+
 export const defaultLayout = (): CardLayout => ({
   version: 2,
   id: "default",

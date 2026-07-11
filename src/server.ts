@@ -3,7 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import express from "express";
 import { renderCardSvg, renderLayoutSvg } from "./render/cardSvg.js";
-import { defaultLayout } from "./layout.js";
+import { defaultLayout, emptyLayout } from "./layout.js";
 import { normalizeCard, normalizeLayout } from "./normalize.js";
 import type { CardData, CardLayout, Collection } from "./types.js";
 
@@ -404,7 +404,7 @@ app.get("/api/games/:gameId/layouts", (req, res) => {
 app.post("/api/games/:gameId/layouts", (req, res) => {
   const gameId = req.params.gameId;
   const name = req.body?.name?.trim() || "New Layout";
-  const layout = defaultLayout();
+  const layout = emptyLayout();
   layout.id = uniqueId(slugify(name) || "layout", (id) => fs.existsSync(layoutFilePath(gameId, id)));
   layout.name = name;
   writeJson(layoutFilePath(gameId, layout.id), layout);

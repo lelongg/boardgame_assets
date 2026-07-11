@@ -12,7 +12,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { FetchHttpHandler } from "@smithy/fetch-http-handler";
 import { getAsset, putAsset, deleteAsset } from "./assetCache.js";
-import { normalizeCard, normalizeLayout } from "../normalizeExport.js";
+import { normalizeCard, normalizeLayout, emptyLayout } from "../normalizeExport.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -341,11 +341,7 @@ export const createS3Storage = (options = {}) => {
 
     async createLayout(gameId, name) {
       const layoutId = slugify(name) + "-" + uid();
-      const layout = normalizeLayout(
-        defaultLayout
-          ? { ...defaultLayout(), id: layoutId, name }
-          : { id: layoutId, name }
-      );
+      const layout = normalizeLayout({ ...emptyLayout(), id: layoutId, name });
       await putJson(layoutKey(gameId, layoutId), layout);
       return layout;
     },
