@@ -248,7 +248,12 @@ export const createLocalFileStorage = ({ defaultLayout }) => {
     async uploadImage(gameId, file) {
       const response = await fetch(`${apiBase}/games/${gameId}/images/upload`, {
         method: "POST",
-        headers: { "Content-Disposition": `attachment; filename="${file.name}"` },
+        // Explicit Content-Type: the server's express.raw({ type: "*/*" }) skips
+        // bodies without one, leaving req.body undefined.
+        headers: {
+          "Content-Disposition": `attachment; filename="${file.name}"`,
+          "Content-Type": file.type || "application/octet-stream",
+        },
         body: await file.arrayBuffer(),
       });
       if (!response.ok) throw new Error("Failed to upload image");
