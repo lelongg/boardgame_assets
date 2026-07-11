@@ -313,6 +313,7 @@ function ImageGalleryPicker({ images, selected, onSelect }: { images: { file: st
       getKey={img => img.file}
       getName={img => img.name}
       grid={{ colsKey: 'pickerCols' }}
+      sort={{ key: 'pickerSort' }}
       maxHeight="12rem"
       selectedKey={images.find(i => i.url === selected)?.file}
       onSelect={(key) => { const img = images.find(i => i.file === key); if (img) onSelect(img.url) }}
