@@ -8,9 +8,11 @@ import FilterableList from './FilterableList'
 import { cardsToCSV } from '../cardsCsv'
 import { renderCardSvg, embedImagesInSvg, buildFontCss } from '../render'
 import type { CardData, CardLayout } from '../types'
-
-const MAX_ATLAS_SIZE = 4096
-const TTS_MAX_CARDS = 69
+import { getProvider } from '../storage'
+import {
+  toSlug, groupCardsIntoDecks, computeAtlasGrid, buildDeckObjectState, buildTtsJson,
+  createServerTtsSink, createZipTtsSink,
+} from '../tts'
 
 const svgToImage = (svg: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
@@ -106,45 +108,24 @@ export default function FilesPanel({
     setExporting(true)
     try {
       const selected = cards.filter(c => selection.has(c.id))
-      const baseUrl = `${window.location.origin}/api/games/${gameId}/tts`
+      const sink = getProvider() === 'localFile' ? createServerTtsSink(gameId) : createZipTtsSink()
 
-      const uploadPng = async (canvas: HTMLCanvasElement, fileName: string) => {
-        const blob = await new Promise<Blob>((resolve, reject) => {
+      const canvasToPng = (canvas: HTMLCanvasElement, fileName: string) =>
+        new Promise<Blob>((resolve, reject) => {
           canvas.toBlob(b => b ? resolve(b) : reject(new Error(`toBlob failed for ${fileName}`)), 'image/png')
         })
-        const resp = await fetch(`${baseUrl}/upload`, { method: 'POST', body: blob, headers: { 'Content-Disposition': `attachment; filename="${fileName}"` } })
-        if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`)
-      }
 
-      type DeckGroup = { name: string; cards: FileCard[]; backLayoutId?: string }
-      let groups: DeckGroup[]
-      if (collectionId) {
-        groups = [{ name: collectionName || 'deck', cards: selected, backLayoutId }]
-      } else {
-        const byCol = new Map<string, DeckGroup>()
-        for (const card of selected) {
-          const key = card.collectionName || 'deck'
-          if (!byCol.has(key)) byCol.set(key, { name: key, cards: [], backLayoutId: card.collectionBackLayoutId })
-          byCol.get(key)!.cards.push(card)
-        }
-        groups = [...byCol.values()]
-      }
-
-      const toSlug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'deck'
+      const groups = groupCardsIntoDecks(selected, { collectionId, collectionName, backLayoutId })
       const objectStates: any[] = []
       let deckIdCounter = 1
-      const cardAspect = layout.height / layout.width
 
       setStatus('Loading fonts...')
       const fontCss = await buildFontCss(gameId, gameFonts ?? {})
 
       for (const group of groups) {
         const slug = toSlug(group.name)
-        const cardCount = Math.min(group.cards.length, TTS_MAX_CARDS - 1)
-        const numWidth = Math.min(10, cardCount + 1)
-        const numHeight = Math.ceil((cardCount + 1) / numWidth)
-        const cardW = Math.floor(MAX_ATLAS_SIZE / numWidth)
-        const cardH = Math.floor(cardW * cardAspect)
+        const grid = computeAtlasGrid(group.cards.length, layout.width, layout.height)
+        const { cardCount, numWidth, numHeight, cardW, cardH } = grid
 
         const faceCanvas = document.createElement('canvas')
         faceCanvas.width = cardW * numWidth
@@ -173,7 +154,7 @@ export default function FilesPanel({
         faceCtx.fillText('?', hCol * cardW + cardW / 2, hRow * cardH + cardH / 2)
 
         setStatus(`Uploading ${group.name} face atlas...`)
-        await uploadPng(faceCanvas, `${slug}_face.png`)
+        const faceUrl = await sink.put(`${slug}_face.png`, await canvasToPng(faceCanvas, `${slug}_face.png`))
 
         setStatus(`Rendering ${group.name} back...`)
         const backCanvas = document.createElement('canvas')
@@ -206,34 +187,17 @@ export default function FilesPanel({
         }
 
         setStatus(`Uploading ${group.name} back...`)
-        await uploadPng(backCanvas, `${slug}_back.png`)
+        const backUrl = await sink.put(`${slug}_back.png`, await canvasToPng(backCanvas, `${slug}_back.png`))
 
-        const deckId = deckIdCounter++
-        const contained = group.cards.slice(0, cardCount).map((c, i) => ({
-          GUID: `c${String(deckId * 100 + i).padStart(4, '0')}`,
-          Name: 'Card', Nickname: c.name, CardID: deckId * 100 + i,
-          Transform: { posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 180, rotZ: 180, scaleX: 1, scaleY: 1, scaleZ: 1 },
-        }))
-        objectStates.push({
-          GUID: `deck${String(deckId).padStart(2, '0')}`,
-          Name: 'DeckCustom', Nickname: group.name,
-          Transform: { posX: (deckId - 1) * 3, posY: 1, posZ: 0, rotX: 0, rotY: 180, rotZ: 180, scaleX: 1, scaleY: 1, scaleZ: 1 },
-          DeckIDs: contained.map(o => o.CardID),
-          CustomDeck: { [String(deckId)]: { FaceURL: `${baseUrl}/${slug}_face.png`, BackURL: `${baseUrl}/${slug}_back.png`, NumWidth: numWidth, NumHeight: numHeight, BackIsHidden: true, UniqueBack: false } },
-          ContainedObjects: contained,
-        })
+        objectStates.push(buildDeckObjectState(deckIdCounter++, group, cardCount, grid, faceUrl, backUrl))
       }
 
-      const ttsJson = JSON.stringify({ ObjectStates: objectStates }, null, 2)
-      const a = document.createElement('a')
-      a.href = URL.createObjectURL(new Blob([ttsJson], { type: 'application/json' }))
-      a.download = `${exportName} - TTS.json`
-      a.click()
-      URL.revokeObjectURL(a.href)
+      setStatus('Saving TTS export...')
+      await sink.finish(buildTtsJson(objectStates), exportName)
 
       setStatus(`TTS export complete: ${selected.length} cards in ${groups.length} deck${groups.length > 1 ? 's' : ''}.`)
     } catch (err) {
-      setStatus('Error exporting TTS.')
+      setStatus(`Error exporting TTS: ${err instanceof Error ? err.message : String(err)}`)
       console.error(err)
     } finally {
       setExporting(false)
@@ -267,7 +231,7 @@ export default function FilesPanel({
             <button className="w-full text-left text-sm px-3 py-1.5 rounded hover:bg-accent/50 transition-colors" onClick={() => { exportCsv(); close() }}>
               Export CSV
             </button>
-            <button className="w-full text-left text-sm px-3 py-1.5 rounded hover:bg-accent/50 transition-colors disabled:opacity-40" disabled={exporting || !layout} onClick={() => { exportTts(); close() }}>
+            <button className="w-full text-left text-sm px-3 py-1.5 rounded hover:bg-accent/50 transition-colors disabled:opacity-40" disabled={exporting || !layout} title={getProvider() === 'localFile' ? undefined : 'Downloads a zip; host the images to use in Tabletop Simulator'} onClick={() => { exportTts(); close() }}>
               {exporting ? 'Exporting...' : 'Export TTS'}
             </button>
           </div>
